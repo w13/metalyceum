@@ -1637,10 +1637,20 @@ function checkCollision(targetX, targetZ) {
   return false;
 }
 
+// Reusable scratch vectors for per-frame movement math (avoids ~7 allocations
+// per frame and the resulting GC churn). Each is fully overwritten or reset
+// before use below.
+const _oldPos = new THREE.Vector3();
+const _moveDir = new THREE.Vector3();
+const _camDir = new THREE.Vector3();
+const _camRight = new THREE.Vector3();
+const _targetDir = new THREE.Vector3();
+const _delta = new THREE.Vector3();
+
 function updateLocalPlayer(dt) {
   if (!isJoined || !localPlayer.mesh) return;
 
-  const oldPos = new THREE.Vector3().copy(localPlayer.mesh.position);
+  const oldPos = _oldPos.copy(localPlayer.mesh.position);
 
   const acceleration = 55.0;
   const maxSpeed = 9.5;
@@ -1673,8 +1683,8 @@ function updateLocalPlayer(dt) {
   }
 
   // 2. Horizontal Movement Calculation (Accelerate and Damp)
-  const moveDirection = new THREE.Vector3();
-  
+  const moveDirection = _moveDir.set(0, 0, 0);
+
   if (keys.w) moveDirection.z -= 1;
   if (keys.s) moveDirection.z += 1;
   if (keys.a) moveDirection.x -= 1;
@@ -1688,17 +1698,17 @@ function updateLocalPlayer(dt) {
 
   if (moveDirection.lengthSq() > 0) {
     // Project camera direction onto ground plane
-    const camDirection = new THREE.Vector3();
+    const camDirection = _camDir;
     camera.getWorldDirection(camDirection);
     camDirection.y = 0;
     camDirection.normalize();
-    
+
     // Camera right vector
-    const camRight = new THREE.Vector3();
+    const camRight = _camRight;
     camRight.crossVectors(camera.up, camDirection).negate().normalize();
-    
+
     // Find absolute target moving direction
-    const targetDirection = new THREE.Vector3()
+    const targetDirection = _targetDir.set(0, 0, 0)
       .addScaledVector(camDirection, -moveDirection.z)
       .addScaledVector(camRight, moveDirection.x)
       .normalize();
@@ -1765,9 +1775,10 @@ function updateLocalPlayer(dt) {
   localPlayer.mesh.rotation.y = localPlayer.ry;
   
   // Update controls target and camera position in lockstep with player movement delta
-  const delta = new THREE.Vector3().subVectors(localPlayer.mesh.position, oldPos);
+  const delta = _delta.subVectors(localPlayer.mesh.position, oldPos);
   camera.position.add(delta);
-  controls.target.copy(localPlayer.mesh.position).add(new THREE.Vector3(0, 1.2, 0));
+  controls.target.copy(localPlayer.mesh.position);
+  controls.target.y += 1.2;
   controls.update();
 
   // 4. Leg and Arm Swing Walking Animation

@@ -321,11 +321,18 @@ export class MetalyceumWorld extends DurableObject {
             if (!session.player) break;
             const p = session.player;
 
+            // Drop malformed moves outright: a real move carries finite x/y/z/ry.
+            // (Without this, non-finite inputs clamp to the current position and
+            // broadcast a redundant no-op instead of being rejected.)
+            if (![data.x, data.y, data.z, data.ry].every(
+              (n) => typeof n === "number" && Number.isFinite(n)
+            )) break;
+
             const nx = clampNum(data.x, -WORLD_LIMIT, WORLD_LIMIT, p.x);
             const ny = clampNum(data.y, Y_MIN, Y_MAX, p.y);
             const nz = clampNum(data.z, -WORLD_LIMIT, WORLD_LIMIT, p.z);
 
-            // Reject single-message teleports (anti-cheat / NaN already filtered)
+            // Reject single-message teleports (anti-cheat)
             const dx = nx - p.x;
             const dz = nz - p.z;
             if (Math.sqrt(dx * dx + dz * dz) > MAX_MOVE_STEP) break;
