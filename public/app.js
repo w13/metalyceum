@@ -382,6 +382,15 @@ const editor = {
   transformDragging: false
 };
 
+// TransformControls only accepts 'translate' | 'rotate' | 'scale', but the editor
+// UI labels its move tool 'move'. Map it so setMode() never receives an invalid
+// mode — an invalid mode makes the r128 gizmo's updateMatrixWorld read
+// `gizmo[mode].children` of undefined and throw every frame, killing the render
+// loop (black screen on load).
+function transformControlsMode(mode) {
+  return mode === 'move' ? 'translate' : mode;
+}
+
 // --- Security helpers (defense-in-depth against XSS / CSS injection) ---
 // All player-supplied values (usernames, chat, colors, video URLs) are rendered
 // via textContent / validated attributes, never raw innerHTML interpolation.
@@ -1185,11 +1194,13 @@ function createPanelLabelSprite(title, subtitle = '', accent = '#ffffff') {
 }
 
 function registerStaticScenery(object3d, options = {}) {
+  const dist = options.distance || (options.kind === 'room' ? ROOM_SCENERY_VISIBILITY_DISTANCE : OUTDOOR_SCENERY_VISIBILITY_DISTANCE);
   STATIC_SCENERY.push({
     object3d,
     kind: options.kind || 'outdoor',
     roomId: options.roomId ?? null,
-    distance: options.distance || (options.kind === 'room' ? ROOM_SCENERY_VISIBILITY_DISTANCE : OUTDOOR_SCENERY_VISIBILITY_DISTANCE)
+    distance: dist,
+    distanceSquared: dist * dist
   });
   return object3d;
 }
@@ -1210,8 +1221,8 @@ function refreshStaticSceneryVisibility() {
     }
 
     if (!camera) return;
-    const distance = camera.position.distanceTo(entry.object3d.position);
-    entry.object3d.visible = distance <= entry.distance;
+    const distanceSq = camera.position.distanceToSquared(entry.object3d.position);
+    entry.object3d.visible = distanceSq <= entry.distanceSquared;
   });
 }
 
@@ -1322,9 +1333,12 @@ function ensureAudioReady() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return;
 
-  audioCtx = new AudioCtx();
   audioListener = new THREE.AudioListener();
   camera.add(audioListener);
+  // Share THREE's listener AudioContext for everything, so panners (3D room
+  // audio) can connect to the listener input without crossing contexts, and
+  // the listener position tracks the camera for correct positional audio.
+  audioCtx = audioListener.context;
 
   if (soundtrackTracks.length === 0) {
     soundtrackTracks = normalizeSoundtrackLibrary();
@@ -1439,7 +1453,7 @@ function initEngine() {
 
   if (window.THREE && THREE.TransformControls) {
     editor.transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    editor.transformControls.setMode(editor.mode);
+    editor.transformControls.setMode(transformControlsMode(editor.mode));
     editor.transformControls.visible = false;
     editor.transformControls.addEventListener('dragging-changed', (event) => {
       editor.transformDragging = Boolean(event.value);
@@ -2388,7 +2402,7 @@ function attachEditorTransform(assetId) {
     return;
   }
   editor.transformControls.attach(entry.group);
-  editor.transformControls.setMode(editor.mode);
+  editor.transformControls.setMode(transformControlsMode(editor.mode));
   editor.transformControls.visible = editor.enabled;
 }
 
@@ -4653,7 +4667,7 @@ function initEditorUiHandlers() {
         modeBtn.classList.toggle('active', modeBtn === btn);
       });
       if (editor.transformControls) {
-        editor.transformControls.setMode(editor.mode);
+        editor.transformControls.setMode(transformControlsMode(editor.mode));
       }
     });
   });
