@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metalyceum | 3D Multiplayer World</title>
+  <meta name="description" content="A real-time multiplayer 3D world with 8 rooms and synchronized YouTube feeds, built with Three.js and Cloudflare Workers.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Three.js and OrbitControls via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  
+  <!-- YouTube IFrame Player API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+  <!-- 3D Game Canvas Container -->
+  <div id="game-container"></div>
+
+  <!-- Loading State -->
+  <div id="loading-screen" class="overlay">
+    <div class="spinner-container">
+      <div class="spinner"></div>
+      <p>Initializing Metalyceum World...</p>
+    </div>
+  </div>
+
+  <!-- Login/Avatar Customizer Overlay -->
+  <div id="login-overlay" class="overlay active">
+    <div class="login-card glass">
+      <div class="login-header">
+        <h1>METALYCEUM</h1>
+        <p>Step into the 3D Virtual Academy</p>
+      </div>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username-input">Choose Character Name</label>
+          <input type="text" id="username-input" placeholder="e.g. WiseOldMan" maxlength="15" required autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+          <label>Select Avatar Class</label>
+          <div class="avatar-selector">
+            <label class="avatar-option">
+              <input type="radio" name="avatar-type" value="knight" checked>
+              <div class="avatar-card">
+                <div class="avatar-icon knight-icon">🛡️</div>
+                <span>Knight</span>
+              </div>
+            </label>
+            <label class="avatar-option">
+              <input type="radio" name="avatar-type" value="mage">
+              <div class="avatar-card">
+                <div class="avatar-icon mage-icon">🧙‍♂️</div>
+                <span>Mage</span>
+              </div>
+            </label>
+            <label class="avatar-option">
+              <input type="radio" name="avatar-type" value="ranger">
+              <div class="avatar-card">
+                <div class="avatar-icon ranger-icon">🏹</div>
+                <span>Ranger</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="color-input">Shirt Color</label>
+          <div class="color-picker-wrapper">
+            <input type="color" id="color-input" value="#3b82f6">
+            <span class="color-value">#3b82f6</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Enter Metalyceum</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Game HUD (Heads Up Display) -->
+  <div id="hud-container">
+    <!-- Top-Left: Player Stats & Connection Status -->
+    <div class="hud-card stats-card glass">
+      <div class="stats-row">
+        <span class="status-dot connected" id="connection-status"></span>
+        <span class="player-name-tag" id="hud-username">Guest</span>
+      </div>
+      <div class="stats-location" id="hud-location">Exploring Outdoors</div>
+    </div>
+
+    <!-- Bottom-Left: Real-time Chat Box -->
+    <div class="chat-wrapper glass">
+      <div class="chat-log" id="chat-log">
+        <div class="system-msg">Welcome to Metalyceum! Use WASD to walk, Space to jump, and mouse drag to look around.</div>
+      </div>
+      <form id="chat-form" class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Say something to the world..." autocomplete="off" maxlength="100">
+        <button type="submit" class="btn-send">Send</button>
+      </form>
+    </div>
+
+    <!-- Right Side: Room Panel (Slides in when in a room) -->
+    <div id="room-panel" class="room-panel-hidden glass">
+      <button class="close-panel-btn" id="close-panel-btn">✕</button>
+      <div class="room-header">
+        <h2 id="room-title">Room</h2>
+        <span class="room-capacity" id="room-capacity">1 / 10 Players</span>
+      </div>
+
+      <!-- YouTube Embed Area -->
+      <div class="video-section">
+        <div class="video-container">
+          <!-- The YouTube iframe will replace this div -->
+          <div id="youtube-player"></div>
+        </div>
+      </div>
+
+      <!-- Room Player List -->
+      <div class="room-players-section">
+        <h3>Players in Room</h3>
+        <ul id="room-players-list">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
+
+      <!-- Video Control: Change YouTube Feed -->
+      <div class="video-control-section">
+        <button class="btn-secondary" id="change-video-btn">Change Video Feed</button>
+        <div id="video-input-modal" class="video-modal-hidden glass">
+          <h4>Update Room Stream</h4>
+          <p class="modal-help">Paste a YouTube Video ID (e.g. <code>jfKfPfyJRdk</code>) or full URL.</p>
+          <div class="modal-input-row">
+            <input type="text" id="video-url-input" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+            <button class="btn-primary btn-sm" id="submit-video-btn">Update</button>
+          </div>
+          <button class="btn-text" id="cancel-video-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instruction Legend -->
+  <div class="controls-legend glass">
+    <div class="legend-item"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Move</span></div>
+    <div class="legend-item"><kbd>Space</kbd><span>Jump</span></div>
+    <div class="legend-item"><kbd>Drag Mouse</kbd><span>Rotate Camera</span></div>
+    <div class="legend-item"><kbd>Scroll</kbd><span>Zoom</span></div>
+  </div>
+
+  <!-- Script initialization -->
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+
+# Build Outputs
+dist/
+
+# OS Files
+.DS_Store
+Thumbs.db

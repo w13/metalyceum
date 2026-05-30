@@ -1,0 +1,15 @@
+{
+  "name": "metalyceum",
+  "version": "1.0.0",
+  "description": "Multiplayer 3D World in Three.js on Cloudflare Workers and Durable Objects",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "wrangler": "^4.80.0",
+    "@cloudflare/workers-types": "^4.20240405.0"
+  }
+}

@@ -1,0 +1,27 @@
+name = "metalyceum"
+main = "src/index.ts"
+compatibility_date = "2026-05-29"
+
+# Route to custom domain
+[[routes]]
+pattern = "metalyceum.app"
+custom_domain = true
+
+[[routes]]
+pattern = "www.metalyceum.app"
+custom_domain = true
+
+# Serve static files from the ./public directory
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Durable Object bindings for real-time state sync
+[[durable_objects.bindings]]
+name = "METALYCEUM_WORLD"
+class_name = "MetalyceumWorld"
+
+# Migration script to register the Durable Object class
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MetalyceumWorld"]
