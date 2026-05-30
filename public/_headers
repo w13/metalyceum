@@ -1,0 +1,8 @@
+# Security headers for all static asset responses.
+# Workers Static Assets serves files directly at the edge without invoking the
+# Worker, so these header-only protections must live here rather than in code.
+# (The Content-Security-Policy is delivered via a <meta> tag in index.html.)
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

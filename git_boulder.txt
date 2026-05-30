@@ -1,0 +1,1466 @@
+commit ce2e2112dca0616d8709d7d33e96888ab5242128
+Author: Waqqas Haanfi <waqqashanafi@gmail.com>
+Date:   Fri May 29 21:52:16 2026 -0700
+
+    Fix camera-orbit hang and expand world detail
+    
+    Fix render-loop crash: arrow-key camera orbit called controls.rotateLeft/
+    rotateUp, which are not public methods in three.js r128. The thrown
+    TypeError aborted animate() before setAnimationLoop could schedule the next
+    frame, permanently freezing rendering and WASD on the first arrow-key press.
+    Replace with an orbitCamera() helper using THREE.Spherical, respecting the
+    existing polar-angle limits. Verified in-browser: orbiting + walking now
+    sustains continuous draw calls with zero errors.
+    
+    Also lands in-progress world work: rolling-terrain detail, boulders, flowers
+    and grass tufts, classroom assets, door frames, exterior signage, theater
+    mode, and ambient NPCs.
+    
+    Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+diff --git a/public/app.js b/public/app.js
+index 2993bc4..04f72a6 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -3,9 +3,21 @@
+ // --- Configuration Constants ---
+ const ROOM_WIDTH = 20;
+ const ROOM_DEPTH = 20;
+-const ROOM_HEIGHT = 10;
++const ROOM_HEIGHT = 5.5;
+ const MAP_SIZE = 150; // Size of the grassy area
+ 
++// Bumpy terrain function - flat in the center building zone, rolling hills outdoors
++function getTerrainHeight(x, z) {
++  const distFromCenter = Math.sqrt(x * x + z * z);
++  if (distFromCenter < 52) {
++    return 0; // Flat safety zone for the building foundation
++  }
++  // Smoothly blend hills into flat ground near the building
++  const blendFactor = Math.min((distFromCenter - 52) * 0.08, 1.0);
++  const hills = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.2 + Math.cos(x * 0.05) * Math.sin(z * 0.05) * 1.5;
++  return hills * blendFactor;
++}
++
+ // Define the 8 rooms layout
+ const ROOMS = [
+   { id: 0, name: "The Tech Nexus", x: -30, z: -10, video: "" },
+@@ -43,14 +55,27 @@ const remotePlayers = new Map(); // id -> player object
+ const npcs = []; // Ambient NPCs
+ let socket = null;
+ let ytPlayer = null;
++let boardYtPlayer = null; // YouTube player for classroom blackboard
+ let ytApiReady = false;
+ let activeRoomVideoId = "";
+ let lastSentPosition = { x: 0, y: 0, z: 0, ry: 0, isMoving: false };
+ 
++// Building fading assets
++let ceilingMesh = null;
++let ceilingMat = null;
++const upperWalls = [];
++let upperWallMat = null;
++let signFrontMat = null;
++let signSideMat = null;
++
+ // Input states
+ const keys = { w: false, a: false, s: false, d: false, space: false };
++const cameraKeys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+ let isJoined = false;
+ 
++// 3D Clickable Objects
++const clickableScreens = [];
++
+ // Torch list for flickering animation
+ const torches = [];
+ 
+@@ -86,6 +111,56 @@ function createGrassTexture() {
+   return texture;
+ }
+ 
++function createWoodTexture() {
++  const canvas = document.createElement('canvas');
++  canvas.width = 256;
++  canvas.height = 256;
++  const ctx = canvas.getContext('2d');
++  
++  // Base wood color
++  ctx.fillStyle = '#6b4f3b';
++  ctx.fillRect(0, 0, 256, 256);
++  
++  // Draw planks outlines
++  ctx.strokeStyle = '#3e2a1e';
++  ctx.lineWidth = 3;
++  for (let y = 0; y <= 256; y += 32) {
++    ctx.beginPath();
++    ctx.moveTo(0, y);
++    ctx.lineTo(256, y);
++    ctx.stroke();
++  }
++  
++  // Staggered vertical joints
++  for (let row = 0; row < 8; row++) {
++    const y = row * 32;
++    const offset = (row % 2) * 64;
++    for (let x = offset; x <= 256 + 64; x += 128) {
++      ctx.beginPath();
++      ctx.moveTo(x % 256, y);
++      ctx.lineTo(x % 256, y + 32);
++      ctx.stroke();
++    }
++  }
++  
++  // Draw wood grain lines
++  ctx.strokeStyle = 'rgba(62, 42, 30, 0.15)';
++  ctx.lineWidth = 1.5;
++  for (let i = 0; i < 40; i++) {
++    const y = Math.random() * 256;
++    ctx.beginPath();
++    ctx.moveTo(0, y);
++    ctx.bezierCurveTo(80, y + (Math.random() - 0.5) * 15, 170, y + (Math.random() - 0.5) * 15, 256, y);
++    ctx.stroke();
++  }
++  
++  const texture = new THREE.CanvasTexture(canvas);
++  texture.wrapS = THREE.RepeatWrapping;
++  texture.wrapT = THREE.RepeatWrapping;
++  texture.repeat.set(4, 4);
++  return texture;
++}
++
+ function createStoneTexture() {
+   const canvas = document.createElement('canvas');
+   canvas.width = 256;
+@@ -170,6 +245,52 @@ function createBrickTexture() {
+   return texture;
+ }
+ 
++function createSignBoardTexture() {
++  const canvas = document.createElement('canvas');
++  canvas.width = 1024;
++  canvas.height = 256;
++  const ctx = canvas.getContext('2d');
++  
++  // Background (dark slate)
++  ctx.fillStyle = '#1e293b';
++  ctx.fillRect(0, 0, 1024, 256);
++  
++  // Outer border
++  ctx.strokeStyle = '#eab308';
++  ctx.lineWidth = 12;
++  ctx.strokeRect(6, 6, 1024 - 12, 256 - 12);
++  
++  // Inner border
++  ctx.strokeStyle = 'rgba(234, 179, 8, 0.45)';
++  ctx.lineWidth = 3;
++  ctx.strokeRect(18, 18, 1024 - 36, 256 - 36);
++  
++  // Write "Metalyceum"
++  ctx.font = 'bold 88px "Plus Jakarta Sans", sans-serif';
++  ctx.fillStyle = '#f8fafc';
++  ctx.shadowColor = '#0f172a';
++  ctx.shadowBlur = 12;
++  ctx.shadowOffsetX = 4;
++  ctx.shadowOffsetY = 4;
++  ctx.textAlign = 'center';
++  ctx.textBaseline = 'middle';
++  ctx.fillText('METALYCEUM', 512, 100);
++  
++  // Reset shadow
++  ctx.shadowColor = 'transparent';
++  ctx.shadowBlur = 0;
++  ctx.shadowOffsetX = 0;
++  ctx.shadowOffsetY = 0;
++  
++  // Write "Funded by Canada Council for the Arts"
++  ctx.font = 'italic 30px "Plus Jakarta Sans", sans-serif';
++  ctx.fillStyle = '#cbd5e1';
++  ctx.fillText('Funded by Canada Council for the Arts', 512, 185);
++  
++  const texture = new THREE.CanvasTexture(canvas);
++  return texture;
++}
++
+ // --- Dynamic Text Sprites for Player Names ---
+ function createPlayerNameSprite(name, color = '#ffffff') {
+   const canvas = document.createElement('canvas');
+@@ -280,69 +401,103 @@ function onWindowResize() {
+ 
+ // --- Environment & Building Construction ---
+ function buildMap() {
+-  // 1. Grassy Ground Plane
++  // 1. Grassy Ground Plane with rolling hills (60x60 grid segments for deformation)
+   const grassTex = createGrassTexture();
+-  const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE);
++  const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 60, 60);
++  
++  // Deform ground vertices to match getTerrainHeight
++  const positions = groundGeo.attributes.position;
++  for (let i = 0; i < positions.count; i++) {
++    const vx = positions.getX(i);
++    const vy = positions.getY(i);
++    // Plane is rotated -PI/2, so Plane Y maps to 3D Z
++    const height = getTerrainHeight(vx, -vy);
++    positions.setZ(i, height);
++  }
++  groundGeo.computeVertexNormals();
++
+   const groundMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.8 });
+   const ground = new THREE.Mesh(groundGeo, groundMat);
+   ground.rotation.x = -Math.PI / 2;
+   ground.receiveShadow = true;
+   scene.add(ground);
+   
+-  // 2. Fences / Map Boundary
++  // 2. Fences / Map Boundary following terrain height
+   const fenceMat = new THREE.MeshStandardMaterial({ color: '#372d20', roughness: 0.9 });
+   const fenceGeo = new THREE.BoxGeometry(0.3, 1.2, 0.3);
+   const railGeo = new THREE.BoxGeometry(0.15, 0.2, 5.2);
+   
+   for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) {
+-    // Generate square borders
+     const isHorizontal = angle === 0 || angle === Math.PI;
+     const limit = MAP_SIZE / 2 - 1.5;
+     
+     for (let offset = -limit; offset <= limit; offset += 5) {
+-      // Posts
+-      const post = new THREE.Mesh(fenceGeo, fenceMat);
+       const x = isHorizontal ? (angle === 0 ? limit : -limit) : offset;
+       const z = isHorizontal ? offset : (angle === Math.PI / 2 ? limit : -limit);
+-      post.position.set(x, 0.6, z);
+-      post.castShadow = true;
++      const groundY = getTerrainHeight(x, z);
++
++      // Posts
++      const post = new THREE.Mesh(fenceGeo, fenceMat);
++      post.position.set(x, groundY + 0.6, z);
++      post.castShadow = false;
+       scene.add(post);
+       
+       // Rails (connect to next post)
+       if (offset < limit) {
++        const railX = isHorizontal ? x : offset + 2.5;
++        const railZ = isHorizontal ? offset + 2.5 : z;
++        const railY = getTerrainHeight(railX, railZ);
++
+         const railUpper = new THREE.Mesh(railGeo, fenceMat);
+         const railLower = new THREE.Mesh(railGeo, fenceMat);
+         
+-        railUpper.position.set(
+-          isHorizontal ? x : offset + 2.5,
+-          0.9,
+-          isHorizontal ? offset + 2.5 : z
+-        );
+-        railLower.position.set(
+-          isHorizontal ? x : offset + 2.5,
+-          0.4,
+-          isHorizontal ? offset + 2.5 : z
+-        );
++        railUpper.position.set(railX, railY + 0.9, railZ);
++        railLower.position.set(railX, railY + 0.4, railZ);
+         
+         if (isHorizontal) {
+           railUpper.rotation.y = Math.PI / 2;
+           railLower.rotation.y = Math.PI / 2;
+         }
+         
+-        railUpper.castShadow = true;
+-        railLower.castShadow = true;
++        railUpper.castShadow = false;
++        railLower.castShadow = false;
+         scene.add(railUpper);
+         scene.add(railLower);
+       }
+     }
+   }
+ 
+-  // 3. Low-Poly Trees
+-  for (let i = 0; i < 30; i++) {
++  // 3. Low-Poly Trees sitting on hills
++  for (let i = 0; i < 35; i++) {
+     createTree();
+   }
+ 
+-  // 4. The Metalyceum Building (4x2 rooms grid)
++  // 4. Low-Poly Grey Boulders scattered around
++  for (let i = 0; i < 15; i++) {
++    createBoulder();
++  }
++
++  // 4b. Low-Poly Flowers scattered on hills
++  for (let i = 0; i < 40; i++) {
++    let x, z;
++    do {
++      x = (Math.random() - 0.5) * (MAP_SIZE - 20);
++      z = (Math.random() - 0.5) * (MAP_SIZE - 20);
++    } while (Math.abs(x) < 45 && Math.abs(z) < 25);
++    createFlower(x, z);
++  }
++
++  // 4c. Low-Poly Grass Tufts scattered on hills
++  for (let i = 0; i < 60; i++) {
++    let x, z;
++    do {
++      x = (Math.random() - 0.5) * (MAP_SIZE - 20);
++      z = (Math.random() - 0.5) * (MAP_SIZE - 20);
++    } while (Math.abs(x) < 45 && Math.abs(z) < 25);
++    createGrassTuft(x, z);
++  }
++
++  // 5. The Metalyceum Building (4x2 rooms grid)
+   buildBuilding();
+ }
+ 
+@@ -372,26 +527,380 @@ function createTree() {
+   cone2.castShadow = true;
+   tree.add(cone2);
+   
+-  // Scatter outside the building zone (building is 80x40 from X: -40 to 40, Z: -20 to 20)
++  // Scatter outside the building zone
+   let x, z;
+   do {
+     x = (Math.random() - 0.5) * (MAP_SIZE - 15);
+     z = (Math.random() - 0.5) * (MAP_SIZE - 15);
+-  } while (Math.abs(x) < 45 && Math.abs(z) < 25); // Avoid spawning inside or too close to building
++  } while (Math.abs(x) < 45 && Math.abs(z) < 25);
+   
+-  tree.position.set(x, 0, z);
++  const groundY = getTerrainHeight(x, z);
++  tree.position.set(x, groundY, z);
+   
+-  const scale = 0.85 + Math.random() * 0.4;
++  const scale = 0.85 + Math.random() * 0.45;
+   tree.scale.set(scale, scale, scale);
+   scene.add(tree);
+ }
+ 
++function createBoulder() {
++  const boulderMat = new THREE.MeshStandardMaterial({ color: '#52525b', roughness: 0.9, flatShading: true });
++  
++  // Create randomized low-poly rock geometry
++  const radius = 1.0 + Math.random() * 1.8;
++  const geo = new THREE.DodecahedronGeometry(radius, 0);
++  
++  const positions = geo.attributes.position;
++  for (let i = 0; i < positions.count; i++) {
++    positions.setX(i, positions.getX(i) + (Math.random() - 0.5) * 0.25);
++    positions.setY(i, positions.getY(i) + (Math.random() - 0.5) * 0.25);
++    positions.setZ(i, positions.getZ(i) + (Math.random() - 0.5) * 0.25);
++  }
++  geo.computeVertexNormals();
++
++  const boulder = new THREE.Mesh(geo, boulderMat);
++  
++  let x, z;
++  do {
++    x = (Math.random() - 0.5) * (MAP_SIZE - 20);
++    z = (Math.random() - 0.5) * (MAP_SIZE - 20);
++  } while (Math.abs(x) < 46 && Math.abs(z) < 26); // Avoid building area
++
++  const groundY = getTerrainHeight(x, z) - 0.3; // Bury slightly
++  boulder.position.set(x, groundY, z);
++  boulder.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
++  boulder.castShadow = true;
++  boulder.receiveShadow = true;
++  scene.add(boulder);
++}
++
++function createFlower(x, z) {
++  const flowerColors = ['#f43f5e', '#eab308', '#3b82f6', '#a855f7'];
++  const randomColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
++  
++  const stemMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.9 });
++  const petalMat = new THREE.MeshStandardMaterial({ color: randomColor, roughness: 0.8, flatShading: true });
++  
++  const flower = new THREE.Group();
++  
++  // Stem
++  const stemGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.5, 4);
++  const stem = new THREE.Mesh(stemGeo, stemMat);
++  stem.position.y = 0.25;
++  flower.add(stem);
++  
++  // Center/Petals
++  const centerGeo = new THREE.DodecahedronGeometry(0.12, 0);
++  const center = new THREE.Mesh(centerGeo, petalMat);
++  center.position.y = 0.5;
++  flower.add(center);
++  
++  // Small leaves
++  const leafGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
++  leafGeo.rotateX(Math.PI / 4);
++  const leaf1 = new THREE.Mesh(leafGeo, stemMat);
++  leaf1.position.set(0, 0.15, 0.08);
++  flower.add(leaf1);
++  
++  const groundY = getTerrainHeight(x, z);
++  flower.position.set(x, groundY, z);
++  
++  const scale = 0.8 + Math.random() * 0.4;
++  flower.scale.set(scale, scale, scale);
++  scene.add(flower);
++}
++
++function createGrassTuft(x, z) {
++  const grassMat = new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.9, flatShading: true });
++  const tuft = new THREE.Group();
++  
++  const bladeGeo = new THREE.ConeGeometry(0.05, 0.4, 3);
++  bladeGeo.translate(0, 0.2, 0);
++  
++  for (let i = 0; i < 3; i++) {
++    const blade = new THREE.Mesh(bladeGeo, grassMat);
++    blade.rotation.z = (Math.random() - 0.5) * 0.4;
++    blade.rotation.x = (Math.random() - 0.5) * 0.4;
++    blade.rotation.y = Math.random() * Math.PI * 2;
++    blade.scale.set(1, 0.8 + Math.random() * 0.4, 1);
++    tuft.add(blade);
++  }
++  
++  const groundY = getTerrainHeight(x, z);
++  tuft.position.set(x, groundY, z);
++  scene.add(tuft);
++}
++
++function createDoorFrame(cx, cz, dir, width) {
++  const frameMat = new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.9 }); // Dark timber
++  const trimMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.95 }); // Even darker trim
++  
++  const postHeight = 3.0;
++  const postWidth = 0.45;
++  const postDepth = 0.65;
++  
++  const group = new THREE.Group();
++  
++  if (dir === 'H') {
++    // Wall is horizontal (runs along X), doorway is a gap in X.
++    // Post 1 (Left)
++    const post1Geo = new THREE.BoxGeometry(postWidth, postHeight, postDepth);
++    const post1 = new THREE.Mesh(post1Geo, frameMat);
++    post1.position.set(-width/2, postHeight/2, 0);
++    post1.castShadow = true;
++    post1.receiveShadow = true;
++    group.add(post1);
++    
++    // Post 2 (Right)
++    const post2Geo = new THREE.BoxGeometry(postWidth, postHeight, postDepth);
++    const post2 = new THREE.Mesh(post2Geo, frameMat);
++    post2.position.set(width/2, postHeight/2, 0);
++    post2.castShadow = true;
++    post2.receiveShadow = true;
++    group.add(post2);
++    
++    // Lintel (Top header)
++    const lintelLen = width + postWidth;
++    const lintelHeight = 0.45;
++    const lintelGeo = new THREE.BoxGeometry(lintelLen, lintelHeight, postDepth + 0.05);
++    const lintel = new THREE.Mesh(lintelGeo, frameMat);
++    lintel.position.set(0, postHeight + lintelHeight/2, 0);
++    lintel.castShadow = true;
++    lintel.receiveShadow = true;
++    group.add(lintel);
++    
++    // Diagonal corner braces
++    const braceGeo = new THREE.BoxGeometry(0.2, 0.8, postDepth - 0.05);
++    braceGeo.rotateZ(Math.PI / 4); // 45 degrees
++    
++    const braceLeft = new THREE.Mesh(braceGeo, trimMat);
++    braceLeft.position.set(-width/2 + 0.4, postHeight - 0.35, 0);
++    braceLeft.castShadow = true;
++    group.add(braceLeft);
++    
++    const braceRight = new THREE.Mesh(braceGeo, trimMat);
++    braceRight.position.set(width/2 - 0.4, postHeight - 0.35, 0);
++    braceRight.castShadow = true;
++    group.add(braceRight);
++    
++  } else {
++    // Wall is vertical (runs along Z), doorway is a gap in Z.
++    // Post 1 (Left/North)
++    const post1Geo = new THREE.BoxGeometry(postDepth, postHeight, postWidth);
++    const post1 = new THREE.Mesh(post1Geo, frameMat);
++    post1.position.set(0, postHeight/2, -width/2);
++    post1.castShadow = true;
++    post1.receiveShadow = true;
++    group.add(post1);
++    
++    // Post 2 (Right/South)
++    const post2Geo = new THREE.BoxGeometry(postDepth, postHeight, postWidth);
++    const post2 = new THREE.Mesh(post2Geo, frameMat);
++    post2.position.set(0, postHeight/2, width/2);
++    post2.castShadow = true;
++    post2.receiveShadow = true;
++    group.add(post2);
++    
++    // Lintel (Top header)
++    const lintelLen = width + postWidth;
++    const lintelHeight = 0.45;
++    const lintelGeo = new THREE.BoxGeometry(postDepth + 0.05, lintelHeight, lintelLen);
++    const lintel = new THREE.Mesh(lintelGeo, frameMat);
++    lintel.position.set(0, postHeight + lintelHeight/2, 0);
++    lintel.castShadow = true;
++    lintel.receiveShadow = true;
++    group.add(lintel);
++    
++    // Diagonal corner braces
++    const braceGeo = new THREE.BoxGeometry(postDepth - 0.05, 0.8, 0.2);
++    braceGeo.rotateX(Math.PI / 4);
++    
++    const braceNorth = new THREE.Mesh(braceGeo, trimMat);
++    braceNorth.position.set(0, postHeight - 0.35, -width/2 + 0.4);
++    braceNorth.castShadow = true;
++    group.add(braceNorth);
++    
++    const braceSouth = new THREE.Mesh(braceGeo, trimMat);
++    braceSouth.position.set(0, postHeight - 0.35, width/2 - 0.4);
++    braceSouth.castShadow = true;
++    group.add(braceSouth);
++  }
++  
++  group.position.set(cx, 0, cz);
++  scene.add(group);
++}
++
++function updateClassroomBoard() {
++  const container = document.getElementById('embedded-board-container');
++  if (!container) return;
++  
++  if (localPlayer.currentRoom !== 6) {
++    container.style.display = 'none';
++    if (boardYtPlayer && boardYtPlayer.pauseVideo) {
++      try { boardYtPlayer.pauseVideo(); } catch(e) {}
++    }
++    return;
++  }
++  
++  // We are in Room 6. Project classroom blackboard mesh (10, 3.5, 19.8) to screen space
++  const screenPos = new THREE.Vector3(10, 3.5, 19.7);
++  screenPos.project(camera);
++  
++  // Check if it's in front of camera
++  const inFrustum = screenPos.x >= -1 && screenPos.x <= 1 &&
++                    screenPos.y >= -1 && screenPos.y <= 1 &&
++                    screenPos.z >= -1 && screenPos.z <= 1;
++                    
++  if (!inFrustum || screenPos.z > 1) {
++    container.style.display = 'none';
++    return;
++  }
++  
++  // Project screen corners to calculate size
++  const tl = new THREE.Vector3(10 + 3.3, 3.5 + 1.8, 19.7);
++  const br = new THREE.Vector3(10 - 3.3, 3.5 - 1.8, 19.7);
++  
++  tl.project(camera);
++  br.project(camera);
++  
++  const tlx = (tl.x * 0.5 + 0.5) * window.innerWidth;
++  const tly = (-tl.y * 0.5 + 0.5) * window.innerHeight;
++  
++  const brx = (br.x * 0.5 + 0.5) * window.innerWidth;
++  const bry = (-br.y * 0.5 + 0.5) * window.innerHeight;
++  
++  const width = Math.abs(tlx - brx);
++  const height = Math.abs(tly - bry);
++  
++  container.style.left = `${Math.min(tlx, brx)}px`;
++  container.style.top = `${Math.min(tly, bry)}px`;
++  container.style.width = `${width}px`;
++  container.style.height = `${height}px`;
++  container.style.display = 'block';
++  
++  if (boardYtPlayer && boardYtPlayer.playVideo && ROOMS[6].video && !ROOMS[6].video.includes('meet.google.com')) {
++    try {
++      boardYtPlayer.playVideo();
++    } catch(e) {}
++  }
++}
++
++function buildClassroomAssets() {
++  const woodMat = new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.85 }); // Dark oak wood
++  const legMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.7 }); // Slate legs
++  
++  const classroomGroup = new THREE.Group();
++  
++  // Helper to create a desk
++  function createDesk(dx, dz) {
++    const desk = new THREE.Group();
++    // Top
++    const topGeo = new THREE.BoxGeometry(3.5, 0.1, 1.2);
++    const top = new THREE.Mesh(topGeo, woodMat);
++    top.position.y = 1.0;
++    top.castShadow = true;
++    top.receiveShadow = true;
++    desk.add(top);
++    
++    // Legs
++    const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.0, 4);
++    const legOffsets = [
++      { x: -1.6, z: -0.5 },
++      { x: 1.6, z: -0.5 },
++      { x: -1.6, z: 0.5 },
++      { x: 1.6, z: 0.5 }
++    ];
++    legOffsets.forEach(offset => {
++      const leg = new THREE.Mesh(legGeo, legMat);
++      leg.position.set(offset.x, 0.5, offset.z);
++      leg.castShadow = true;
++      desk.add(leg);
++    });
++    
++    desk.position.set(dx, 0, dz);
++    classroomGroup.add(desk);
++  }
++  
++  // Helper to create a bench
++  function createBench(bx, bz) {
++    const bench = new THREE.Group();
++    // Seat
++    const seatGeo = new THREE.BoxGeometry(3.0, 0.08, 0.5);
++    const seat = new THREE.Mesh(seatGeo, woodMat);
++    seat.position.y = 0.6;
++    seat.castShadow = true;
++    seat.receiveShadow = true;
++    bench.add(seat);
++    
++    // Legs
++    const legGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.6, 4);
++    const legOffsets = [
++      { x: -1.4, z: -0.2 },
++      { x: 1.4, z: -0.2 },
++      { x: -1.4, z: 0.2 },
++      { x: 1.4, z: 0.2 }
++    ];
++    legOffsets.forEach(offset => {
++      const leg = new THREE.Mesh(legGeo, legMat);
++      leg.position.set(offset.x, 0.3, offset.z);
++      leg.castShadow = true;
++      bench.add(leg);
++    });
++    
++    bench.position.set(bx, 0, bz);
++    classroomGroup.add(bench);
++  }
++  
++  // Place 3 rows of desks and benches relative to Room 6 center (10, 10)
++  // Local coordinates range from -10 to 10.
++  const rows = [
++    { dz: -6 },
++    { dz: -2 },
++    { dz: 2 }
++  ];
++  
++  rows.forEach(row => {
++    // Left Desk & Bench
++    createDesk(5 - 10, row.dz);
++    createBench(5 - 10, row.dz - 1.0);
++    
++    // Right Desk & Bench
++    createDesk(15 - 10, row.dz);
++    createBench(15 - 10, row.dz - 1.0);
++  });
++  
++  // Speaker/Teacher's Podium
++  const podiumGroup = new THREE.Group();
++  const podiumGeo = new THREE.BoxGeometry(2.2, 1.2, 1.2);
++  const podium = new THREE.Mesh(podiumGeo, woodMat);
++  podium.position.y = 0.6;
++  podium.castShadow = true;
++  podium.receiveShadow = true;
++  podiumGroup.add(podium);
++  
++  // Lectern top
++  const topGeo = new THREE.BoxGeometry(1.0, 0.1, 0.8);
++  topGeo.rotateX(-Math.PI / 8); // Slanted book rest
++  const top = new THREE.Mesh(topGeo, woodMat);
++  top.position.set(0, 1.25, 0.1);
++  podiumGroup.add(top);
++  
++  podiumGroup.position.set(0, 0, 7.5);
++  classroomGroup.add(podiumGroup);
++  
++  classroomGroup.position.set(10, 0, 10);
++  scene.add(classroomGroup);
++}
++
+ function buildBuilding() {
+   const stoneTex = createStoneTexture();
+   const brickTex = createBrickTexture();
++  const woodTex = createWoodTexture();
+   
+   const wallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 });
+-  const floorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
++  upperWallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85, transparent: true, opacity: 1.0 });
++  
++  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.75 });
++  const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
+   const pillarMat = new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.7 });
+   const frameMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 });
+   const screenMat = new THREE.MeshStandardMaterial({ color: '#090d16', roughness: 0.2, emissive: '#020617', emissiveIntensity: 0.2 });
+@@ -402,13 +911,17 @@ function buildBuilding() {
+   const endX = 40;
+   const endZ = 20;
+ 
+-  // 1. FLOOR PLACEMENT
+-  const floorGeo = new THREE.PlaneGeometry(80, 40);
+-  const floor = new THREE.Mesh(floorGeo, floorMat);
+-  floor.rotation.x = -Math.PI / 2;
+-  floor.position.set(0, 0.01, 0); // Sit slightly above grass
+-  floor.receiveShadow = true;
+-  scene.add(floor);
++  // 1. FLOOR PLACEMENT (Alternating Wood and Stone rooms in a checkerboard pattern)
++  const roomFloorGeo = new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH);
++  ROOMS.forEach((room) => {
++    const isWood = (Math.round((room.x + 30) / 20) + Math.round((room.z + 10) / 20)) % 2 === 0;
++    const mat = isWood ? woodFloorMat : stoneFloorMat;
++    const roomFloor = new THREE.Mesh(roomFloorGeo, mat);
++    roomFloor.rotation.x = -Math.PI / 2;
++    roomFloor.position.set(room.x, 0.01, room.z);
++    roomFloor.receiveShadow = true;
++    scene.add(roomFloor);
++  });
+ 
+   // Helper function to create wall meshes and register collision bounding boxes
+   function addWallSegment(xStart, zStart, xEnd, zEnd, height = ROOM_HEIGHT) {
+@@ -418,18 +931,51 @@ function buildBuilding() {
+     const angle = Math.atan2(dz, dx);
+     
+     const thickness = 0.5;
+-    const wallGeo = new THREE.BoxGeometry(len, height, thickness);
+-    const wall = new THREE.Mesh(wallGeo, wallMat);
+     
+-    // Position at midpoint
+-    wall.position.set((xStart + xEnd) / 2, height / 2, (zStart + zEnd) / 2);
+-    wall.rotation.y = -angle;
+-    wall.castShadow = true;
+-    wall.receiveShadow = true;
+-    scene.add(wall);
++    // Split wall into lower (opaque) and upper (fading) parts
++    const lowerHeight = 3.5;
++    const upperHeight = height - lowerHeight; // 2.0
++    
++    // Lower wall segment
++    const lowerGeo = new THREE.BoxGeometry(len, lowerHeight, thickness);
++    const lowerWall = new THREE.Mesh(lowerGeo, wallMat);
++    lowerWall.position.set((xStart + xEnd) / 2, lowerHeight / 2, (zStart + zEnd) / 2);
++    lowerWall.rotation.y = -angle;
++    lowerWall.castShadow = true;
++    lowerWall.receiveShadow = true;
++    scene.add(lowerWall);
++    
++    // Upper wall segment (fades out indoors)
++    if (upperHeight > 0.05) {
++      const upperGeo = new THREE.BoxGeometry(len, upperHeight, thickness);
++      const upperWall = new THREE.Mesh(upperGeo, upperWallMat);
++      upperWall.position.set((xStart + xEnd) / 2, lowerHeight + upperHeight / 2, (zStart + zEnd) / 2);
++      upperWall.rotation.y = -angle;
++      upperWall.castShadow = true;
++      upperWall.receiveShadow = true;
++      scene.add(upperWall);
++      upperWalls.push(upperWall);
++    }
++    
++    // Add baseboard/skirting board trims on both sides of the lower wall
++    const baseboardHeight = 0.35;
++    const baseboardThickness = 0.08;
++    const baseboardGeo = new THREE.BoxGeometry(len, baseboardHeight, baseboardThickness);
++    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 }); // Dark timber
++    
++    const baseboard1 = new THREE.Mesh(baseboardGeo, baseboardMat);
++    baseboard1.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, thickness / 2 + baseboardThickness / 2);
++    baseboard1.castShadow = true;
++    baseboard1.receiveShadow = true;
++    lowerWall.add(baseboard1);
++    
++    const baseboard2 = new THREE.Mesh(baseboardGeo, baseboardMat);
++    baseboard2.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, -thickness / 2 - baseboardThickness / 2);
++    baseboard2.castShadow = true;
++    baseboard2.receiveShadow = true;
++    lowerWall.add(baseboard2);
+ 
+     // Register wall bounding box for collision checking
+-    // Add slightly larger bounding buffer to prevent players clipping through
+     const pad = 0.35;
+     WALLS.push({
+       minX: Math.min(xStart, xEnd) - (dz === 0 ? 0 : pad) - (dx === 0 ? thickness/2 + pad : 0),
+@@ -440,37 +986,47 @@ function buildBuilding() {
+   }
+ 
+   // 2. EXTERIOR WALLS (80m x 40m Building bounds)
+-  // Outer North Wall (Z: -20, X from -40 to 40) - has a back exit in the middle
++  // Outer North Wall
+   addWallSegment(-40, -20, -3, -20);
+   addWallSegment(3, -20, 40, -20);
+   
+-  // Outer South Wall (Z: 20, X from -40 to 40) - has main entrance in the middle
++  // Outer South Wall
+   addWallSegment(-40, 20, -3, 20);
+   addWallSegment(3, 20, 40, 20);
+   
+-  // Outer East & West Walls (X: 40 and X: -40, Z from -20 to 20)
++  // Outer East & West Walls
+   addWallSegment(-40, -20, -40, 20);
+   addWallSegment(40, -20, 40, 20);
+ 
+   // 3. INTERIOR DIVISION WALLS
+-  // Horizontal dividing wall down the middle (Z: 0, X from -40 to 40)
+-  // We leave 3m door openings in the middle of each room corridor
+   for (let x = -40; x < 40; x += 20) {
+-    addWallSegment(x, 0, x + 8.5, 0); // Wall segment
+-    addWallSegment(x + 11.5, 0, x + 20, 0); // Leave 3m doorway at x + 10
++    addWallSegment(x, 0, x + 8.5, 0);
++    addWallSegment(x + 11.5, 0, x + 20, 0);
+   }
+ 
+-  // Vertical dividing walls (X: -20, 0, 20, Z from -20 to 20)
+-  // We leave 3m door openings at Z: -10 and Z: 10
++  // Vertical dividing walls
+   const vertPositions = [-20, 0, 20];
+   for (const vx of vertPositions) {
+-    // North side rooms divider (Z: -20 to 0)
+     addWallSegment(vx, -20, vx, -11.5);
+-    addWallSegment(vx, -8.5, vx, 0); // Doorway at Z: -10
++    addWallSegment(vx, -8.5, vx, 0);
+     
+-    // South side rooms divider (Z: 0 to 20)
+     addWallSegment(vx, 0, vx, 8.5);
+-    addWallSegment(vx, 11.5, vx, 20); // Doorway at Z: 10
++    addWallSegment(vx, 11.5, vx, 20);
++  }
++
++  // 3b. DOOR FRAMES AND LINTELS
++  createDoorFrame(0, 20, 'H', 6);
++  createDoorFrame(0, -20, 'H', 6);
++  
++  createDoorFrame(-30, 0, 'H', 3);
++  createDoorFrame(-10, 0, 'H', 3);
++  createDoorFrame(10, 0, 'H', 3);
++  createDoorFrame(30, 0, 'H', 3);
++  
++  const doorVertPositions = [-20, 0, 20];
++  for (const vx of doorVertPositions) {
++    createDoorFrame(vx, -10, 'V', 3);
++    createDoorFrame(vx, 10, 'V', 3);
+   }
+ 
+   // 4. PILLARS & CORNER DECORATIONS
+@@ -487,7 +1043,6 @@ function buildBuilding() {
+ 
+   // 5. EMBEDDED SCREENS & WALL MOUNTED TORCHES IN ROOMS
+   ROOMS.forEach((room) => {
+-    // Create physical 3D Screen model on the back wall of each room
+     const screenGroup = new THREE.Group();
+     
+     const outerGeo = new THREE.BoxGeometry(7, 4, 0.2);
+@@ -498,31 +1053,57 @@ function buildBuilding() {
+     const innerGeo = new THREE.BoxGeometry(6.6, 3.6, 0.05);
+     const innerScreen = new THREE.Mesh(innerGeo, screenMat);
+     innerScreen.position.z = 0.1;
++    innerScreen.userData = { roomId: room.id };
++    clickableScreens.push(innerScreen);
+     screenGroup.add(innerScreen);
+ 
+-    // Glowing border around screen
+     const borderMat = new THREE.MeshBasicMaterial({ color: '#3b82f6', wireframe: true });
+     const screenBorder = new THREE.Mesh(innerGeo, borderMat);
+     screenBorder.position.z = 0.11;
+     screenBorder.scale.set(1.02, 1.02, 1.02);
+     screenGroup.add(screenBorder);
+     
+-    // Screen positioning: Rooms 0-3 are on north side (back wall is Z: -20, screen faces south)
+-    // Rooms 4-7 are on south side (back wall is Z: 20, screen faces north)
+     if (room.z < 0) {
+       screenGroup.position.set(room.x, 3.5, -19.8);
+-      screenGroup.rotation.y = 0; // Faces South
++      screenGroup.rotation.y = 0;
+     } else {
+       screenGroup.position.set(room.x, 3.5, 19.8);
+-      screenGroup.rotation.y = Math.PI; // Faces North
++      screenGroup.rotation.y = Math.PI;
+     }
+     
+     scene.add(screenGroup);
+ 
+-    // Wall-mounted medieval torches inside rooms
+     createWallTorch(room.x - 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI);
+     createWallTorch(room.x + 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI);
+   });
++
++  // 6. CEILING / ROOF PLACEMENT (Fades out when player is indoors)
++  ceilingMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, transparent: true, opacity: 1.0 });
++  const ceilingGeo = new THREE.BoxGeometry(80, 0.2, 40);
++  ceilingMesh = new THREE.Mesh(ceilingGeo, ceilingMat);
++  ceilingMesh.position.set(0, ROOM_HEIGHT + 0.1, 0);
++  ceilingMesh.castShadow = true;
++  ceilingMesh.receiveShadow = true;
++  scene.add(ceilingMesh);
++
++  // 7. CLASSROOM ASSETS (Benches and desks in Room 6)
++  buildClassroomAssets();
++
++  // 8. EXTERIOR SIGN BOARD (Metalyceum & Canada Council)
++  const signTex = createSignBoardTexture();
++  signFrontMat = new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.6, transparent: true, opacity: 1.0 });
++  signSideMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.8, transparent: true, opacity: 1.0 });
++  
++  const signMaterials = [signSideMat, signSideMat, signSideMat, signSideMat, signFrontMat, signSideMat];
++  const signGeo = new THREE.BoxGeometry(10.5, 1.4, 0.1);
++  const signMesh = new THREE.Mesh(signGeo, signMaterials);
++  
++  // Position right above entrance on the South upper wall (Z: 20)
++  signMesh.position.set(0, 4.4, 20.3);
++  signMesh.castShadow = true;
++  signMesh.receiveShadow = true;
++  scene.add(signMesh);
++  upperWalls.push(signMesh); // Toggle visibility in sync with upper walls
+ }
+ 
+ function createWallTorch(x, y, z, rotationY) {
+@@ -560,8 +1141,7 @@ function createWallTorch(x, y, z, rotationY) {
+   // Dynamic Point Light (Flickering source)
+   const light = new THREE.PointLight('#f97316', 0.8, 8);
+   light.position.set(0, 0.7, 0.15);
+-  light.castShadow = true;
+-  light.shadow.bias = -0.002;
++  light.castShadow = false;
+   torchGroup.add(light);
+ 
+   torchGroup.position.set(x, y, z);
+@@ -720,6 +1300,8 @@ function checkCollision(targetX, targetZ) {
+ function updateLocalPlayer(dt) {
+   if (!isJoined || !localPlayer.mesh) return;
+ 
++  const oldPos = new THREE.Vector3().copy(localPlayer.mesh.position);
++
+   const acceleration = 55.0;
+   const maxSpeed = 9.5;
+   const drag = 8.5;
+@@ -727,20 +1309,27 @@ function updateLocalPlayer(dt) {
+   const jumpForce = 10.0;
+   
+   // 1. Vertical Physics (Gravity & Jump)
++  const groundY = getTerrainHeight(localPlayer.x, localPlayer.z);
++  
+   if (!localPlayer.isGrounded) {
+     localPlayer.velocity.y -= gravity * dt;
+     localPlayer.y += localPlayer.velocity.y * dt;
+     
+     // Check ground collision
+-    if (localPlayer.y <= 0) {
+-      localPlayer.y = 0;
++    if (localPlayer.y <= groundY) {
++      localPlayer.y = groundY;
+       localPlayer.velocity.y = 0;
+       localPlayer.isGrounded = true;
+     }
+-  } else if (keys.space) {
+-    localPlayer.velocity.y = jumpForce;
+-    localPlayer.isGrounded = false;
+-    keys.space = false; // Reset jump state
++  } else {
++    // Follow terrain height dynamically while grounded
++    localPlayer.y = groundY;
++    
++    if (keys.space) {
++      localPlayer.velocity.y = jumpForce;
++      localPlayer.isGrounded = false;
++      keys.space = false; // Reset jump state
++    }
+   }
+ 
+   // 2. Horizontal Movement Calculation (Accelerate and Damp)
+@@ -835,8 +1424,11 @@ function updateLocalPlayer(dt) {
+   localPlayer.mesh.position.set(localPlayer.x, localPlayer.y, localPlayer.z);
+   localPlayer.mesh.rotation.y = localPlayer.ry;
+   
+-  // Orbit controls target player
++  // Update controls target and camera position in lockstep with player movement delta
++  const delta = new THREE.Vector3().subVectors(localPlayer.mesh.position, oldPos);
++  camera.position.add(delta);
+   controls.target.copy(localPlayer.mesh.position).add(new THREE.Vector3(0, 1.2, 0));
++  controls.update();
+ 
+   // 4. Leg and Arm Swing Walking Animation
+   animateAvatarWalk(localPlayer, dt);
+@@ -926,10 +1518,11 @@ function spawnNpcs() {
+     const name = npcNames[i];
+     const color = npcColors[i];
+     const pos = npcPositions[i];
++    const groundY = getTerrainHeight(pos.x, pos.z);
+ 
+     // Spawn 3D explorer model (isNpc = true)
+     const avatar = createPlayerAvatar(null, color, name, false, true);
+-    avatar.group.position.set(pos.x, 0, pos.z);
++    avatar.group.position.set(pos.x, groundY, pos.z);
+ 
+     npcs.push({
+       name: name,
+@@ -940,7 +1533,7 @@ function spawnNpcs() {
+       leftArm: avatar.leftArm,
+       rightArm: avatar.rightArm,
+       x: pos.x,
+-      y: 0,
++      y: groundY,
+       z: pos.z,
+       ry: 0,
+       targetX: pos.x,
+@@ -1017,6 +1610,9 @@ function updateNpcs(dt) {
+       }
+     }
+ 
++    // Update Y position to match local terrain height dynamically
++    npc.y = getTerrainHeight(npc.x, npc.z);
++
+     // Update 3D mesh position & rotation
+     npc.mesh.position.set(npc.x, npc.y, npc.z);
+     npc.mesh.rotation.y = npc.ry;
+@@ -1123,56 +1719,163 @@ function refreshRoomPlayersList() {
+   document.getElementById('room-capacity').innerText = `${count} / 10 Players`;
+ }
+ 
+-// --- YouTube Player Logic ---
++// --- YouTube & Google Meet Player Logic ---
+ function setupRoomVideo(roomId) {
+   const room = ROOMS[roomId];
+   const videoId = room.video || "";
+ 
+   if (!videoId) {
+-    // If no video, clear player container or show placeholder
++    // Hide both/all
++    const roomYt = document.getElementById('youtube-player');
++    if (roomYt) roomYt.style.display = 'none';
++    const roomMeet = document.getElementById('room-meet-card');
++    if (roomMeet) roomMeet.style.display = 'none';
++    
++    if (roomId === 6) {
++      const boardYt = document.getElementById('embedded-youtube-player');
++      if (boardYt) boardYt.style.display = 'none';
++      const boardMeet = document.getElementById('board-meet-card');
++      if (boardMeet) boardMeet.style.display = 'none';
++    }
+     return;
+   }
+ 
+-  if (activeRoomVideoId === videoId) {
+-    // Already playing correct video, ensure it's playing
+-    if (ytPlayer && ytPlayer.playVideo) {
+-      try {
+-        ytPlayer.playVideo();
+-      } catch (e) {}
++  const isMeet = videoId.includes('meet.google.com');
++
++  // 1. Handle Classroom Blackboard (Room 6)
++  if (roomId === 6) {
++    const boardContainer = document.getElementById('embedded-board-container');
++    let boardYt = document.getElementById('embedded-youtube-player');
++    let boardMeet = document.getElementById('board-meet-card');
++
++    if (isMeet) {
++      // Hide YT, show Meet Card
++      if (boardYt) boardYt.style.display = 'none';
++      if (boardYtPlayer && boardYtPlayer.pauseVideo) {
++        try { boardYtPlayer.pauseVideo(); } catch(e) {}
++      }
++      
++      if (!boardMeet) {
++        boardMeet = document.createElement('div');
++        boardMeet.id = 'board-meet-card';
++        boardMeet.style.cssText = "width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: #fff; text-align: center; padding: 20px; box-sizing: border-box;";
++        boardContainer.appendChild(boardMeet);
++      }
++      boardMeet.innerHTML = `
++        <span style="font-size: 28px; margin-bottom: 6px;">🌐</span>
++        <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; font-family: 'Plus Jakarta Sans', sans-serif;">Google Meet Active</div>
++        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif;">Classroom is currently in a live meeting.</div>
++        <a href="${videoId.startsWith('http') ? videoId : 'https://' + videoId}" target="_blank" style="background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; text-decoration: none; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; pointer-events: auto;">Join Meeting</a>
++      `;
++      boardMeet.style.display = 'flex';
++    } else {
++      // Hide Meet, show YT
++      if (boardMeet) boardMeet.style.display = 'none';
++      if (boardYt) boardYt.style.display = 'block';
++
++      if (boardYtPlayer && typeof boardYtPlayer.loadVideoById === 'function') {
++        try {
++          boardYtPlayer.loadVideoById({
++            videoId: videoId,
++            startSeconds: 0
++          });
++        } catch (e) {}
++      } else if (window.YT && window.YT.Player) {
++        try {
++          boardYtPlayer = new window.YT.Player('embedded-youtube-player', {
++            height: '100%',
++            width: '100%',
++            videoId: videoId,
++            playerVars: {
++              'playsinline': 1,
++              'autoplay': 1,
++              'controls': 1,
++              'rel': 0
++            },
++            events: {
++              'onReady': (event) => {
++                event.target.playVideo();
++              }
++            }
++          });
++        } catch (err) {
++          console.error("Failed to build board YT player", err);
++        }
++      }
+     }
+-    return;
+   }
+ 
+-  activeRoomVideoId = videoId;
++  // 2. Handle Side Room Panel
++  const roomContainer = document.querySelector('.video-container');
++  let roomYt = document.getElementById('youtube-player');
++  let roomMeet = document.getElementById('room-meet-card');
+ 
+-  if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+-    ytPlayer.loadVideoById({
+-      videoId: videoId,
+-      startSeconds: 0
+-    });
++  if (isMeet) {
++    // Hide YT, show Meet Card
++    if (roomYt) roomYt.style.display = 'none';
++    if (ytPlayer && ytPlayer.pauseVideo) {
++      try { ytPlayer.pauseVideo(); } catch(e) {}
++    }
++
++    if (!roomMeet) {
++      roomMeet = document.createElement('div');
++      roomMeet.id = 'room-meet-card';
++      roomMeet.style.cssText = "width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: #fff; text-align: center; padding: 15px; box-sizing: border-box;";
++      roomContainer.appendChild(roomMeet);
++    }
++    roomMeet.innerHTML = `
++      <span style="font-size: 32px; margin-bottom: 8px;">🌐</span>
++      <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; font-family: 'Plus Jakarta Sans', sans-serif;">Google Meet Active</div>
++      <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif;">This room has a live video call.</div>
++      <a href="${videoId.startsWith('http') ? videoId : 'https://' + videoId}" target="_blank" style="background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; text-decoration: none; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; pointer-events: auto;">Join Meeting</a>
++    `;
++    roomMeet.style.display = 'flex';
++    activeRoomVideoId = videoId;
+   } else {
+-    // Inject YouTube API and wait, or construct player if ready
+-    try {
+-      if (window.YT && window.YT.Player) {
+-        ytPlayer = new window.YT.Player('youtube-player', {
+-          height: '100%',
+-          width: '100%',
+-          videoId: videoId,
+-          playerVars: {
+-            'playsinline': 1,
+-            'autoplay': 1,
+-            'controls': 1,
+-            'rel': 0
+-          },
+-          events: {
+-            'onReady': (event) => {
+-              event.target.playVideo();
++    // Hide Meet, show YT
++    if (roomMeet) roomMeet.style.display = 'none';
++    if (roomYt) roomYt.style.display = 'block';
++
++    if (activeRoomVideoId === videoId) {
++      // Already playing correct video, ensure it's playing
++      if (ytPlayer && ytPlayer.playVideo) {
++        try {
++          ytPlayer.playVideo();
++        } catch (e) {}
++      }
++      return;
++    }
++
++    activeRoomVideoId = videoId;
++
++    if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
++      ytPlayer.loadVideoById({
++        videoId: videoId,
++        startSeconds: 0
++      });
++    } else {
++      try {
++        if (window.YT && window.YT.Player) {
++          ytPlayer = new window.YT.Player('youtube-player', {
++            height: '100%',
++            width: '100%',
++            videoId: videoId,
++            playerVars: {
++              'playsinline': 1,
++              'autoplay': 1,
++              'controls': 1,
++              'rel': 0
++            },
++            events: {
++              'onReady': (event) => {
++                event.target.playVideo();
++              }
+             }
+-          }
+-        });
++          });
++        }
++      } catch (err) {
++        console.error("Failed to build YT player", err);
+       }
+-    } catch (err) {
+-      console.error("Failed to build YT player", err);
+     }
+   }
+ }
+@@ -1495,14 +2198,44 @@ function displayChatBubble(playerId, text) {
+ // --- Main Engine Loop ---
+ let lastTime = performance.now();
+ 
++// Orbit the camera around controls.target by the given spherical deltas.
++// Replaces the (private, non-existent) OrbitControls.rotateLeft/rotateUp methods.
++const _orbitOffset = new THREE.Vector3();
++const _orbitSpherical = new THREE.Spherical();
++function orbitCamera(deltaTheta, deltaPhi) {
++  _orbitOffset.copy(camera.position).sub(controls.target);
++  _orbitSpherical.setFromVector3(_orbitOffset);
++  _orbitSpherical.theta += deltaTheta;
++  _orbitSpherical.phi += deltaPhi;
++  // Respect the controls' polar limits and avoid gimbal flip at the poles
++  _orbitSpherical.phi = Math.max(
++    controls.minPolarAngle,
++    Math.min(controls.maxPolarAngle, _orbitSpherical.phi)
++  );
++  _orbitSpherical.makeSafe();
++  _orbitOffset.setFromSpherical(_orbitSpherical);
++  camera.position.copy(controls.target).add(_orbitOffset);
++  camera.lookAt(controls.target);
++}
++
+ function animate() {
+-  requestAnimationFrame(animate);
+-  
+   const now = performance.now();
+   const dt = Math.min((now - lastTime) / 1000, 0.1); // Limit dt spike
+   lastTime = now;
+   
+-  // 1. Update Controls
++  // 1. Orbit Camera using Arrow keys
++  // OrbitControls (r128) does not expose rotateLeft/rotateUp publicly, so we
++  // orbit the camera around the target manually via spherical coordinates.
++  const rotateSpeed = 1.8 * dt;
++  let deltaTheta = 0; // azimuthal (left/right)
++  let deltaPhi = 0;   // polar (up/down)
++  if (cameraKeys.ArrowLeft) deltaTheta -= rotateSpeed;
++  if (cameraKeys.ArrowRight) deltaTheta += rotateSpeed;
++  if (cameraKeys.ArrowUp) deltaPhi -= rotateSpeed;
++  if (cameraKeys.ArrowDown) deltaPhi += rotateSpeed;
++  if (deltaTheta !== 0 || deltaPhi !== 0) {
++    orbitCamera(deltaTheta, deltaPhi);
++  }
+   controls.update();
+   
+   // 2. Animate Torches (Point light flickering & flame wiggling)
+@@ -1545,10 +2278,125 @@ function animate() {
+     animateAvatarWalk(p, dt);
+   });
+   
++  // 4b. Update Ceilings and Upper Walls (Fade out when indoors)
++  const isInside = localPlayer.currentRoom !== -1;
++  const targetOpacity = isInside ? 0.0 : 1.0;
++  
++  if (ceilingMat) {
++    ceilingMat.opacity = THREE.MathUtils.lerp(ceilingMat.opacity, targetOpacity, 8 * dt);
++    ceilingMesh.visible = ceilingMat.opacity > 0.02;
++  }
++  
++  if (upperWallMat) {
++    upperWallMat.opacity = THREE.MathUtils.lerp(upperWallMat.opacity, targetOpacity, 8 * dt);
++    
++    // Also fade sign board materials in sync with upper walls
++    if (signFrontMat) signFrontMat.opacity = upperWallMat.opacity;
++    if (signSideMat) signSideMat.opacity = upperWallMat.opacity;
++    
++    upperWalls.forEach(w => {
++      w.visible = upperWallMat.opacity > 0.02;
++    });
++  }
++
++  // 4c. Update projected classroom board position
++  updateClassroomBoard();
++
+   // 5. Render Scene
+   renderer.render(scene, camera);
+ }
+ 
++// --- Theater Mode & Raycaster Interactions ---
++function openTheaterMode(roomId) {
++  const room = ROOMS[roomId];
++  const feedVal = room.video || "";
++  
++  const modal = document.getElementById('theater-modal');
++  const title = document.getElementById('theater-title');
++  const container = document.getElementById('theater-player-container');
++  const fallbackBtn = document.getElementById('meet-fallback-btn');
++  
++  if (!modal || !container) return;
++  
++  container.innerHTML = ''; // Clear previous content
++  title.innerText = `${room.name} - Theater Mode`;
++  
++  if (!feedVal) {
++    container.innerHTML = `<div class="theater-placeholder-text">No active video or meeting feed in this room.<br>Use the 'Change Video Feed' button to add a YouTube video or Google Meet link.</div>`;
++    fallbackBtn.style.display = 'none';
++  } else {
++    const isMeet = feedVal.includes('meet.google.com');
++    if (isMeet) {
++      // Google Meet
++      let meetUrl = feedVal;
++      if (!meetUrl.startsWith('http://') && !meetUrl.startsWith('https://')) {
++        meetUrl = 'https://' + meetUrl;
++      }
++      
++      const iframe = document.createElement('iframe');
++      iframe.src = meetUrl;
++      iframe.allow = "camera; microphone; display-capture; autoplay";
++      container.appendChild(iframe);
++      
++      // Update fallback link for opening in a new tab if browser restricts embedding
++      fallbackBtn.href = meetUrl;
++      fallbackBtn.style.display = 'inline-flex';
++    } else {
++      // YouTube Video
++      fallbackBtn.style.display = 'none';
++      
++      const iframe = document.createElement('iframe');
++      iframe.src = `https://www.youtube.com/embed/${feedVal}?autoplay=1&enablejsapi=1`;
++      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
++      iframe.allowFullscreen = true;
++      container.appendChild(iframe);
++    }
++  }
++  
++  modal.classList.add('active');
++  
++  // Pause ambient YT player to avoid overlapping audio
++  if (ytPlayer && ytPlayer.pauseVideo) {
++    try { ytPlayer.pauseVideo(); } catch(e) {}
++  }
++  if (boardYtPlayer && boardYtPlayer.pauseVideo) {
++    try { boardYtPlayer.pauseVideo(); } catch(e) {}
++  }
++}
++
++function closeTheaterMode() {
++  const modal = document.getElementById('theater-modal');
++  const container = document.getElementById('theater-player-container');
++  if (modal) modal.classList.remove('active');
++  if (container) container.innerHTML = ''; // Destroy players/iframes
++  
++  // Resume ambient players if inside a room
++  if (localPlayer.currentRoom !== -1) {
++    setupRoomVideo(localPlayer.currentRoom);
++  }
++}
++
++function onCanvasClick(event) {
++  // Only detect screen clicks when the user is inside a room
++  if (localPlayer.currentRoom === -1) return;
++  
++  // Calculate mouse position in normalized device coordinates
++  const mouse = new THREE.Vector2();
++  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
++  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
++  
++  const raycaster = new THREE.Raycaster();
++  raycaster.setFromCamera(mouse, camera);
++  const intersects = raycaster.intersectObjects(clickableScreens);
++  
++  if (intersects.length > 0) {
++    const clickedScreen = intersects[0].object;
++    if (clickedScreen.userData && clickedScreen.userData.roomId !== undefined) {
++      openTheaterMode(clickedScreen.userData.roomId);
++    }
++  }
++}
++
+ // --- Form & UI Handle Bindings ---
+ function initUiHandlers() {
+   // Login form submission
+@@ -1676,26 +2524,68 @@ function initUiHandlers() {
+     if (document.activeElement.tagName === 'INPUT') return; // Ignore movement keys when typing in chat
+     
+     const key = e.key.toLowerCase();
+-    if (key === 'w' || e.key === 'ArrowUp') keys.w = true;
+-    if (key === 's' || e.key === 'ArrowDown') keys.s = true;
+-    if (key === 'a' || e.key === 'ArrowLeft') keys.a = true;
+-    if (key === 'd' || e.key === 'ArrowRight') keys.d = true;
++    if (key === 'w') keys.w = true;
++    if (key === 's') keys.s = true;
++    if (key === 'a') keys.a = true;
++    if (key === 'd') keys.d = true;
+     if (e.key === ' ') keys.space = true;
++
++    // Camera movements using Arrow Keys
++    if (e.key === 'ArrowLeft') cameraKeys.ArrowLeft = true;
++    if (e.key === 'ArrowRight') cameraKeys.ArrowRight = true;
++    if (e.key === 'ArrowUp') cameraKeys.ArrowUp = true;
++    if (e.key === 'ArrowDown') cameraKeys.ArrowDown = true;
+   });
+ 
+   window.addEventListener('keyup', (e) => {
+     const key = e.key.toLowerCase();
+-    if (key === 'w' || e.key === 'ArrowUp') keys.w = false;
+-    if (key === 's' || e.key === 'ArrowDown') keys.s = false;
+-    if (key === 'a' || e.key === 'ArrowLeft') keys.a = false;
+-    if (key === 'd' || e.key === 'ArrowRight') keys.d = false;
++    if (key === 'w') keys.w = false;
++    if (key === 's') keys.s = false;
++    if (key === 'a') keys.a = false;
++    if (key === 'd') keys.d = false;
++
++    if (e.key === 'ArrowLeft') cameraKeys.ArrowLeft = false;
++    if (e.key === 'ArrowRight') cameraKeys.ArrowRight = false;
++    if (e.key === 'ArrowUp') cameraKeys.ArrowUp = false;
++    if (e.key === 'ArrowDown') cameraKeys.ArrowDown = false;
+   });
+   
+-  // Focus helper: pressing ESC defocuses inputs
++  // Theater mode buttons
++  const openTheaterBtn = document.getElementById('open-theater-btn');
++  if (openTheaterBtn) {
++    openTheaterBtn.addEventListener('click', () => {
++      if (localPlayer.currentRoom !== -1) {
++        openTheaterMode(localPlayer.currentRoom);
++      }
++    });
++  }
++
++  const closeTheaterBtn = document.getElementById('close-theater-btn');
++  if (closeTheaterBtn) {
++    closeTheaterBtn.addEventListener('click', () => {
++      closeTheaterMode();
++    });
++  }
++
++  const boardMaximizeBtn = document.getElementById('board-maximize-btn');
++  if (boardMaximizeBtn) {
++    boardMaximizeBtn.addEventListener('click', (e) => {
++      e.stopPropagation();
++      openTheaterMode(6); // Room 6 is the classroom
++    });
++  }
++
++  // Click on WebGL canvas to raycast and select interactive screens
++  if (renderer && renderer.domElement) {
++    renderer.domElement.addEventListener('click', onCanvasClick);
++  }
++  
++  // Focus helper: pressing ESC defocuses inputs and exits theater mode
+   window.addEventListener('keydown', (e) => {
+     if (e.key === 'Escape') {
+       document.activeElement.blur();
+       modal.classList.remove('video-modal-visible');
++      closeTheaterMode();
+     }
+   });
+ }
