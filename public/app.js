@@ -811,32 +811,78 @@ function buildMap() {
   buildBuilding();
 }
 
+// Shared geometries/materials for high-count static scenery. Built once and
+// reused across every instance (trees, flowers, grass, torches, boulder skins)
+// so we stop allocating duplicate GPU resources for ~160 scattered props.
+const sharedScenery = {};
+function initSceneryAssets() {
+  if (sharedScenery.ready) return;
+
+  // Trees (35)
+  sharedScenery.treeTrunkMat = new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.9 });
+  sharedScenery.treeFoliageMat = new THREE.MeshStandardMaterial({ color: '#1e3f20', roughness: 0.8, flatShading: true });
+  sharedScenery.treeTrunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 4, 5);
+  sharedScenery.treeCone1Geo = new THREE.ConeGeometry(2.2, 2.5, 5);
+  sharedScenery.treeCone2Geo = new THREE.ConeGeometry(1.7, 2, 5);
+
+  // Boulders (15) — geometry is randomized per rock, but the skin is shared
+  sharedScenery.boulderMat = new THREE.MeshStandardMaterial({ color: '#52525b', roughness: 0.9, flatShading: true });
+
+  // Flowers (40)
+  sharedScenery.flowerStemMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.9 });
+  sharedScenery.flowerStemGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.5, 4);
+  sharedScenery.flowerCenterGeo = new THREE.DodecahedronGeometry(0.12, 0);
+  const flowerLeafGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
+  flowerLeafGeo.rotateX(Math.PI / 4);
+  sharedScenery.flowerLeafGeo = flowerLeafGeo;
+  // One petal material per palette color (was one per flower)
+  sharedScenery.flowerPetalMats = ['#f43f5e', '#eab308', '#3b82f6', '#a855f7'].map(
+    (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, flatShading: true })
+  );
+
+  // Grass tufts (60)
+  sharedScenery.grassTuftMat = new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.9, flatShading: true });
+  const grassBladeGeo = new THREE.ConeGeometry(0.05, 0.4, 3);
+  grassBladeGeo.translate(0, 0.2, 0);
+  sharedScenery.grassBladeGeo = grassBladeGeo;
+
+  // Wall torches (16) — PointLight + flame mesh stay per-instance (animated),
+  // but all geometries and the static materials are shared.
+  sharedScenery.torchBracketGeo = new THREE.BoxGeometry(0.15, 0.4, 0.3);
+  sharedScenery.torchMetalMat = new THREE.MeshStandardMaterial({ color: '#27272a', roughness: 0.8 });
+  const torchStickGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.8, 6);
+  torchStickGeo.rotateX(Math.PI / 8);
+  sharedScenery.torchStickGeo = torchStickGeo;
+  sharedScenery.torchWoodMat = new THREE.MeshStandardMaterial({ color: '#451a03', roughness: 0.9 });
+  sharedScenery.torchFlameGeo = new THREE.ConeGeometry(0.15, 0.4, 5);
+  sharedScenery.torchFlameMat = new THREE.MeshBasicMaterial({ color: '#f97316' });
+  sharedScenery.torchParticleGeo = new THREE.SphereGeometry(0.1, 4, 4);
+  sharedScenery.torchParticleMat = new THREE.MeshBasicMaterial({ color: '#fef08a' });
+
+  sharedScenery.ready = true;
+}
+
 function createTree() {
-  const trunkMat = new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.9 });
-  const foliageMat = new THREE.MeshStandardMaterial({ color: '#1e3f20', roughness: 0.8, flatShading: true });
-  
+  initSceneryAssets();
   const tree = new THREE.Group();
-  
+
   // Trunk
-  const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 4, 5);
-  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  const trunk = new THREE.Mesh(sharedScenery.treeTrunkGeo, sharedScenery.treeTrunkMat);
   trunk.position.y = 2;
   trunk.castShadow = true;
   tree.add(trunk);
-  
+
   // Foliage (layers of cones)
-  const coneGeo1 = new THREE.ConeGeometry(2.2, 2.5, 5);
-  const cone1 = new THREE.Mesh(coneGeo1, foliageMat);
+  const cone1 = new THREE.Mesh(sharedScenery.treeCone1Geo, sharedScenery.treeFoliageMat);
   cone1.position.y = 4.2;
   cone1.castShadow = true;
   tree.add(cone1);
-  
-  const coneGeo2 = new THREE.ConeGeometry(1.7, 2, 5);
-  const cone2 = new THREE.Mesh(coneGeo2, foliageMat);
+
+  const cone2 = new THREE.Mesh(sharedScenery.treeCone2Geo, sharedScenery.treeFoliageMat);
   cone2.position.y = 5.6;
   cone2.castShadow = true;
   tree.add(cone2);
-  
+
   // Scatter outside the building zone
   let x, z;
   do {
@@ -853,12 +899,12 @@ function createTree() {
 }
 
 function createBoulder() {
-  const boulderMat = new THREE.MeshStandardMaterial({ color: '#52525b', roughness: 0.9, flatShading: true });
-  
-  // Create randomized low-poly rock geometry
+  initSceneryAssets();
+
+  // Create randomized low-poly rock geometry (unique per boulder)
   const radius = 1.0 + Math.random() * 1.8;
   const geo = new THREE.DodecahedronGeometry(radius, 0);
-  
+
   const positions = geo.attributes.position;
   for (let i = 0; i < positions.count; i++) {
     positions.setX(i, positions.getX(i) + (Math.random() - 0.5) * 0.25);
@@ -867,7 +913,7 @@ function createBoulder() {
   }
   geo.computeVertexNormals();
 
-  const boulder = new THREE.Mesh(geo, boulderMat);
+  const boulder = new THREE.Mesh(geo, sharedScenery.boulderMat);
   
   let x, z;
   do {
@@ -884,33 +930,28 @@ function createBoulder() {
 }
 
 function createFlower(x, z) {
-  const flowerColors = ['#f43f5e', '#eab308', '#3b82f6', '#a855f7'];
-  const randomColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
-  
-  const stemMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.9 });
-  const petalMat = new THREE.MeshStandardMaterial({ color: randomColor, roughness: 0.8, flatShading: true });
-  
+  initSceneryAssets();
+  const petalMat = sharedScenery.flowerPetalMats[
+    Math.floor(Math.random() * sharedScenery.flowerPetalMats.length)
+  ];
+
   const flower = new THREE.Group();
-  
+
   // Stem
-  const stemGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.5, 4);
-  const stem = new THREE.Mesh(stemGeo, stemMat);
+  const stem = new THREE.Mesh(sharedScenery.flowerStemGeo, sharedScenery.flowerStemMat);
   stem.position.y = 0.25;
   flower.add(stem);
-  
+
   // Center/Petals
-  const centerGeo = new THREE.DodecahedronGeometry(0.12, 0);
-  const center = new THREE.Mesh(centerGeo, petalMat);
+  const center = new THREE.Mesh(sharedScenery.flowerCenterGeo, petalMat);
   center.position.y = 0.5;
   flower.add(center);
-  
+
   // Small leaves
-  const leafGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
-  leafGeo.rotateX(Math.PI / 4);
-  const leaf1 = new THREE.Mesh(leafGeo, stemMat);
+  const leaf1 = new THREE.Mesh(sharedScenery.flowerLeafGeo, sharedScenery.flowerStemMat);
   leaf1.position.set(0, 0.15, 0.08);
   flower.add(leaf1);
-  
+
   const groundY = getTerrainHeight(x, z);
   flower.position.set(x, groundY, z);
   
@@ -920,14 +961,11 @@ function createFlower(x, z) {
 }
 
 function createGrassTuft(x, z) {
-  const grassMat = new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.9, flatShading: true });
+  initSceneryAssets();
   const tuft = new THREE.Group();
-  
-  const bladeGeo = new THREE.ConeGeometry(0.05, 0.4, 3);
-  bladeGeo.translate(0, 0.2, 0);
-  
+
   for (let i = 0; i < 3; i++) {
-    const blade = new THREE.Mesh(bladeGeo, grassMat);
+    const blade = new THREE.Mesh(sharedScenery.grassBladeGeo, sharedScenery.grassTuftMat);
     blade.rotation.z = (Math.random() - 0.5) * 0.4;
     blade.rotation.x = (Math.random() - 0.5) * 0.4;
     blade.rotation.y = Math.random() * Math.PI * 2;
@@ -1417,34 +1455,26 @@ function buildBuilding() {
 }
 
 function createWallTorch(x, y, z, rotationY) {
+  initSceneryAssets();
   const torchGroup = new THREE.Group();
-  
+
   // Bracket
-  const bracketGeo = new THREE.BoxGeometry(0.15, 0.4, 0.3);
-  const metalMat = new THREE.MeshStandardMaterial({ color: '#27272a', roughness: 0.8 });
-  const bracket = new THREE.Mesh(bracketGeo, metalMat);
+  const bracket = new THREE.Mesh(sharedScenery.torchBracketGeo, sharedScenery.torchMetalMat);
   bracket.position.set(0, 0, -0.15);
   torchGroup.add(bracket);
 
   // Wooden stick
-  const stickGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.8, 6);
-  stickGeo.rotateX(Math.PI / 8); // Angled outwards
-  const woodMat = new THREE.MeshStandardMaterial({ color: '#451a03', roughness: 0.9 });
-  const stick = new THREE.Mesh(stickGeo, woodMat);
+  const stick = new THREE.Mesh(sharedScenery.torchStickGeo, sharedScenery.torchWoodMat);
   stick.position.set(0, 0.1, -0.05);
   torchGroup.add(stick);
 
-  // Flame glow shape
-  const flameGeo = new THREE.ConeGeometry(0.15, 0.4, 5);
-  const flameMat = new THREE.MeshBasicMaterial({ color: '#f97316' });
-  const flame = new THREE.Mesh(flameGeo, flameMat);
+  // Flame glow shape (per-instance mesh; shared geo/mat)
+  const flame = new THREE.Mesh(sharedScenery.torchFlameGeo, sharedScenery.torchFlameMat);
   flame.position.set(0, 0.55, 0.1);
   torchGroup.add(flame);
 
   // Particle representation for flame (small glowing sphere)
-  const particleGeo = new THREE.SphereGeometry(0.1, 4, 4);
-  const particleMat = new THREE.MeshBasicMaterial({ color: '#fef08a' });
-  const particle = new THREE.Mesh(particleGeo, particleMat);
+  const particle = new THREE.Mesh(sharedScenery.torchParticleGeo, sharedScenery.torchParticleMat);
   particle.position.set(0, 0.65, 0.1);
   torchGroup.add(particle);
 
