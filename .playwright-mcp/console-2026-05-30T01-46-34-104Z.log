@@ -1,0 +1,22 @@
+[    3088ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8770/favicon.ico:0
+[   36054ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   41058ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   45066ms] TypeError: controls.rotateLeft is not a function
+    at animate (http://127.0.0.1:8770/app.js:2208:38)
+    at https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js:6:351403
+    at r (https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js:6:121500)
+[   46062ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   51067ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   56075ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   61083ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   66095ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   71108ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   76154ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   81186ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   86330ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   91479ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[   96921ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[  102651ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[  108775ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[  115545ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892
+[  124397ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1892

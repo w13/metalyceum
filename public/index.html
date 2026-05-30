@@ -21,6 +21,14 @@
   <!-- 3D Game Canvas Container -->
   <div id="game-container"></div>
 
+  <!-- Classroom Board Embedded YouTube Video Container -->
+  <div id="embedded-board-container" style="position: absolute; pointer-events: auto; display: none; z-index: 5; border: 2px solid #334155; background: #000; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);">
+    <div id="embedded-youtube-player"></div>
+    <button id="board-maximize-btn" style="position: absolute; top: 8px; right: 8px; z-index: 10; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; pointer-events: auto;">
+      <span>📺 Maximize Screen</span>
+    </button>
+  </div>
+
   <!-- Loading State -->
   <div id="loading-screen" class="overlay">
     <div class="spinner-container">
@@ -94,6 +102,9 @@
           <!-- The YouTube iframe will replace this div -->
           <div id="youtube-player"></div>
         </div>
+        <button class="btn-primary" id="open-theater-btn" style="width: 100%; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px; border-radius: var(--radius-md); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
+          <span>📺 Open Theater Mode</span>
+        </button>
       </div>
 
       <!-- Room Player List -->
@@ -124,8 +135,25 @@
   <div class="controls-legend glass">
     <div class="legend-item"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Move</span></div>
     <div class="legend-item"><kbd>Space</kbd><span>Jump</span></div>
+    <div class="legend-item"><kbd>▲</kbd><kbd>▼</kbd><kbd>◀</kbd><kbd>▶</kbd><span>Orbit Camera</span></div>
     <div class="legend-item"><kbd>Drag Mouse</kbd><span>Rotate Camera</span></div>
     <div class="legend-item"><kbd>Scroll</kbd><span>Zoom</span></div>
+  </div>
+
+  <!-- Theater/Maximize Screen Modal -->
+  <div id="theater-modal" class="overlay">
+    <div class="theater-card glass">
+      <button class="close-theater-btn" id="close-theater-btn">✕</button>
+      <div class="theater-header">
+        <h2 id="theater-title">Theater Mode</h2>
+        <a id="meet-fallback-btn" class="btn-primary btn-sm" href="#" target="_blank" style="display: none; text-decoration: none; padding: 6px 12px; font-size: 0.85rem; border-radius: var(--radius-md); font-weight: 600; align-items: center; justify-content: center; gap: 6px;">
+          <span>🌐 Open Meet in New Tab</span>
+        </a>
+      </div>
+      <div class="theater-body">
+        <div id="theater-player-container"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Script initialization -->
