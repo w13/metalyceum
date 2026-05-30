@@ -30,7 +30,6 @@ let localPlayer = {
   leftLeg: null, rightLeg: null,
   leftArm: null, rightArm: null,
   username: "Guest",
-  avatarType: "knight",
   color: "#3b82f6",
   x: 0, y: 0, z: 25, // Start outside the building
   ry: 0,
@@ -41,6 +40,7 @@ let localPlayer = {
 };
 
 const remotePlayers = new Map(); // id -> player object
+const npcs = []; // Ambient NPCs
 let socket = null;
 let ytPlayer = null;
 let ytApiReady = false;
@@ -263,6 +263,9 @@ function initEngine() {
   
   // Build the static map elements
   buildMap();
+  
+  // Spawn NPC ambient characters
+  spawnNpcs();
   
   // Event listeners
   window.addEventListener('resize', onWindowResize);
@@ -576,7 +579,7 @@ function createWallTorch(x, y, z, rotationY) {
 }
 
 // --- Player Avatar Creation ---
-function createPlayerAvatar(avatarType, colorHex, username, isLocal = false) {
+function createPlayerAvatar(avatarType, colorHex, username, isLocal = false, isNpc = false) {
   const avatarGroup = new THREE.Group();
 
   // Color Material
@@ -584,24 +587,9 @@ function createPlayerAvatar(avatarType, colorHex, username, isLocal = false) {
   const skinMat = new THREE.MeshStandardMaterial({ color: '#fbcfe8', roughness: 0.8 }); // Pinkish peach skin
   const legMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.8 }); // Dark pants
   const shoeMat = new THREE.MeshStandardMaterial({ color: '#18181b', roughness: 0.9 });
+  const brownMat = new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.85 }); // Brown leather for backpack / hat
+  const hatBandMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 }); // Dark hat band
   
-  // Custom Class Gear
-  let hatMat, hatGeo, weaponMat, weaponGeo;
-  if (avatarType === 'mage') {
-    hatMat = new THREE.MeshStandardMaterial({ color: '#1e1b4b', roughness: 0.5 });
-    // Wizard cone hat
-    hatGeo = new THREE.ConeGeometry(0.45, 0.8, 6);
-  } else if (avatarType === 'knight') {
-    hatMat = new THREE.MeshStandardMaterial({ color: '#64748b', metalness: 0.8, roughness: 0.2 });
-    // Knight bucket helmet
-    hatGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.45, 6);
-  } else { // Ranger
-    hatMat = new THREE.MeshStandardMaterial({ color: '#14532d', roughness: 0.7 });
-    // Ranger pointed hat/cap
-    hatGeo = new THREE.ConeGeometry(0.35, 0.5, 4);
-    hatGeo.rotateX(Math.PI/6); // Slanted backwards
-  }
-
   // 1. Torso
   const torsoGeo = new THREE.CylinderGeometry(0.35, 0.28, 1.0, 6);
   const torso = new THREE.Mesh(torsoGeo, shirtMat);
@@ -617,21 +605,40 @@ function createPlayerAvatar(avatarType, colorHex, username, isLocal = false) {
   head.castShadow = true;
   avatarGroup.add(head);
 
-  // 3. Hat/Helm
-  if (hatGeo) {
-    const hat = new THREE.Mesh(hatGeo, hatMat);
-    if (avatarType === 'mage') {
-      hat.position.y = 2.25;
-    } else if (avatarType === 'knight') {
-      hat.position.y = 1.85;
-    } else {
-      hat.position.set(0, 2.05, -0.05);
-    }
-    hat.castShadow = true;
-    avatarGroup.add(hat);
-  }
+  // 3. Stylized Explorer Hat (Uniform for everyone!)
+  const hatGroup = new THREE.Group();
+  
+  // Hat Brim
+  const brimGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.04, 8);
+  const brim = new THREE.Mesh(brimGeo, brownMat);
+  brim.position.y = 2.02;
+  brim.castShadow = true;
+  hatGroup.add(brim);
 
-  // 4. Arms (Left / Right)
+  // Hat Band
+  const bandGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.08, 8);
+  const band = new THREE.Mesh(bandGeo, hatBandMat);
+  band.position.y = 2.1;
+  band.castShadow = true;
+  hatGroup.add(band);
+
+  // Hat Crown
+  const crownGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.3, 8);
+  const crown = new THREE.Mesh(crownGeo, brownMat);
+  crown.position.y = 2.25;
+  crown.castShadow = true;
+  hatGroup.add(crown);
+
+  avatarGroup.add(hatGroup);
+
+  // 4. Adventurer Backpack
+  const packGeo = new THREE.BoxGeometry(0.42, 0.6, 0.22);
+  const backpack = new THREE.Mesh(packGeo, brownMat);
+  backpack.position.set(0, 1.1, -0.28);
+  backpack.castShadow = true;
+  avatarGroup.add(backpack);
+
+  // 5. Arms (Left / Right)
   const armGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.7, 4);
   armGeo.translate(0, -0.35, 0); // Set pivot at shoulder
   
@@ -645,7 +652,7 @@ function createPlayerAvatar(avatarType, colorHex, username, isLocal = false) {
   rightArm.castShadow = true;
   avatarGroup.add(rightArm);
 
-  // 5. Legs (Left / Right)
+  // 6. Legs (Left / Right)
   const legGeo = new THREE.CylinderGeometry(0.12, 0.1, 0.6, 4);
   legGeo.translate(0, -0.3, 0); // Pivot at hip
 
@@ -659,7 +666,7 @@ function createPlayerAvatar(avatarType, colorHex, username, isLocal = false) {
   rightLeg.castShadow = true;
   avatarGroup.add(rightLeg);
 
-  // 6. Feet / Shoes
+  // 7. Feet / Shoes
   const shoeGeo = new THREE.BoxGeometry(0.16, 0.1, 0.25);
   const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
   leftShoe.position.set(-0.2, 0.05, 0.05);
@@ -669,8 +676,13 @@ function createPlayerAvatar(avatarType, colorHex, username, isLocal = false) {
   rightShoe.position.set(0.2, 0.05, 0.05);
   avatarGroup.add(rightShoe);
 
-  // 7. Floating Name Tag
-  const tagColor = isLocal ? '#818cf8' : '#38bdf8'; // Purple-blue for self, sky-blue for others
+  // 8. Floating Name Tag
+  let tagColor = '#38bdf8'; // Sky-blue for others
+  if (isLocal) {
+    tagColor = '#818cf8'; // Purple-blue for self
+  } else if (isNpc) {
+    tagColor = '#f59e0b'; // Amber for NPCs
+  }
   const nameTag = createPlayerNameSprite(username, tagColor);
   nameTag.position.set(0, 2.7, 0);
   avatarGroup.add(nameTag);
@@ -708,7 +720,9 @@ function checkCollision(targetX, targetZ) {
 function updateLocalPlayer(dt) {
   if (!isJoined || !localPlayer.mesh) return;
 
-  const speed = 11.0;
+  const acceleration = 55.0;
+  const maxSpeed = 9.5;
+  const drag = 8.5;
   const gravity = 25.0;
   const jumpForce = 10.0;
   
@@ -729,7 +743,7 @@ function updateLocalPlayer(dt) {
     keys.space = false; // Reset jump state
   }
 
-  // 2. Horizontal Movement (WASD relative to Camera rotation)
+  // 2. Horizontal Movement Calculation (Accelerate and Damp)
   const moveDirection = new THREE.Vector3();
   
   if (keys.w) moveDirection.z -= 1;
@@ -738,6 +752,10 @@ function updateLocalPlayer(dt) {
   if (keys.d) moveDirection.x += 1;
   
   moveDirection.normalize();
+
+  // Apply friction/drag to current horizontal velocity
+  localPlayer.velocity.x -= localPlayer.velocity.x * drag * dt;
+  localPlayer.velocity.z -= localPlayer.velocity.z * drag * dt;
 
   if (moveDirection.lengthSq() > 0) {
     // Project camera direction onto ground plane
@@ -750,41 +768,70 @@ function updateLocalPlayer(dt) {
     const camRight = new THREE.Vector3();
     camRight.crossVectors(camera.up, camDirection).negate().normalize();
     
-    // Formulate relative translation
-    const worldMoveVec = new THREE.Vector3()
+    // Find absolute target moving direction
+    const targetDirection = new THREE.Vector3()
       .addScaledVector(camDirection, -moveDirection.z)
       .addScaledVector(camRight, moveDirection.x)
-      .normalize()
-      .multiplyScalar(speed * dt);
-      
-    // Slide along walls collision response
-    let nextX = localPlayer.x + worldMoveVec.x;
-    let nextZ = localPlayer.z + worldMoveVec.z;
+      .normalize();
+
+    // Accelerate along target direction
+    localPlayer.velocity.x += targetDirection.x * acceleration * dt;
+    localPlayer.velocity.z += targetDirection.z * acceleration * dt;
+  }
+
+  // Cap horizontal speed to maxSpeed
+  const speedXZ = Math.sqrt(localPlayer.velocity.x * localPlayer.velocity.x + localPlayer.velocity.z * localPlayer.velocity.z);
+  if (speedXZ > maxSpeed) {
+    localPlayer.velocity.x = (localPlayer.velocity.x / speedXZ) * maxSpeed;
+    localPlayer.velocity.z = (localPlayer.velocity.z / speedXZ) * maxSpeed;
+  }
+
+  // Calculate distance steps
+  const stepX = localPlayer.velocity.x * dt;
+  const stepZ = localPlayer.velocity.z * dt;
+
+  // 3. Slide along walls collision response
+  if (Math.abs(stepX) > 0.0001 || Math.abs(stepZ) > 0.0001) {
+    let nextX = localPlayer.x + stepX;
+    let nextZ = localPlayer.z + stepZ;
     
     // Try full movement first
     if (!checkCollision(nextX, nextZ)) {
       localPlayer.x = nextX;
       localPlayer.z = nextZ;
     } else {
-      // Try moving along X axis only
+      // Try moving along X axis only (allows sliding along Z-facing walls)
       if (!checkCollision(nextX, localPlayer.z)) {
         localPlayer.x = nextX;
+        localPlayer.velocity.z = 0; // Cancel Z velocity component
       }
-      // Try moving along Z axis only
+      // Try moving along Z axis only (allows sliding along X-facing walls)
       else if (!checkCollision(localPlayer.x, nextZ)) {
         localPlayer.z = nextZ;
+        localPlayer.velocity.x = 0; // Cancel X velocity component
+      } else {
+        // Hit a corner directly, kill all horizontal velocity
+        localPlayer.velocity.x = 0;
+        localPlayer.velocity.z = 0;
       }
     }
+  }
+
+  // Face rotation matches velocity direction if moving
+  if (speedXZ > 0.4) {
+    const targetAngle = Math.atan2(localPlayer.velocity.x, localPlayer.velocity.z);
     
-    // Face direction of movement
-    const angle = Math.atan2(worldMoveVec.x, worldMoveVec.z);
-    localPlayer.ry = angle;
+    // Smoothly rotate character to face direction of movement
+    let diff = targetAngle - localPlayer.ry;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    localPlayer.ry += diff * 15.0 * dt;
     localPlayer.isMoving = true;
   } else {
     localPlayer.isMoving = false;
   }
 
-  // 3. Update localPlayer 3D Model position
+  // Update localPlayer 3D Model position
   localPlayer.mesh.position.set(localPlayer.x, localPlayer.y, localPlayer.z);
   localPlayer.mesh.rotation.y = localPlayer.ry;
   
@@ -843,6 +890,140 @@ function animateAvatarWalk(playerObj, dt) {
     leftArm.rotation.z = THREE.MathUtils.lerp(leftArm.rotation.z, 0, 10 * dt);
     rightArm.rotation.z = THREE.MathUtils.lerp(rightArm.rotation.z, 0, 10 * dt);
   }
+}
+
+// --- NPC Generation & Pathfinding ---
+function spawnNpcs() {
+  const npcNames = [
+    "Hans (Guide)",
+    "Wise Old Man",
+    "Bob the Bartender",
+    "Aubury the Mage",
+    "Giles the Banker",
+    "Gnome Trainer"
+  ];
+  
+  const npcColors = [
+    "#10b981", // Emerald Green
+    "#8b5cf6", // Violet Purple
+    "#f59e0b", // Amber Orange
+    "#ec4899", // Pink
+    "#06b6d4", // Cyan Blue
+    "#f43f5e"  // Rose Red
+  ];
+
+  // Starting positions for NPCs
+  const npcPositions = [
+    { x: 0, z: 26 },    // Hans near the main southern entrance
+    { x: -10, z: -10 }, // Wise Old Man in Room 1
+    { x: -30, z: 10 },  // Bob the Bartender in Room 4 (Tavern)
+    { x: 10, z: 10 },   // Aubury in Room 6
+    { x: 30, z: -10 },  // Giles in Room 3
+    { x: -25, z: -25 }  // Gnome Trainer wandering outdoors northwest
+  ];
+
+  for (let i = 0; i < npcNames.length; i++) {
+    const name = npcNames[i];
+    const color = npcColors[i];
+    const pos = npcPositions[i];
+
+    // Spawn 3D explorer model (isNpc = true)
+    const avatar = createPlayerAvatar(null, color, name, false, true);
+    avatar.group.position.set(pos.x, 0, pos.z);
+
+    npcs.push({
+      name: name,
+      color: color,
+      mesh: avatar.group,
+      leftLeg: avatar.leftLeg,
+      rightLeg: avatar.rightLeg,
+      leftArm: avatar.leftArm,
+      rightArm: avatar.rightArm,
+      x: pos.x,
+      y: 0,
+      z: pos.z,
+      ry: 0,
+      targetX: pos.x,
+      targetZ: pos.z,
+      isMoving: false,
+      isGrounded: true,
+      speed: 2.8, // Relaxed ambient walking speed
+      waitTimer: Math.random() * 4 + 2, // Init wait time
+      state: "idle" // "idle" or "walk"
+    });
+  }
+}
+
+function updateNpcs(dt) {
+  npcs.forEach((npc) => {
+    if (npc.state === "idle") {
+      npc.waitTimer -= dt;
+      if (npc.waitTimer <= 0) {
+        // Pick a random target within a radius of 15 meters
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 5 + Math.random() * 12;
+        
+        let tx = npc.x + Math.cos(angle) * dist;
+        let tz = npc.z + Math.sin(angle) * dist;
+
+        // Clamp to general world bounds
+        const limit = MAP_SIZE / 2 - 4;
+        tx = Math.max(-limit, Math.min(limit, tx));
+        tz = Math.max(-limit, Math.min(limit, tz));
+
+        npc.targetX = tx;
+        npc.targetZ = tz;
+        npc.state = "walk";
+        npc.isMoving = true;
+      }
+    } else if (npc.state === "walk") {
+      const dx = npc.targetX - npc.x;
+      const dz = npc.targetZ - npc.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist < 0.2) {
+        // Reached target, switch to idle
+        npc.state = "idle";
+        npc.isMoving = false;
+        npc.waitTimer = Math.random() * 4 + 3; // Wait 3 to 7 seconds
+      } else {
+        const dirX = dx / dist;
+        const dirZ = dz / dist;
+
+        // Face the target smoothly
+        const targetAngle = Math.atan2(dx, dz);
+        let diff = targetAngle - npc.ry;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        npc.ry += diff * 12.0 * dt;
+
+        // Walk step
+        const stepX = dirX * npc.speed * dt;
+        const stepZ = dirZ * npc.speed * dt;
+
+        const nextX = npc.x + stepX;
+        const nextZ = npc.z + stepZ;
+
+        // Check if moving here collides with walls
+        if (!checkCollision(nextX, nextZ)) {
+          npc.x = nextX;
+          npc.z = nextZ;
+        } else {
+          // Collided, stop and choose another path
+          npc.state = "idle";
+          npc.isMoving = false;
+          npc.waitTimer = Math.random() * 2 + 1; // Wait a short time
+        }
+      }
+    }
+
+    // Update 3D mesh position & rotation
+    npc.mesh.position.set(npc.x, npc.y, npc.z);
+    npc.mesh.rotation.y = npc.ry;
+
+    // Animate walks (limbs swing)
+    animateAvatarWalk(npc, dt);
+  });
 }
 
 // --- Room Bounding Box Triggers ---
@@ -1339,6 +1520,9 @@ function animate() {
   // 3. Update Local Player Physics/Controls
   updateLocalPlayer(dt);
   
+  // 3b. Update NPCs positions and walk cycles
+  updateNpcs(dt);
+  
   // 4. Update Remote Players Positions (Interpolate / lerp for smooth motion)
   remotePlayers.forEach((p) => {
     const lerpSpeed = 10.0 * dt;
@@ -1372,7 +1556,7 @@ function initUiHandlers() {
     e.preventDefault();
     
     const username = document.getElementById('username-input').value.trim();
-    const avatarType = document.querySelector('input[name="avatar-type"]:checked').value;
+    const avatarType = "explorer";
     const color = document.getElementById('color-input').value;
     
     if (!username) return;

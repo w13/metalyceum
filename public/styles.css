@@ -170,55 +170,7 @@ body, html {
   background: rgba(15, 23, 42, 0.8);
 }
 
-/* Custom radio avatars */
-.avatar-selector {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.8rem;
-}
 
-.avatar-option input[type="radio"] {
-  display: none;
-}
-
-.avatar-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 1.2rem 0.5rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.avatar-card:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.avatar-option input[type="radio"]:checked + .avatar-card {
-  background: hsl(var(--primary) / 15%);
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 1px hsl(var(--primary));
-}
-
-.avatar-icon {
-  font-size: 2.2rem;
-  margin-bottom: 0.5rem;
-  transition: transform 0.2s ease;
-}
-
-.avatar-option:hover .avatar-icon {
-  transform: scale(1.15);
-}
-
-.avatar-card span {
-  font-size: 0.85rem;
-  font-weight: 500;
-}
 
 /* Color Picker customization */
 .color-picker-wrapper {
