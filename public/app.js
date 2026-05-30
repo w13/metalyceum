@@ -1946,17 +1946,64 @@ window.onYouTubeIframeAPIReady = function() {
 };
 
 // --- WebSocket Sync ---
+// --- Reconnect handling: exponential backoff w/ jitter, no stacked sockets ---
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+const MAX_RECONNECT_DELAY = 30000;
+
+// Remove every remote avatar (used before the server re-seeds us on reconnect,
+// since reconnecting assigns a fresh id and any prior remote state is stale).
+function clearRemotePlayers() {
+  for (const id of Array.from(remotePlayers.keys())) {
+    removeRemotePlayer(id);
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer !== null) return; // a reconnect is already pending
+  reconnectAttempts++;
+  // Full-jitter exponential backoff: random within [base/2, base], capped.
+  const base = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts - 1));
+  const delay = Math.round(base / 2 + Math.random() * (base / 2));
+  addChatLog("System", `Disconnected from server. Reconnecting in ${Math.round(delay / 1000)}s...`, "system-msg");
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectMultiplayer();
+  }, delay);
+}
+
 function connectMultiplayer() {
+  // We are (re)connecting now; cancel any pending retry timer.
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  // Tear down any previous socket so connections never stack.
+  if (socket) {
+    try {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
+    } catch (e) {}
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws`;
-  
-  socket = new WebSocket(wsUrl);
-  
-  socket.addEventListener('open', () => {
+
+  const ws = new WebSocket(wsUrl);
+  socket = ws;
+
+  ws.addEventListener('open', () => {
+    if (ws !== socket) return; // a newer socket superseded this one
+    reconnectAttempts = 0;     // successful connect resets backoff
     document.getElementById('connection-status').classList.add('connected');
-    
+
+    // Drop any stale remote avatars before the server sends a fresh roster.
+    clearRemotePlayers();
+
     // Join the game with profile
-    socket.send(JSON.stringify({
+    ws.send(JSON.stringify({
       type: "join",
       username: localPlayer.username,
       avatar: localPlayer.avatarType,
@@ -1968,13 +2015,14 @@ function connectMultiplayer() {
     }));
   });
 
-  socket.addEventListener('close', () => {
+  ws.addEventListener('close', () => {
+    if (ws !== socket) return; // stale socket closing (we already replaced it)
     document.getElementById('connection-status').classList.remove('connected');
-    addChatLog("System", "Disconnected from server. Reconnecting in 5s...", "system-msg");
-    setTimeout(connectMultiplayer, 5000);
+    scheduleReconnect();
   });
 
-  socket.addEventListener('message', (event) => {
+  ws.addEventListener('message', (event) => {
+    if (ws !== socket) return; // ignore messages from a superseded socket
     try {
       const data = JSON.parse(event.data);
 
