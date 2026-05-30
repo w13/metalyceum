@@ -12,3 +12,9 @@ dist/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Test/automation artifacts
+.playwright-mcp/
+
+# Generated Worker types (run `wrangler types` locally)
+worker-configuration.d.ts

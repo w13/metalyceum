@@ -1,20 +1,40 @@
 import { DurableObject } from "cloudflare:workers";
+import {
+  sanitizeText,
+  clampNum,
+  sanitizeColor,
+  deriveSourceType,
+  parseVideoInput,
+  parseOptionalVideoInput,
+  parseStartTime,
+  parseDurationMinutes
+} from "./validation";
 
 interface Env {
   METALYCEUM_WORLD: DurableObjectNamespace;
   ASSETS: { fetch: typeof fetch };
 }
 
-// Default video IDs/URLs for the 8 rooms
-const DEFAULT_VIDEOS = [
-  "jfKfPfyJRdk", // Room 0: Lofi Hip Hop Radio
-  "tntOCGkgt98", // Room 1: Deep Focus Coding
-  "9umH2C-Gf5U", // Room 2: RuneScape OST Orchestral
-  "Fz1z7xWjGug", // Room 3: Three.js Journey Intro
-  "Q1M_V502Gms", // Room 4: Medieval Ambient Tavern
-  "5qap5aO4i9A", // Room 5: Chill Lofi Beats
-  "hHW1oY26kxQ", // Room 6: Synthwave Coding Mix
-  "2g811Ny7FBE"  // Room 7: Classic Fantasy RPG OST
+const ROOM_COUNT = 8;
+
+interface RoomEvent {
+  roomId: number;
+  name: string;
+  sourceValue: string;
+  startTime: string | null;
+  durationMinutes: number;
+  updatedAt: number;
+}
+
+const DEFAULT_ROOMS: RoomEvent[] = [
+  { roomId: 0, name: "North Hall", sourceValue: "jfKfPfyJRdk", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 1, name: "East Studio", sourceValue: "tntOCGkgt98", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 2, name: "Open Workshop", sourceValue: "9umH2C-Gf5U", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 3, name: "Broadcast Room", sourceValue: "Fz1z7xWjGug", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 4, name: "South Lounge", sourceValue: "Q1M_V502Gms", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 5, name: "Crit Room", sourceValue: "5qap5aO4i9A", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 6, name: "Screening Room", sourceValue: "hHW1oY26kxQ", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { roomId: 7, name: "Commons", sourceValue: "2g811Ny7FBE", startTime: null, durationMinutes: 0, updatedAt: 0 }
 ];
 
 interface Player {
@@ -49,51 +69,9 @@ const MAX_MOVE_STEP = 15;      // reject single-message teleports larger than th
 const CHAT_MIN_INTERVAL = 400; // ms between accepted chat messages
 const BUCKET_CAPACITY = 180;   // burst allowance per connection
 const BUCKET_REFILL = 90;      // tokens/sec (legit movement peaks ~60/s)
+const MAX_ROOM_NAME_LEN = 48;
 
-const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
-
-function sanitizeText(v: unknown, maxLen: number): string {
-  if (typeof v !== "string") return "";
-  // Strip control characters, trim, and cap length
-  return v.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, maxLen);
-}
-
-function clampNum(v: unknown, min: number, max: number, fallback: number): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
-  return Math.min(max, Math.max(min, v));
-}
-
-function sanitizeColor(v: unknown, fallback = "#3b82f6"): string {
-  return typeof v === "string" && COLOR_RE.test(v) ? v : fallback;
-}
-
-// Accept only a bare 11-char YouTube ID, a YouTube URL, or a meet.google.com
-// URL. Returns a normalized safe value, or null to reject.
-function parseVideoInput(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  if (!s) return null;
-  if (YT_ID_RE.test(s)) return s;
-  try {
-    const url = new URL(s.startsWith("http") ? s : "https://" + s);
-    if (url.hostname === "meet.google.com" || url.hostname.endsWith(".meet.google.com")) {
-      // Drop any query/fragment; keep only the meeting-code path
-      return `https://meet.google.com${url.pathname}`;
-    }
-    if (url.hostname === "www.youtube.com" || url.hostname === "youtube.com") {
-      const id = url.searchParams.get("v");
-      return id && YT_ID_RE.test(id) ? id : null;
-    }
-    if (url.hostname === "youtu.be") {
-      const id = url.pathname.slice(1).split("/")[0];
-      return YT_ID_RE.test(id) ? id : null;
-    }
-  } catch {
-    // not a parseable URL
-  }
-  return null;
-}
+// Pure validation/sanitization helpers live in ./validation (unit-tested).
 
 // Emit a single-line JSON event for Workers Logs / `wrangler tail`.
 function logEvent(event: string, fields: Record<string, unknown> = {}): void {
@@ -102,7 +80,36 @@ function logEvent(event: string, fields: Record<string, unknown> = {}): void {
 
 export class MetalyceumWorld extends DurableObject {
   sessions: Map<WebSocket, Session> = new Map();
-  videos: string[] = [];
+  rooms: RoomEvent[] = [];
+
+  private tableExists(tableName: string): boolean {
+    const cursor = this.ctx.storage.sql.exec(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+      tableName
+    );
+    return cursor.toArray().length > 0;
+  }
+
+  private persistRoom(room: RoomEvent): void {
+    this.ctx.storage.sql.exec(
+      `INSERT OR REPLACE INTO room_events
+        (room_id, name, source_value, start_time, duration_minutes, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      room.roomId,
+      room.name,
+      room.sourceValue,
+      room.startTime,
+      room.durationMinutes,
+      room.updatedAt
+    );
+  }
+
+  private serializeRoom(room: RoomEvent) {
+    return {
+      ...room,
+      sourceType: deriveSourceType(room.sourceValue)
+    };
+  }
 
   // Token-bucket flood protection: refills over time, each message costs 1.
   // Sized so legitimate movement (~60 msgs/s) passes while abuse is capped.
@@ -119,53 +126,86 @@ export class MetalyceumWorld extends DurableObject {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
 
-    // Retrieve saved videos or initialize with defaults using SQLite Storage API
+    // Retrieve saved room metadata or initialize/migrate using SQLite Storage API.
     this.ctx.blockConcurrencyWhile(async () => {
       try {
-        // Create table using SQL API (compulsory for Workers Free Plan)
         this.ctx.storage.sql.exec(
-          "CREATE TABLE IF NOT EXISTS room_videos (room_id INTEGER PRIMARY KEY, video_id TEXT)"
+          `CREATE TABLE IF NOT EXISTS room_events (
+            room_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            source_value TEXT NOT NULL,
+            start_time TEXT,
+            duration_minutes INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+          )`
         );
 
-        // Check if rows already exist
-        const countCursor = this.ctx.storage.sql.exec("SELECT COUNT(*) as cnt FROM room_videos");
-        const results = countCursor.toArray() as { cnt: number }[];
-        const count = results[0]?.cnt ?? 0;
+        const countCursor = this.ctx.storage.sql.exec("SELECT COUNT(*) as cnt FROM room_events");
+        const count = (countCursor.toArray() as { cnt: number }[])[0]?.cnt ?? 0;
 
         if (count === 0) {
-          // Prepopulate default videos
-          for (let i = 0; i < 8; i++) {
-            this.ctx.storage.sql.exec(
-              "INSERT INTO room_videos (room_id, video_id) VALUES (?, ?)",
-              i,
-              DEFAULT_VIDEOS[i]
-            );
+          const migratedSources = new Map<number, string>();
+          if (this.tableExists("room_videos")) {
+            const oldRows = this.ctx.storage.sql.exec(
+              "SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC"
+            ).toArray() as { room_id: number; video_id: string }[];
+            for (const row of oldRows) {
+              if (row.room_id >= 0 && row.room_id < ROOM_COUNT) {
+                migratedSources.set(row.room_id, row.video_id);
+              }
+            }
+          }
+
+          const seedTime = Date.now();
+          for (const defaults of DEFAULT_ROOMS) {
+            this.persistRoom({
+              ...defaults,
+              sourceValue: migratedSources.get(defaults.roomId) ?? defaults.sourceValue,
+              updatedAt: seedTime
+            });
           }
         }
 
-        // Load current videos into memory
-        const videoCursor = this.ctx.storage.sql.exec(
-          "SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC"
-        );
-        const videoRows = videoCursor.toArray() as { room_id: number; video_id: string }[];
-        
-        this.videos = new Array(8);
-        for (const row of videoRows) {
-          if (row.room_id >= 0 && row.room_id < 8) {
-            this.videos[row.room_id] = row.video_id;
-          }
+        const roomRows = this.ctx.storage.sql.exec(
+          `SELECT room_id, name, source_value, start_time, duration_minutes, updated_at
+           FROM room_events
+           ORDER BY room_id ASC`
+        ).toArray() as {
+          room_id: number;
+          name: string;
+          source_value: string;
+          start_time: string | null;
+          duration_minutes: number;
+          updated_at: number;
+        }[];
+
+        const roomMap = new Map<number, RoomEvent>();
+        for (const row of roomRows) {
+          if (row.room_id < 0 || row.room_id >= ROOM_COUNT) continue;
+          const defaults = DEFAULT_ROOMS[row.room_id];
+          roomMap.set(row.room_id, {
+            roomId: row.room_id,
+            name: sanitizeText(row.name, MAX_ROOM_NAME_LEN) || defaults.name,
+            sourceValue: parseOptionalVideoInput(row.source_value) ?? defaults.sourceValue,
+            startTime: parseStartTime(row.start_time),
+            durationMinutes: parseDurationMinutes(row.duration_minutes, defaults.durationMinutes),
+            updatedAt: typeof row.updated_at === "number" && Number.isFinite(row.updated_at) ? row.updated_at : 0
+          });
         }
 
-        // Final fallback safeguard
-        for (let i = 0; i < 8; i++) {
-          if (!this.videos[i]) {
-            this.videos[i] = DEFAULT_VIDEOS[i];
+        const repairedRooms: RoomEvent[] = [];
+        const now = Date.now();
+        for (const defaults of DEFAULT_ROOMS) {
+          const room = roomMap.get(defaults.roomId) ?? { ...defaults, updatedAt: now };
+          repairedRooms.push(room);
+          if (!roomMap.has(defaults.roomId)) {
+            this.persistRoom(room);
           }
         }
+        this.rooms = repairedRooms;
       } catch (err) {
         console.error("Failed to initialize SQLite storage:", err);
-        // Load defaults in memory if database fails
-        this.videos = [...DEFAULT_VIDEOS];
+        this.rooms = DEFAULT_ROOMS.map((room) => ({ ...room }));
       }
     });
   }
@@ -260,7 +300,8 @@ export class MetalyceumWorld extends DurableObject {
               type: "init",
               playerId: id,
               players: playersList,
-              videos: this.videos
+              rooms: this.rooms.map((room) => this.serializeRoom(room)),
+              videos: this.rooms.map((room) => room.sourceValue)
             }));
 
             // Broadcast join to all other players
@@ -339,36 +380,81 @@ export class MetalyceumWorld extends DurableObject {
             break;
           }
 
-          case "video_change": {
+          case "room_update": {
             if (!session.player) break;
             const room = Number(data.room);
-            if (!Number.isInteger(room) || room < 0 || room > 7) break;
+            if (!Number.isInteger(room) || room < 0 || room >= ROOM_COUNT) break;
 
             // Permission gate: you may only change the room you are inside
             if (session.player.room !== room) break;
 
-            const videoId = parseVideoInput(data.videoId);
-            if (!videoId) break;
+            const current = this.rooms[room] ?? { ...DEFAULT_ROOMS[room] };
+            const name = sanitizeText(data.name, MAX_ROOM_NAME_LEN) || current.name;
+            const sourceValue = parseOptionalVideoInput(data.sourceValue);
+            if (sourceValue === null) break;
 
-            this.videos[room] = videoId;
+            const nextStartTime = parseStartTime(data.startTime);
+            if (data.startTime !== undefined && data.startTime !== null && data.startTime !== "" && !nextStartTime) {
+              break;
+            }
 
-            // Persist change in SQLite database
+            const updatedRoom: RoomEvent = {
+              roomId: room,
+              name,
+              sourceValue,
+              startTime: data.startTime === undefined ? current.startTime : nextStartTime,
+              durationMinutes: parseDurationMinutes(data.durationMinutes, current.durationMinutes),
+              updatedAt: Date.now()
+            };
+            this.rooms[room] = updatedRoom;
+
             try {
-              this.ctx.storage.sql.exec(
-                "INSERT OR REPLACE INTO room_videos (room_id, video_id) VALUES (?, ?)",
-                room,
-                videoId
-              );
+              this.persistRoom(updatedRoom);
             } catch (dbErr) {
-              console.error("Failed to update video in SQLite database:", dbErr);
+              console.error("Failed to update room event in SQLite database:", dbErr);
             }
 
             this.broadcast({
-              type: "video_change",
-              room,
-              videoId
+              type: "room_update",
+              room: this.serializeRoom(updatedRoom)
             });
-            logEvent("video_change", { id, room, videoId });
+            logEvent("room_update", {
+              id,
+              room,
+              sourceType: deriveSourceType(updatedRoom.sourceValue),
+              startTime: updatedRoom.startTime,
+              durationMinutes: updatedRoom.durationMinutes
+            });
+            break;
+          }
+
+          case "video_change": {
+            if (!session.player) break;
+            const room = Number(data.room);
+            if (!Number.isInteger(room) || room < 0 || room >= ROOM_COUNT) break;
+            if (session.player.room !== room) break;
+
+            const sourceValue = parseVideoInput(data.videoId);
+            if (!sourceValue) break;
+            const current = this.rooms[room] ?? { ...DEFAULT_ROOMS[room] };
+            const updatedRoom: RoomEvent = {
+              ...current,
+              sourceValue,
+              updatedAt: Date.now()
+            };
+            this.rooms[room] = updatedRoom;
+
+            try {
+              this.persistRoom(updatedRoom);
+            } catch (dbErr) {
+              console.error("Failed to update room source in SQLite database:", dbErr);
+            }
+
+            this.broadcast({
+              type: "room_update",
+              room: this.serializeRoom(updatedRoom)
+            });
+            logEvent("room_update", { id, room, sourceType: deriveSourceType(sourceValue) });
             break;
           }
         }

@@ -1,16 +1,18 @@
 {
   "name": "metalyceum",
   "version": "1.0.0",
-  "description": "Multiplayer 3D World in Three.js on Cloudflare Workers and Durable Objects",
+  "description": "3D social event world with room-based YouTube Live and Google Meet sessions",
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240405.0",
     "typescript": "^5.4.5",
-    "wrangler": "^4.80.0",
-    "@cloudflare/workers-types": "^4.20240405.0"
+    "vitest": "^4.1.7",
+    "wrangler": "^4.80.0"
   }
 }
