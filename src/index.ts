@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 interface Env {
   METALYCEUM_WORLD: DurableObjectNamespace;
   ASSETS: { fetch: typeof fetch };
@@ -28,24 +30,60 @@ interface Player {
   isMoving: boolean;
 }
 
-export class MetalyceumWorld {
-  state: DurableObjectState;
-  env: Env;
+export class MetalyceumWorld extends DurableObject {
   sessions: Map<WebSocket, { id: string; player?: Player }> = new Map();
   videos: string[] = [];
 
-  constructor(state: DurableObjectState, env: Env) {
-    this.state = state;
-    this.env = env;
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
 
-    // Retrieve saved videos or initialize with defaults
-    this.state.blockConcurrencyWhile(async () => {
-      const savedVideos = await this.state.storage.get<string[]>("videos");
-      if (savedVideos && savedVideos.length === 8) {
-        this.videos = savedVideos;
-      } else {
+    // Retrieve saved videos or initialize with defaults using SQLite Storage API
+    this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        // Create table using SQL API (compulsory for Workers Free Plan)
+        this.ctx.storage.sql.exec(
+          "CREATE TABLE IF NOT EXISTS room_videos (room_id INTEGER PRIMARY KEY, video_id TEXT)"
+        );
+
+        // Check if rows already exist
+        const countCursor = this.ctx.storage.sql.exec("SELECT COUNT(*) as cnt FROM room_videos");
+        const results = countCursor.toArray() as { cnt: number }[];
+        const count = results[0]?.cnt ?? 0;
+
+        if (count === 0) {
+          // Prepopulate default videos
+          for (let i = 0; i < 8; i++) {
+            this.ctx.storage.sql.exec(
+              "INSERT INTO room_videos (room_id, video_id) VALUES (?, ?)",
+              i,
+              DEFAULT_VIDEOS[i]
+            );
+          }
+        }
+
+        // Load current videos into memory
+        const videoCursor = this.ctx.storage.sql.exec(
+          "SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC"
+        );
+        const videoRows = videoCursor.toArray() as { room_id: number; video_id: string }[];
+        
+        this.videos = new Array(8);
+        for (const row of videoRows) {
+          if (row.room_id >= 0 && row.room_id < 8) {
+            this.videos[row.room_id] = row.video_id;
+          }
+        }
+
+        // Final fallback safeguard
+        for (let i = 0; i < 8; i++) {
+          if (!this.videos[i]) {
+            this.videos[i] = DEFAULT_VIDEOS[i];
+          }
+        }
+      } catch (err) {
+        console.error("Failed to initialize SQLite storage:", err);
+        // Load defaults in memory if database fails
         this.videos = [...DEFAULT_VIDEOS];
-        await this.state.storage.put("videos", this.videos);
       }
     });
   }
@@ -181,7 +219,17 @@ export class MetalyceumWorld {
             const videoId = data.videoId;
             if (roomIdx >= 0 && roomIdx < 8 && videoId) {
               this.videos[roomIdx] = videoId;
-              await this.state.storage.put("videos", this.videos);
+              
+              // Persist change in SQLite database
+              try {
+                this.ctx.storage.sql.exec(
+                  "INSERT OR REPLACE INTO room_videos (room_id, video_id) VALUES (?, ?)",
+                  roomIdx,
+                  videoId
+                );
+              } catch (dbErr) {
+                console.error("Failed to update video in SQLite database:", dbErr);
+              }
 
               this.broadcast({
                 type: "video_change",
@@ -241,8 +289,7 @@ export default {
       return stub.fetch(request);
     }
 
-    // Default static assets handler (in wrangler, routes matching assets directory are served automatically, 
-    // but in worker script, we fetch from env.ASSETS for completeness and dev compatibility)
+    // Default static assets handler
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
