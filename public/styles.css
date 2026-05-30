@@ -271,6 +271,69 @@ body, html {
   font-weight: 500;
 }
 
+.event-board {
+  top: 6.25rem;
+  left: 1.5rem;
+  width: 360px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.event-board-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.event-board-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.event-board-header p,
+#event-board-count {
+  font-size: 0.75rem;
+  color: hsl(var(--text-muted));
+}
+
+.event-board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.event-board-item {
+  padding: 0.75rem 0.8rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.event-board-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.event-board-item-top strong {
+  font-size: 0.85rem;
+}
+
+.event-board-item-meta,
+.event-board-item-detail {
+  font-size: 0.75rem;
+  color: hsl(var(--text-muted));
+}
+
 /* Chat HUD Overlay */
 .chat-wrapper {
   position: absolute;
@@ -407,6 +470,92 @@ body, html {
   font-weight: 600;
 }
 
+.room-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.room-source-type {
+  font-size: 0.8rem;
+  color: hsl(var(--text-muted));
+  font-weight: 600;
+}
+
+.event-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.event-status-badge.idle {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.event-status-badge.ready,
+.event-status-badge.upcoming {
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.event-status-badge.live {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+.event-status-badge.ended {
+  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.16);
+  border-color: rgba(244, 63, 94, 0.28);
+}
+
+.room-status-text {
+  font-size: 0.8rem;
+  color: hsl(var(--text-muted));
+  line-height: 1.45;
+}
+
+.room-details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.room-detail-card,
+.room-source-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.room-detail-card span,
+.room-source-box span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--text-muted));
+}
+
+.room-detail-card strong,
+.room-source-box strong {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 /* YouTube Video container aspect ratio */
 .video-section {
   width: 100%;
@@ -515,13 +664,26 @@ body, html {
   line-height: 1.3;
 }
 
-.modal-input-row {
-  display: flex;
-  gap: 0.5rem;
+.modal-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
 }
 
-.modal-input-row input {
-  flex: 1;
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.modal-field label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--text-muted));
+}
+
+.modal-field input {
   padding: 0.5rem 0.8rem;
   background: rgba(15, 23, 42, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -529,9 +691,10 @@ body, html {
   color: #fff;
   font-family: var(--font-family);
   font-size: 0.8rem;
+  width: 100%;
 }
 
-.modal-input-row input:focus {
+.modal-field input:focus {
   outline: none;
   border-color: hsl(var(--primary));
 }
@@ -667,6 +830,16 @@ body, html {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+  .event-board {
+    width: calc(100% - 3rem);
+    max-height: 220px;
+  }
+
+  .room-details-grid,
+  .modal-field-grid {
+    grid-template-columns: 1fr;
+  }
+
   #room-panel {
     width: 100%;
     max-width: 100%;

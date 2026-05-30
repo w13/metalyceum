@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Metalyceum | 3D Multiplayer World</title>
-  <meta name="description" content="A real-time multiplayer 3D world with 8 rooms and synchronized YouTube feeds, built with Three.js and Cloudflare Workers.">
+  <title>Metalyceum | 3D Social Event World</title>
+  <meta name="description" content="A real-time 3D social world for chatting together in rooms and joining shared YouTube Live or Google Meet events.">
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
   <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
-  <!-- 3D Game Canvas Container -->
+  <!-- 3D World Canvas Container -->
   <div id="game-container"></div>
 
   <!-- Classroom Board Embedded YouTube Video Container -->
@@ -33,7 +33,7 @@
   <div id="loading-screen" class="overlay">
     <div class="spinner-container">
       <div class="spinner"></div>
-      <p>Initializing Metalyceum World...</p>
+      <p>Opening Metalyceum...</p>
     </div>
   </div>
 
@@ -42,13 +42,13 @@
     <div class="login-card glass">
       <div class="login-header">
         <h1>METALYCEUM</h1>
-        <p>Step into the 3D Virtual Academy</p>
+        <p>A shared 3D world for live rooms, Meet sessions, and YouTube Live watch parties.</p>
       </div>
       
       <form id="login-form">
         <div class="form-group">
-          <label for="username-input">Choose Character Name</label>
-          <input type="text" id="username-input" placeholder="e.g. WiseOldMan" maxlength="15" required autocomplete="off">
+          <label for="username-input">Choose Display Name</label>
+          <input type="text" id="username-input" placeholder="e.g. Waqqas" maxlength="15" required autocomplete="off">
         </div>
         
 
@@ -68,7 +68,7 @@
 
   <!-- Main Game HUD (Heads Up Display) -->
   <div id="hud-container">
-    <!-- Top-Left: Player Stats & Connection Status -->
+    <!-- Top-Left: Presence & Schedule -->
     <div class="hud-card stats-card glass">
       <div class="stats-row">
         <span class="status-dot connected" id="connection-status"></span>
@@ -77,13 +77,24 @@
       <div class="stats-location" id="hud-location">Exploring Outdoors</div>
     </div>
 
+    <div class="hud-card event-board glass">
+      <div class="event-board-header">
+        <div>
+          <h3>Event Board</h3>
+          <p>What is live or starting soon</p>
+        </div>
+        <span id="event-board-count">0 live · 0 upcoming</span>
+      </div>
+      <div id="event-board-list" class="event-board-list"></div>
+    </div>
+
     <!-- Bottom-Left: Real-time Chat Box -->
     <div class="chat-wrapper glass">
       <div class="chat-log" id="chat-log">
-        <div class="system-msg">Welcome to Metalyceum! Use WASD to walk, Space to jump, and mouse drag to look around.</div>
+        <div class="system-msg">Welcome to Metalyceum. Walk through rooms, chat with others, and open live events together.</div>
       </div>
       <form id="chat-form" class="chat-input-row">
-        <input type="text" id="chat-input" placeholder="Say something to the world..." autocomplete="off" maxlength="100">
+        <input type="text" id="chat-input" placeholder="Say something in Metalyceum..." autocomplete="off" maxlength="100">
         <button type="submit" class="btn-send">Send</button>
       </form>
     </div>
@@ -96,10 +107,35 @@
         <span class="room-capacity" id="room-capacity">1 / 10 Players</span>
       </div>
 
-      <!-- YouTube Embed Area -->
+      <div class="room-status-row">
+       <span id="room-status-badge" class="event-status-badge idle">Idle</span>
+       <span id="room-source-type" class="room-source-type">Not set</span>
+      </div>
+      <p id="room-status-text" class="room-status-text">No event scheduled yet.</p>
+
+      <div class="room-details-grid">
+       <div class="room-detail-card">
+         <span>Starts</span>
+         <strong id="room-start-time">Not scheduled</strong>
+       </div>
+       <div class="room-detail-card">
+         <span>Ends</span>
+         <strong id="room-end-time">—</strong>
+       </div>
+       <div class="room-detail-card">
+         <span>Duration</span>
+         <strong id="room-duration">Open-ended</strong>
+       </div>
+      </div>
+
+      <div class="room-source-box">
+       <span>Source</span>
+       <strong id="room-source-value">No YouTube Live or Meet link set</strong>
+      </div>
+
+      <!-- Event embed area -->
       <div class="video-section">
         <div class="video-container">
-          <!-- The YouTube iframe will replace this div -->
           <div id="youtube-player"></div>
         </div>
         <button class="btn-primary" id="open-theater-btn" style="width: 100%; margin-top: 10px; font-size: 0.85rem; padding: 8px 12px; border-radius: var(--radius-md); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
@@ -115,16 +151,31 @@
         </ul>
       </div>
 
-      <!-- Video Control: Change YouTube Feed -->
+      <!-- Room Event Controls -->
       <div class="video-control-section">
-        <button class="btn-secondary" id="change-video-btn">Change Video Feed</button>
+        <button class="btn-secondary" id="change-video-btn">Edit Room Event</button>
         <div id="video-input-modal" class="video-modal-hidden glass">
-          <h4>Update Room Stream</h4>
-          <p class="modal-help">Paste a YouTube Video ID (e.g. <code>jfKfPfyJRdk</code>) or full URL.</p>
-          <div class="modal-input-row">
-            <input type="text" id="video-url-input" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
-            <button class="btn-primary btn-sm" id="submit-video-btn">Update</button>
+          <h4>Update Room Event</h4>
+          <p class="modal-help">Name the room, set an optional start time and duration, and add either a YouTube Live link or Google Meet URL.</p>
+          <div class="modal-field">
+            <label for="room-name-input">Room name</label>
+            <input type="text" id="room-name-input" maxlength="48" placeholder="Room name" autocomplete="off">
           </div>
+          <div class="modal-field">
+            <label for="video-url-input">Live source</label>
+            <input type="text" id="video-url-input" placeholder="YouTube Live URL/ID or https://meet.google.com/..." autocomplete="off">
+          </div>
+          <div class="modal-field-grid">
+            <div class="modal-field">
+              <label for="room-start-input">Start time</label>
+              <input type="datetime-local" id="room-start-input">
+            </div>
+            <div class="modal-field">
+              <label for="room-duration-input">Duration (min)</label>
+              <input type="number" id="room-duration-input" min="0" max="1440" placeholder="90">
+            </div>
+          </div>
+          <button class="btn-primary btn-sm" id="submit-video-btn">Save Event</button>
           <button class="btn-text" id="cancel-video-btn">Cancel</button>
         </div>
       </div>

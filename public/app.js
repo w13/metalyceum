@@ -20,14 +20,14 @@ function getTerrainHeight(x, z) {
 
 // Define the 8 rooms layout
 const ROOMS = [
-  { id: 0, name: "The Tech Nexus", x: -30, z: -10, video: "" },
-  { id: 1, name: "Dev Sandbox", x: -10, z: -10, video: "" },
-  { id: 2, name: "Creative Studio", x: 10, z: -10, video: "" },
-  { id: 3, name: "Synthesized Beats", x: 30, z: -10, video: "" },
-  { id: 4, name: "Rune Tavern", x: -30, z: 10, video: "" },
-  { id: 5, name: "Lofi Library", x: -10, z: 10, video: "" },
-  { id: 6, name: "The Keynote Stage", x: 10, z: 10, video: "" },
-  { id: 7, name: "Retro Gaming Lounge", x: 30, z: 10, video: "" }
+  { id: 0, name: "North Hall", x: -30, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 1, name: "East Studio", x: -10, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 2, name: "Open Workshop", x: 10, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 3, name: "Broadcast Room", x: 30, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 4, name: "South Lounge", x: -30, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 5, name: "Crit Room", x: -10, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 6, name: "Screening Room", x: 10, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 7, name: "Commons", x: 30, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 }
 ];
 
 // Room walls definitions for collision checking
@@ -58,6 +58,7 @@ let ytPlayer = null;
 let boardYtPlayer = null; // YouTube player for classroom blackboard
 let ytApiReady = false;
 let activeRoomVideoId = "";
+let roomStatusTimer = null;
 let lastSentPosition = { x: 0, y: 0, z: 0, ry: 0, isMoving: false };
 
 // Building fading assets
@@ -121,6 +122,249 @@ function parseVideoInput(raw) {
     }
   } catch (e) {}
   return null;
+}
+
+function deriveSourceType(sourceValue) {
+  if (!sourceValue) return 'none';
+  return sourceValue.includes('meet.google.com') ? 'meet' : 'youtube';
+}
+
+function applyRoomData(roomId, roomData = {}) {
+  const room = ROOMS[roomId];
+  if (!room) return;
+
+  if (typeof roomData.name === 'string' && roomData.name.trim()) {
+    room.name = roomData.name.trim();
+  }
+
+  const nextSourceValue = typeof roomData.sourceValue === 'string'
+    ? roomData.sourceValue
+    : typeof roomData.videoId === 'string'
+      ? roomData.videoId
+      : room.sourceValue;
+  room.sourceValue = nextSourceValue || "";
+  room.video = room.sourceValue;
+  room.sourceType = roomData.sourceType || deriveSourceType(room.sourceValue);
+
+  if (roomData.startTime === null) {
+    room.startTime = null;
+  } else if (typeof roomData.startTime === 'string') {
+    room.startTime = roomData.startTime;
+  }
+
+  if (typeof roomData.durationMinutes === 'number' && Number.isFinite(roomData.durationMinutes)) {
+    room.durationMinutes = Math.max(0, Math.round(roomData.durationMinutes));
+  }
+
+  if (typeof roomData.updatedAt === 'number' && Number.isFinite(roomData.updatedAt)) {
+    room.updatedAt = roomData.updatedAt;
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return 'Not scheduled';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not scheduled';
+  return new Intl.DateTimeFormat([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function formatDateTimeLocalValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (num) => String(num).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getRoomEventWindow(room) {
+  if (!room.startTime) {
+    return { startDate: null, endDate: null, durationMinutes: room.durationMinutes || 0 };
+  }
+  const startDate = new Date(room.startTime);
+  if (Number.isNaN(startDate.getTime())) {
+    return { startDate: null, endDate: null, durationMinutes: room.durationMinutes || 0 };
+  }
+  const durationMinutes = Math.max(0, room.durationMinutes || 0);
+  const endDate = durationMinutes > 0
+    ? new Date(startDate.getTime() + durationMinutes * 60 * 1000)
+    : null;
+  return { startDate, endDate, durationMinutes };
+}
+
+function getRoomEventStatus(room) {
+  const sourceValue = room.sourceValue || "";
+  const { startDate, endDate, durationMinutes } = getRoomEventWindow(room);
+  const now = new Date();
+
+  if (!sourceValue && !startDate) {
+    return {
+      tone: 'idle',
+      label: 'Idle',
+      detail: 'No event scheduled yet.'
+    };
+  }
+
+  if (!startDate) {
+    return {
+      tone: sourceValue ? 'ready' : 'idle',
+      label: sourceValue ? 'Open room' : 'Idle',
+      detail: sourceValue ? 'Source is ready. Add a start time to schedule it.' : 'No event scheduled yet.'
+    };
+  }
+
+  if (!sourceValue) {
+    if (now < startDate) {
+      return {
+        tone: 'ready',
+        label: 'Scheduled',
+        detail: `Starts ${formatDateTime(startDate.toISOString())}. Add a source before it begins.`
+      };
+    }
+
+    if (!endDate || durationMinutes === 0 || now <= endDate) {
+      return {
+        tone: 'ready',
+        label: 'Awaiting source',
+        detail: 'This room has started, but no YouTube Live or Google Meet source is attached yet.'
+      };
+    }
+
+    return {
+      tone: 'ended',
+      label: 'Ended',
+      detail: `Ended ${formatDateTime(endDate.toISOString())}`
+    };
+  }
+
+  if (now < startDate) {
+    return {
+      tone: 'upcoming',
+      label: 'Upcoming',
+      detail: `Starts ${formatDateTime(startDate.toISOString())}`
+    };
+  }
+
+  if (!endDate || durationMinutes === 0 || now <= endDate) {
+    return {
+      tone: 'live',
+      label: 'Live now',
+      detail: endDate ? `Ends ${formatDateTime(endDate.toISOString())}` : 'Live with no end time set.'
+    };
+  }
+
+  return {
+    tone: 'ended',
+    label: 'Ended',
+    detail: `Ended ${formatDateTime(endDate.toISOString())}`
+  };
+}
+
+function getRoomPlaybackStartSeconds(room) {
+  if (!room.startTime || room.sourceType !== 'youtube') return 0;
+  const { startDate, durationMinutes } = getRoomEventWindow(room);
+  if (!startDate) return 0;
+  const elapsed = Math.floor((Date.now() - startDate.getTime()) / 1000);
+  const clampedElapsed = Math.max(0, elapsed);
+  if (durationMinutes > 0) {
+    return Math.min(durationMinutes * 60, clampedElapsed);
+  }
+  return clampedElapsed;
+}
+
+function renderEventBoard() {
+  const list = document.getElementById('event-board-list');
+  const count = document.getElementById('event-board-count');
+  if (!list || !count) return;
+
+  list.innerHTML = '';
+  let liveCount = 0;
+  let upcomingCount = 0;
+
+  const statusPriority = { live: 0, upcoming: 1, ready: 2, ended: 3, idle: 4 };
+  const roomsForBoard = ROOMS
+    .map((room) => ({
+      room,
+      status: getRoomEventStatus(room),
+      startDate: getRoomEventWindow(room).startDate
+    }))
+    .sort((a, b) => {
+      const toneDiff = statusPriority[a.status.tone] - statusPriority[b.status.tone];
+      if (toneDiff !== 0) return toneDiff;
+
+      const aStart = a.startDate ? a.startDate.getTime() : Number.POSITIVE_INFINITY;
+      const bStart = b.startDate ? b.startDate.getTime() : Number.POSITIVE_INFINITY;
+      if (aStart !== bStart) return aStart - bStart;
+
+      return a.room.id - b.room.id;
+    });
+
+  roomsForBoard.forEach(({ room, status }) => {
+    if (status.tone === 'live') liveCount += 1;
+    if (status.tone === 'upcoming') upcomingCount += 1;
+
+    const card = document.createElement('div');
+    card.className = 'event-board-item';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'event-board-item-top';
+
+    const title = document.createElement('strong');
+    title.textContent = room.name;
+
+    const badge = document.createElement('span');
+    badge.className = `event-status-badge ${status.tone}`;
+    badge.textContent = status.label;
+
+    topRow.append(title, badge);
+
+    const meta = document.createElement('div');
+    meta.className = 'event-board-item-meta';
+    meta.textContent = room.sourceType === 'meet'
+      ? 'Google Meet'
+      : room.sourceType === 'youtube'
+        ? 'YouTube Live'
+        : 'No source set';
+
+    const detail = document.createElement('div');
+    detail.className = 'event-board-item-detail';
+    detail.textContent = status.detail;
+
+    card.append(topRow, meta, detail);
+    list.appendChild(card);
+  });
+
+  count.textContent = `${liveCount} live · ${upcomingCount} upcoming`;
+}
+
+function updateRoomPanelDetails() {
+  const room = ROOMS[localPlayer.currentRoom];
+  if (!room) return;
+
+  const status = getRoomEventStatus(room);
+  const { startDate, endDate, durationMinutes } = getRoomEventWindow(room);
+  const locationTag = document.getElementById('hud-location');
+  if (locationTag) {
+    locationTag.innerText = `In Room: ${room.name}`;
+  }
+
+  document.getElementById('room-title').innerText = room.name;
+  document.getElementById('room-source-type').innerText = room.sourceType === 'meet'
+    ? 'Google Meet'
+    : room.sourceType === 'youtube'
+      ? 'YouTube Live'
+      : 'Not set';
+  document.getElementById('room-status-badge').innerText = status.label;
+  document.getElementById('room-status-badge').className = `event-status-badge ${status.tone}`;
+  document.getElementById('room-status-text').innerText = status.detail;
+  document.getElementById('room-start-time').innerText = startDate ? formatDateTime(startDate.toISOString()) : 'Not scheduled';
+  document.getElementById('room-end-time').innerText = endDate ? formatDateTime(endDate.toISOString()) : '—';
+  document.getElementById('room-duration').innerText = durationMinutes > 0 ? `${durationMinutes} min` : 'Open-ended';
+  document.getElementById('room-source-value').innerText = room.sourceValue || 'No YouTube Live or Meet link set';
 }
 
 // Build a Google Meet info card with DOM APIs (no innerHTML interpolation).
@@ -843,7 +1087,7 @@ function updateClassroomBoard() {
   container.style.height = `${height}px`;
   container.style.display = 'block';
   
-  if (boardYtPlayer && boardYtPlayer.playVideo && ROOMS[6].video && !ROOMS[6].video.includes('meet.google.com')) {
+  if (boardYtPlayer && boardYtPlayer.playVideo && ROOMS[6].sourceValue && ROOMS[6].sourceType === 'youtube') {
     try {
       boardYtPlayer.playVideo();
     } catch(e) {}
@@ -1740,7 +1984,7 @@ function detectRoomEntry() {
       locTag.innerText = `In Room: ${room.name}`;
       
       // Update room UI Panel
-      document.getElementById('room-title').innerText = room.name;
+      updateRoomPanelDetails();
       panel.classList.add('room-panel-visible');
       
       // Setup/update YouTube stream for this room
@@ -1792,7 +2036,7 @@ function refreshRoomPlayersList() {
 // --- YouTube & Google Meet Player Logic ---
 function setupRoomVideo(roomId) {
   const room = ROOMS[roomId];
-  const videoId = room.video || "";
+  const videoId = room.sourceValue || room.video || "";
 
   if (!videoId) {
     // Hide both/all
@@ -1800,17 +2044,25 @@ function setupRoomVideo(roomId) {
     if (roomYt) roomYt.style.display = 'none';
     const roomMeet = document.getElementById('room-meet-card');
     if (roomMeet) roomMeet.style.display = 'none';
+    if (ytPlayer && ytPlayer.pauseVideo) {
+      try { ytPlayer.pauseVideo(); } catch (e) {}
+    }
+    activeRoomVideoId = "";
     
     if (roomId === 6) {
       const boardYt = document.getElementById('embedded-youtube-player');
       if (boardYt) boardYt.style.display = 'none';
       const boardMeet = document.getElementById('board-meet-card');
       if (boardMeet) boardMeet.style.display = 'none';
+      if (boardYtPlayer && boardYtPlayer.pauseVideo) {
+        try { boardYtPlayer.pauseVideo(); } catch (e) {}
+      }
     }
     return;
   }
 
-  const isMeet = videoId.includes('meet.google.com');
+  const isMeet = room.sourceType === 'meet';
+  const playbackStart = getRoomPlaybackStartSeconds(room);
 
   // 1. Handle Classroom Blackboard (Room 6)
   if (roomId === 6) {
@@ -1842,7 +2094,7 @@ function setupRoomVideo(roomId) {
         try {
           boardYtPlayer.loadVideoById({
             videoId: videoId,
-            startSeconds: 0
+            startSeconds: playbackStart
           });
         } catch (e) {}
       } else if (window.YT && window.YT.Player) {
@@ -1855,7 +2107,8 @@ function setupRoomVideo(roomId) {
               'playsinline': 1,
               'autoplay': 1,
               'controls': 1,
-              'rel': 0
+              'rel': 0,
+              'start': playbackStart
             },
             events: {
               'onReady': (event) => {
@@ -1911,7 +2164,7 @@ function setupRoomVideo(roomId) {
     if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
       ytPlayer.loadVideoById({
         videoId: videoId,
-        startSeconds: 0
+        startSeconds: playbackStart
       });
     } else {
       try {
@@ -1924,7 +2177,8 @@ function setupRoomVideo(roomId) {
               'playsinline': 1,
               'autoplay': 1,
               'controls': 1,
-              'rel': 0
+              'rel': 0,
+              'start': playbackStart
             },
             events: {
               'onReady': (event) => {
@@ -2031,12 +2285,17 @@ function connectMultiplayer() {
           // Receive own ID and list of other players
           localPlayer.id = data.playerId;
           
-          // Seed room videos
-          if (data.videos) {
+          if (Array.isArray(data.rooms)) {
+            data.rooms.forEach((roomData, index) => {
+              const roomId = Number.isInteger(roomData.roomId) ? roomData.roomId : index;
+              applyRoomData(roomId, roomData);
+            });
+          } else if (data.videos) {
             for (let i = 0; i < 8; i++) {
-              ROOMS[i].video = data.videos[i];
+              applyRoomData(i, { sourceValue: data.videos[i] || "" });
             }
           }
+          renderEventBoard();
 
           // Spawn existing players
           data.players.forEach((p) => {
@@ -2079,15 +2338,27 @@ function connectMultiplayer() {
           addChatLog(data.username, data.message);
           break;
 
-        case "video_change":
-          const rIdx = data.room;
-          ROOMS[rIdx].video = data.videoId;
-          
-          // If local player is inside this room, update playing video feed
+        case "room_update": {
+          const rIdx = Number.isInteger(data.room?.roomId) ? data.room.roomId : data.roomId;
+          applyRoomData(rIdx, data.room || data);
+          renderEventBoard();
           if (localPlayer.currentRoom === rIdx) {
+            updateRoomPanelDetails();
             setupRoomVideo(rIdx);
           }
           break;
+        }
+
+        case "video_change": {
+          const rIdx = data.room;
+          applyRoomData(rIdx, { sourceValue: data.videoId });
+          renderEventBoard();
+          if (localPlayer.currentRoom === rIdx) {
+            updateRoomPanelDetails();
+            setupRoomVideo(rIdx);
+          }
+          break;
+        }
 
         case "leave":
           removeRemotePlayer(data.id);
@@ -2424,7 +2695,8 @@ function animate() {
 // --- Theater Mode & Raycaster Interactions ---
 function openTheaterMode(roomId) {
   const room = ROOMS[roomId];
-  const feedVal = room.video || "";
+  const feedVal = room.sourceValue || room.video || "";
+  const playbackStart = getRoomPlaybackStartSeconds(room);
   
   const modal = document.getElementById('theater-modal');
   const title = document.getElementById('theater-title');
@@ -2437,10 +2709,10 @@ function openTheaterMode(roomId) {
   title.innerText = `${room.name} - Theater Mode`;
   
   if (!feedVal) {
-    container.innerHTML = `<div class="theater-placeholder-text">No active video or meeting feed in this room.<br>Use the 'Change Video Feed' button to add a YouTube video or Google Meet link.</div>`;
+    container.innerHTML = `<div class="theater-placeholder-text">No live source is set for this room.<br>Use the room event editor to add a YouTube Live or Google Meet link.</div>`;
     fallbackBtn.style.display = 'none';
   } else {
-    const isMeet = feedVal.includes('meet.google.com');
+    const isMeet = room.sourceType === 'meet';
     if (isMeet) {
       // Google Meet
       let meetUrl = feedVal;
@@ -2461,7 +2733,8 @@ function openTheaterMode(roomId) {
       fallbackBtn.style.display = 'none';
       
       const iframe = document.createElement('iframe');
-      iframe.src = `https://www.youtube.com/embed/${feedVal}?autoplay=1&enablejsapi=1`;
+      const startParam = playbackStart > 0 ? `&start=${playbackStart}` : '';
+      iframe.src = `https://www.youtube.com/embed/${feedVal}?autoplay=1&enablejsapi=1${startParam}`;
       iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
       iframe.allowFullscreen = true;
       container.appendChild(iframe);
@@ -2594,41 +2867,89 @@ function initUiHandlers() {
   const submitBtn = document.getElementById('submit-video-btn');
   const modal = document.getElementById('video-input-modal');
   const urlInput = document.getElementById('video-url-input');
+  const roomNameInput = document.getElementById('room-name-input');
+  const roomStartInput = document.getElementById('room-start-input');
+  const roomDurationInput = document.getElementById('room-duration-input');
 
   changeBtn.addEventListener('click', () => {
+    const room = ROOMS[localPlayer.currentRoom];
+    if (!room) return;
+    roomNameInput.value = room.name;
+    urlInput.value = room.sourceValue || "";
+    roomStartInput.value = formatDateTimeLocalValue(room.startTime);
+    roomDurationInput.value = room.durationMinutes > 0 ? String(room.durationMinutes) : '';
     modal.classList.add('video-modal-visible');
-    urlInput.focus();
+    roomNameInput.focus();
   });
   
   cancelBtn.addEventListener('click', () => {
     modal.classList.remove('video-modal-visible');
+    roomNameInput.value = '';
     urlInput.value = '';
-  });
-
-  // Reset the invalid-input indicator whenever the user edits the field
-  urlInput.addEventListener('input', () => {
+    roomStartInput.value = '';
+    roomDurationInput.value = '';
+    roomNameInput.style.borderColor = '';
+    roomDurationInput.style.borderColor = '';
     urlInput.style.borderColor = '';
   });
 
+  // Reset the invalid-input indicator whenever the user edits the field
+  roomNameInput.addEventListener('input', () => {
+    roomNameInput.style.borderColor = '';
+  });
+  urlInput.addEventListener('input', () => {
+    urlInput.style.borderColor = '';
+  });
+  roomDurationInput.addEventListener('input', () => {
+    roomDurationInput.style.borderColor = '';
+  });
+
   submitBtn.addEventListener('click', () => {
-    // Strictly accept only a YouTube ID/URL or a meet.google.com URL
-    const videoId = parseVideoInput(urlInput.value);
-    if (!videoId) {
-      urlInput.style.borderColor = '#f43f5e'; // signal rejection
-      urlInput.focus();
+    const roomName = roomNameInput.value.trim();
+    if (!roomName) {
+      roomNameInput.style.borderColor = '#f43f5e';
+      roomNameInput.focus();
       return;
     }
 
+    let sourceValue = "";
+    if (urlInput.value.trim()) {
+      sourceValue = parseVideoInput(urlInput.value);
+      if (!sourceValue) {
+        urlInput.style.borderColor = '#f43f5e';
+        urlInput.focus();
+        return;
+      }
+    }
+
+    const durationRaw = roomDurationInput.value.trim();
+    const durationMinutes = durationRaw ? Number.parseInt(durationRaw, 10) : 0;
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 0) {
+      roomDurationInput.style.borderColor = '#f43f5e';
+      roomDurationInput.focus();
+      return;
+    }
+
+    const startTime = roomStartInput.value ? new Date(roomStartInput.value).toISOString() : null;
+
     if (socket && socket.readyState === WebSocket.OPEN && localPlayer.currentRoom !== -1) {
       socket.send(JSON.stringify({
-        type: "video_change",
+        type: "room_update",
         room: localPlayer.currentRoom,
-        videoId: videoId
+        name: roomName,
+        sourceValue,
+        startTime,
+        durationMinutes
       }));
 
       modal.classList.remove('video-modal-visible');
+      roomNameInput.value = '';
       urlInput.value = '';
+      roomStartInput.value = '';
+      roomDurationInput.value = '';
+      roomNameInput.style.borderColor = '';
       urlInput.style.borderColor = '';
+      roomDurationInput.style.borderColor = '';
     }
   });
 
@@ -2736,6 +3057,13 @@ window.addEventListener('DOMContentLoaded', () => {
   initEngine();
   initUiHandlers();
   initPerformanceOptimization();
+  renderEventBoard();
+  roomStatusTimer = window.setInterval(() => {
+    renderEventBoard();
+    if (localPlayer.currentRoom !== -1) {
+      updateRoomPanelDetails();
+    }
+  }, 30000);
   
   // Kickstart animation loop (WebGL updates)
   renderer.setAnimationLoop(animate);
