@@ -5,6 +5,250 @@ const ROOM_WIDTH = 20;
 const ROOM_DEPTH = 20;
 const ROOM_HEIGHT = 5.5;
 const MAP_SIZE = 150; // Size of the grassy area
+const ROOM_LABEL_HEIGHT = 5.1;
+const CAMERA_FOLLOW_LERP = 1 - Math.pow(0.00035, 1 / 60);
+const REMOTE_PLAYER_SMOOTHING = 0.001;
+const ROOM_SCENERY_VISIBILITY_DISTANCE = 48;
+const OUTDOOR_SCENERY_VISIBILITY_DISTANCE = 88;
+
+const WORLD_CONFIG = {
+  exteriorAccent: '#2563eb',
+  fogColor: '#070b14',
+  skyTop: '#060816',
+  skyBottom: '#10203a',
+  floorAccent: '#0f172a',
+  signAccent: '#38bdf8',
+  torchColor: '#f97316',
+  roomBeaconColors: {
+    idle: '#64748b',
+    ready: '#60a5fa',
+    upcoming: '#38bdf8',
+    live: '#22c55e',
+    ended: '#f43f5e'
+  }
+};
+
+const ROOM_LAYOUTS = {
+  0: { themeColor: '#60a5fa', label: 'Conversation room' },
+  1: { themeColor: '#8b5cf6', label: 'Workshop room' },
+  2: { themeColor: '#f59e0b', label: 'Open studio' },
+  3: { themeColor: '#f43f5e', label: 'Broadcast room' },
+  4: { themeColor: '#14b8a6', label: 'Lounge room' },
+  5: { themeColor: '#22c55e', label: 'Crit room' },
+  6: { themeColor: '#38bdf8', label: 'Screening room' },
+  7: { themeColor: '#f97316', label: 'Commons room' }
+};
+
+const SOUNDTRACK_LIBRARY = [
+  {
+    title: 'Atrium Glass',
+    bpm: 68,
+    lengthBeats: 32,
+    lanes: [
+      {
+        wave: 'triangle',
+        volume: 0.08,
+        attack: 1.4,
+        release: 2.8,
+        pan: -0.22,
+        notes: [
+          [0, 'C4', 8, 0.72], [0, 'G4', 8, 0.48], [0, 'D5', 8, 0.3],
+          [8, 'A3', 8, 0.66], [8, 'E4', 8, 0.42], [8, 'B4', 8, 0.28],
+          [16, 'F3', 8, 0.68], [16, 'C4', 8, 0.44], [16, 'G4', 8, 0.3],
+          [24, 'G3', 8, 0.72], [24, 'D4', 8, 0.46], [24, 'A4', 8, 0.3]
+        ]
+      },
+      {
+        wave: 'sine',
+        volume: 0.045,
+        attack: 0.05,
+        release: 1.8,
+        pan: 0.24,
+        notes: [
+          [1, 'G5', 1.5, 0.36], [3, 'A5', 1.5, 0.28], [5, 'D5', 1.5, 0.32], [7, 'E5', 1.5, 0.24],
+          [9, 'B5', 1.5, 0.38], [11, 'A5', 1.5, 0.26], [13, 'E5', 1.5, 0.3], [15, 'D5', 1.5, 0.24],
+          [17, 'A5', 1.5, 0.34], [19, 'G5', 1.5, 0.24], [21, 'D5', 1.5, 0.28], [23, 'C5', 1.5, 0.22],
+          [25, 'B5', 1.5, 0.36], [27, 'A5', 1.5, 0.28], [29, 'E5', 1.5, 0.28], [31, 'D5', 1.0, 0.22]
+        ]
+      },
+      {
+        wave: 'sine',
+        volume: 0.055,
+        attack: 0.18,
+        release: 1.1,
+        pan: 0,
+        notes: [
+          [0, 'C2', 4, 0.48], [4, 'G2', 4, 0.38], [8, 'A2', 4, 0.44], [12, 'E2', 4, 0.34],
+          [16, 'F2', 4, 0.42], [20, 'C2', 4, 0.34], [24, 'G2', 4, 0.46], [28, 'D2', 4, 0.36]
+        ]
+      }
+    ]
+  },
+  {
+    title: 'Fog Over Commons',
+    bpm: 62,
+    lengthBeats: 32,
+    lanes: [
+      {
+        wave: 'sawtooth',
+        volume: 0.045,
+        attack: 1.6,
+        release: 3.2,
+        pan: -0.18,
+        notes: [
+          [0, 'D4', 8, 0.52], [0, 'A4', 8, 0.34], [0, 'E5', 8, 0.24],
+          [8, 'Bb3', 8, 0.48], [8, 'F4', 8, 0.34], [8, 'C5', 8, 0.22],
+          [16, 'F4', 8, 0.52], [16, 'C5', 8, 0.36], [16, 'G5', 8, 0.24],
+          [24, 'C4', 8, 0.48], [24, 'G4', 8, 0.34], [24, 'D5', 8, 0.22]
+        ]
+      },
+      {
+        wave: 'triangle',
+        volume: 0.05,
+        attack: 0.08,
+        release: 1.4,
+        pan: 0.28,
+        notes: [
+          [2, 'A5', 1.5, 0.26], [4, 'G5', 1.5, 0.24], [6, 'F5', 1.5, 0.26],
+          [10, 'C6', 1.5, 0.28], [12, 'A5', 1.5, 0.24], [14, 'G5', 1.5, 0.24],
+          [18, 'G5', 1.5, 0.26], [20, 'F5', 1.5, 0.22], [22, 'E5', 1.5, 0.22],
+          [26, 'D5', 1.5, 0.24], [28, 'G5', 1.5, 0.24], [30, 'A5', 1.0, 0.2]
+        ]
+      },
+      {
+        wave: 'sine',
+        volume: 0.05,
+        attack: 0.14,
+        release: 1.6,
+        pan: 0,
+        notes: [
+          [0, 'D2', 4, 0.4], [4, 'A1', 4, 0.32], [8, 'Bb1', 4, 0.36], [12, 'F2', 4, 0.3],
+          [16, 'F2', 4, 0.38], [20, 'C2', 4, 0.3], [24, 'C2', 4, 0.36], [28, 'G1', 4, 0.3]
+        ]
+      }
+    ]
+  },
+  {
+    title: 'Starlight Lobby',
+    bpm: 74,
+    lengthBeats: 32,
+    lanes: [
+      {
+        wave: 'triangle',
+        volume: 0.07,
+        attack: 1.2,
+        release: 2.5,
+        pan: -0.2,
+        notes: [
+          [0, 'E4', 8, 0.56], [0, 'B4', 8, 0.36], [0, 'F#5', 8, 0.24],
+          [8, 'C4', 8, 0.5], [8, 'G4', 8, 0.34], [8, 'D5', 8, 0.24],
+          [16, 'G3', 8, 0.54], [16, 'D4', 8, 0.36], [16, 'A4', 8, 0.24],
+          [24, 'D4', 8, 0.58], [24, 'A4', 8, 0.38], [24, 'E5', 8, 0.24]
+        ]
+      },
+      {
+        wave: 'sine',
+        volume: 0.04,
+        attack: 0.04,
+        release: 1.5,
+        pan: 0.18,
+        notes: [
+          [1, 'B5', 1, 0.24], [2.5, 'C6', 1, 0.2], [5, 'A5', 1.5, 0.22], [7, 'G5', 1, 0.2],
+          [9, 'D6', 1, 0.24], [10.5, 'C6', 1, 0.2], [13, 'A5', 1.5, 0.22], [15, 'G5', 1, 0.2],
+          [17, 'A5', 1, 0.22], [18.5, 'B5', 1, 0.2], [21, 'G5', 1.5, 0.2], [23, 'F#5', 1, 0.2],
+          [25, 'E6', 1, 0.24], [26.5, 'D6', 1, 0.2], [29, 'A5', 1.5, 0.22], [31, 'F#5', 0.8, 0.18]
+        ]
+      },
+      {
+        wave: 'sine',
+        volume: 0.052,
+        attack: 0.12,
+        release: 1.2,
+        pan: 0,
+        notes: [
+          [0, 'E2', 4, 0.36], [4, 'B1', 4, 0.28], [8, 'C2', 4, 0.32], [12, 'G1', 4, 0.28],
+          [16, 'G1', 4, 0.34], [20, 'D2', 4, 0.28], [24, 'D2', 4, 0.36], [28, 'A1', 4, 0.3]
+        ]
+      }
+    ]
+  },
+  {
+    title: 'After Hours Studio',
+    bpm: 66,
+    lengthBeats: 32,
+    lanes: [
+      {
+        wave: 'triangle',
+        volume: 0.075,
+        attack: 1.5,
+        release: 3.4,
+        pan: -0.12,
+        notes: [
+          [0, 'A3', 8, 0.58], [0, 'E4', 8, 0.38], [0, 'B4', 8, 0.24],
+          [8, 'F3', 8, 0.52], [8, 'C4', 8, 0.36], [8, 'G4', 8, 0.22],
+          [16, 'C4', 8, 0.56], [16, 'G4', 8, 0.36], [16, 'D5', 8, 0.24],
+          [24, 'G3', 8, 0.52], [24, 'D4', 8, 0.36], [24, 'A4', 8, 0.22]
+        ]
+      },
+      {
+        wave: 'triangle',
+        volume: 0.04,
+        attack: 0.05,
+        release: 1.7,
+        pan: 0.25,
+        notes: [
+          [2, 'E5', 2, 0.24], [6, 'G5', 2, 0.24], [10, 'C5', 2, 0.22], [14, 'D5', 2, 0.22],
+          [18, 'G5', 2, 0.24], [22, 'E5', 2, 0.22], [26, 'A5', 2, 0.22], [30, 'G5', 1.5, 0.18]
+        ]
+      },
+      {
+        wave: 'sine',
+        volume: 0.05,
+        attack: 0.14,
+        release: 1.3,
+        pan: 0,
+        notes: [
+          [0, 'A1', 4, 0.36], [4, 'E2', 4, 0.28], [8, 'F2', 4, 0.32], [12, 'C2', 4, 0.28],
+          [16, 'C2', 4, 0.34], [20, 'G1', 4, 0.28], [24, 'G1', 4, 0.34], [28, 'D2', 4, 0.28]
+        ]
+      }
+    ]
+  }
+];
+
+const SOUNDTRACK_STATE = {
+  enabled: true,
+  isPlaying: false,
+  trackIndex: 0,
+  nextEventIndex: 0,
+  trackStartedAt: 0,
+  trackEndTime: 0,
+  schedulerId: null,
+  transitionId: null,
+  activeNodes: new Set(),
+  lookAheadSeconds: 0.28,
+  schedulerIntervalMs: 90
+};
+
+const NOTE_OFFSETS = {
+  C: 0,
+  'C#': 1,
+  Db: 1,
+  D: 2,
+  'D#': 3,
+  Eb: 3,
+  E: 4,
+  F: 5,
+  'F#': 6,
+  Gb: 6,
+  G: 7,
+  'G#': 8,
+  Ab: 8,
+  A: 9,
+  'A#': 10,
+  Bb: 10,
+  B: 11
+};
 
 // Bumpy terrain function - flat in the center building zone, rolling hills outdoors
 function getTerrainHeight(x, z) {
@@ -20,22 +264,46 @@ function getTerrainHeight(x, z) {
 
 // Define the 8 rooms layout
 const ROOMS = [
-  { id: 0, name: "North Hall", x: -30, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 1, name: "East Studio", x: -10, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 2, name: "Open Workshop", x: 10, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 3, name: "Broadcast Room", x: 30, z: -10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 4, name: "South Lounge", x: -30, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 5, name: "Crit Room", x: -10, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 6, name: "Screening Room", x: 10, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-  { id: 7, name: "Commons", x: 30, z: 10, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 }
+  { id: 0, name: "North Hall", x: -17, z: -30, width: 24, depth: 20, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 1, name: "East Studio", x: -14, z: -10, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 2, name: "Open Workshop", x: -11, z: 8, width: 12, depth: 12, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 3, name: "Broadcast Room", x: -14, z: 26, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 4, name: "South Lounge", x: 14, z: -30, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 5, name: "Crit Room", x: 11, z: -12, width: 12, depth: 12, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 6, name: "Screening Room", x: 17, z: 8, width: 24, depth: 20, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+  { id: 7, name: "Commons", x: 14, z: 28, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 }
 ];
 
 // Room walls definitions for collision checking
 // We will generate the walls mathematically based on the room layout.
 const WALLS = [];
+const PLACED_ASSET_COLLIDERS = [];
+const STATIC_SCENERY = [];
+const ROOM_INDICATORS = new Map();
+const ROOM_SIGN_SPRITES = new Map();
+const DEBUG_STATE = {
+  enabled: false,
+  lastFpsSampleAt: 0,
+  framesSinceSample: 0,
+  fps: 0
+};
+
+const WORLD_ASSET_CATALOG = {
+  tree: { label: 'Tree', defaultScale: 1, collidable: true, footprint: 1.2 },
+  boulder: { label: 'Boulder', defaultScale: 1, collidable: true, footprint: 1.1 },
+  flower: { label: 'Flower', defaultScale: 1, collidable: false, footprint: 0.3 },
+  grass_tuft: { label: 'Grass', defaultScale: 1, collidable: false, footprint: 0.35 },
+  lantern: { label: 'Lantern', defaultScale: 1, collidable: true, footprint: 0.55 },
+  banner: { label: 'Banner', defaultScale: 1, collidable: true, footprint: 0.65 },
+  bench: { label: 'Bench', defaultScale: 1, collidable: true, footprint: 1.7 },
+  plant: { label: 'Plant', defaultScale: 1, collidable: true, footprint: 0.7 },
+  desk: { label: 'Desk', defaultScale: 1, collidable: true, footprint: 1.9 },
+  podium: { label: 'Podium', defaultScale: 1, collidable: true, footprint: 1.2 }
+};
 
 // --- Game State Variables ---
 let scene, camera, renderer, controls;
+let placedAssetGroup = null;
 let localPlayer = {
   mesh: null,
   body: null,
@@ -43,7 +311,7 @@ let localPlayer = {
   leftArm: null, rightArm: null,
   username: "Guest",
   color: "#3b82f6",
-  x: 0, y: 0, z: 25, // Start outside the building
+  x: 0, y: 0, z: 48, // Start outside the building
   ry: 0,
   isMoving: false,
   velocity: new THREE.Vector3(),
@@ -60,6 +328,10 @@ let ytApiReady = false;
 let activeRoomVideoId = "";
 let roomStatusTimer = null;
 let lastSentPosition = { x: 0, y: 0, z: 0, ry: 0, isMoving: false };
+let animationLoopRunning = false;
+let audioCtx = null;
+let audioListener = null;
+let ambientAudioStarted = false;
 
 // Building fading assets
 let ceilingMesh = null;
@@ -68,6 +340,20 @@ const upperWalls = [];
 let upperWallMat = null;
 let signFrontMat = null;
 let signSideMat = null;
+let skyDome = null;
+let sceneAmbientLight = null;
+let sceneHemisphereLight = null;
+let sceneSunLight = null;
+const roomSignState = { scheduledRefresh: null };
+const roomAudioNodes = new Map();
+let debugPanel = null;
+let debugStatsEl = null;
+let soundtrackCard = null;
+let soundtrackTitleEl = null;
+let soundtrackStatusEl = null;
+let soundtrackToggleBtn = null;
+let soundtrackMasterGain = null;
+let soundtrackTracks = [];
 
 // Input states
 const keys = { w: false, a: false, s: false, d: false, space: false };
@@ -76,9 +362,25 @@ let isJoined = false;
 
 // 3D Clickable Objects
 const clickableScreens = [];
+const clickableRoomMarkers = [];
 
 // Torch list for flickering animation
 const torches = [];
+const animatedScenery = [];
+const placedAssets = new Map();
+const editorSelectableObjects = [];
+let publishedWorldAssets = [];
+const editor = {
+  enabled: false,
+  authed: false,
+  dirty: false,
+  selectedId: null,
+  placingType: null,
+  mode: 'move',
+  draftAssets: [],
+  transformControls: null,
+  transformDragging: false
+};
 
 // --- Security helpers (defense-in-depth against XSS / CSS injection) ---
 // All player-supplied values (usernames, chat, colors, video URLs) are rendered
@@ -309,6 +611,8 @@ function renderEventBoard() {
 
     const card = document.createElement('div');
     card.className = 'event-board-item';
+    card.dataset.roomId = String(room.id);
+    card.tabIndex = 0;
 
     const topRow = document.createElement('div');
     topRow.className = 'event-board-item-top';
@@ -644,58 +948,571 @@ function createPlayerNameSprite(name, color = '#ffffff') {
   return sprite;
 }
 
+function normalizeSoundtrackLibrary() {
+  return SOUNDTRACK_LIBRARY.map((track) => ({
+    ...track,
+    events: track.lanes
+      .flatMap((lane) => lane.notes.map(([beat, note, duration, velocity]) => ({
+        beat,
+        note,
+        duration,
+        velocity,
+        lane
+      })))
+      .sort((a, b) => a.beat - b.beat)
+  }));
+}
+
+function noteNameToFrequency(note) {
+  const match = /^([A-G](?:#|b)?)(-?\d)$/.exec(note);
+  if (!match) {
+    throw new Error(`Unsupported note: ${note}`);
+  }
+  const [, pitchClass, octaveRaw] = match;
+  const octave = Number.parseInt(octaveRaw, 10);
+  const midi = (octave + 1) * 12 + NOTE_OFFSETS[pitchClass];
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function beatsToSeconds(beats, bpm) {
+  return (60 / bpm) * beats;
+}
+
+function updateSoundtrackUi() {
+  if (!soundtrackCard || !soundtrackTitleEl || !soundtrackStatusEl || !soundtrackToggleBtn) return;
+
+  const track = soundtrackTracks[SOUNDTRACK_STATE.trackIndex];
+  soundtrackTitleEl.textContent = track ? track.title : 'Ambient soundtrack';
+  soundtrackStatusEl.textContent = !SOUNDTRACK_STATE.enabled
+    ? 'Muted'
+    : SOUNDTRACK_STATE.isPlaying
+      ? `Playlist active · Track ${SOUNDTRACK_STATE.trackIndex + 1} of ${soundtrackTracks.length}`
+      : 'Ready after join';
+  soundtrackToggleBtn.textContent = SOUNDTRACK_STATE.enabled ? 'Mute' : 'Unmute';
+  soundtrackCard.classList.toggle('muted', !SOUNDTRACK_STATE.enabled);
+}
+
+function clearSoundtrackTimers() {
+  if (SOUNDTRACK_STATE.schedulerId !== null) {
+    window.clearTimeout(SOUNDTRACK_STATE.schedulerId);
+    SOUNDTRACK_STATE.schedulerId = null;
+  }
+  if (SOUNDTRACK_STATE.transitionId !== null) {
+    window.clearTimeout(SOUNDTRACK_STATE.transitionId);
+    SOUNDTRACK_STATE.transitionId = null;
+  }
+}
+
+function stopActiveSoundtrackNodes(fadeSeconds = 0.18) {
+  if (!audioCtx) return;
+  const stopAt = audioCtx.currentTime + fadeSeconds + 0.04;
+  SOUNDTRACK_STATE.activeNodes.forEach((entry) => {
+    entry.gain.gain.cancelScheduledValues(audioCtx.currentTime);
+    entry.gain.gain.setTargetAtTime(0.0001, audioCtx.currentTime, Math.max(fadeSeconds / 3, 0.03));
+    try {
+      entry.oscillator.stop(stopAt);
+    } catch (err) {
+      // Oscillators can only be stopped once; ignore redundant stop attempts.
+    }
+  });
+}
+
+function scheduleSoundtrackNote(track, event) {
+  if (!audioCtx || !soundtrackMasterGain) return;
+
+  const noteStart = SOUNDTRACK_STATE.trackStartedAt + beatsToSeconds(event.beat, track.bpm);
+  const noteDuration = beatsToSeconds(event.duration, track.bpm);
+  const lane = event.lane;
+  const oscillator = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const stereoPanner = typeof audioCtx.createStereoPanner === 'function'
+    ? audioCtx.createStereoPanner()
+    : null;
+
+  oscillator.type = lane.wave;
+  oscillator.frequency.setValueAtTime(noteNameToFrequency(event.note), noteStart);
+
+  gain.gain.setValueAtTime(0.0001, noteStart);
+  gain.gain.linearRampToValueAtTime(Math.max(lane.volume * event.velocity, 0.0001), noteStart + lane.attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + noteDuration + lane.release);
+
+  oscillator.connect(gain);
+  if (stereoPanner) {
+    stereoPanner.pan.value = lane.pan || 0;
+    gain.connect(stereoPanner);
+    stereoPanner.connect(soundtrackMasterGain);
+  } else {
+    gain.connect(soundtrackMasterGain);
+  }
+
+  const nodeRecord = { oscillator, gain };
+  SOUNDTRACK_STATE.activeNodes.add(nodeRecord);
+  oscillator.onended = () => {
+    SOUNDTRACK_STATE.activeNodes.delete(nodeRecord);
+    oscillator.disconnect();
+    gain.disconnect();
+    if (stereoPanner) stereoPanner.disconnect();
+  };
+
+  oscillator.start(noteStart);
+  oscillator.stop(noteStart + noteDuration + lane.release + 0.05);
+}
+
+function queueNextSoundtrackTrack(delaySeconds = 0.4) {
+  if (SOUNDTRACK_STATE.transitionId !== null || !SOUNDTRACK_STATE.enabled) return;
+  SOUNDTRACK_STATE.transitionId = window.setTimeout(() => {
+    SOUNDTRACK_STATE.transitionId = null;
+    SOUNDTRACK_STATE.trackIndex = (SOUNDTRACK_STATE.trackIndex + 1) % soundtrackTracks.length;
+    startSoundtrackPlayback();
+  }, delaySeconds * 1000);
+}
+
+function scheduleSoundtrackTick() {
+  if (!audioCtx || !SOUNDTRACK_STATE.isPlaying || !SOUNDTRACK_STATE.enabled) return;
+
+  const track = soundtrackTracks[SOUNDTRACK_STATE.trackIndex];
+  if (!track) return;
+
+  const lookAheadBeat = Math.max(
+    0,
+    ((audioCtx.currentTime + SOUNDTRACK_STATE.lookAheadSeconds) - SOUNDTRACK_STATE.trackStartedAt) / (60 / track.bpm)
+  );
+
+  while (
+    SOUNDTRACK_STATE.nextEventIndex < track.events.length &&
+    track.events[SOUNDTRACK_STATE.nextEventIndex].beat < lookAheadBeat
+  ) {
+    scheduleSoundtrackNote(track, track.events[SOUNDTRACK_STATE.nextEventIndex]);
+    SOUNDTRACK_STATE.nextEventIndex += 1;
+  }
+
+  if (
+    SOUNDTRACK_STATE.nextEventIndex >= track.events.length &&
+    audioCtx.currentTime >= SOUNDTRACK_STATE.trackEndTime
+  ) {
+    SOUNDTRACK_STATE.isPlaying = false;
+    updateSoundtrackUi();
+    queueNextSoundtrackTrack();
+    return;
+  }
+
+  SOUNDTRACK_STATE.schedulerId = window.setTimeout(scheduleSoundtrackTick, SOUNDTRACK_STATE.schedulerIntervalMs);
+}
+
+function startSoundtrackPlayback() {
+  if (!audioCtx || !soundtrackMasterGain || !SOUNDTRACK_STATE.enabled || soundtrackTracks.length === 0) return;
+
+  clearSoundtrackTimers();
+  stopActiveSoundtrackNodes(0.08);
+
+  const track = soundtrackTracks[SOUNDTRACK_STATE.trackIndex];
+  SOUNDTRACK_STATE.trackStartedAt = audioCtx.currentTime + 0.08;
+  SOUNDTRACK_STATE.trackEndTime = SOUNDTRACK_STATE.trackStartedAt + beatsToSeconds(track.lengthBeats, track.bpm);
+  SOUNDTRACK_STATE.nextEventIndex = 0;
+  SOUNDTRACK_STATE.isPlaying = true;
+  soundtrackMasterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+  soundtrackMasterGain.gain.setTargetAtTime(0.14, audioCtx.currentTime, 0.2);
+  updateSoundtrackUi();
+  scheduleSoundtrackTick();
+}
+
+function pauseSoundtrackPlayback() {
+  if (!audioCtx) return;
+  clearSoundtrackTimers();
+  SOUNDTRACK_STATE.isPlaying = false;
+  if (soundtrackMasterGain) {
+    soundtrackMasterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+    soundtrackMasterGain.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.08);
+  }
+  stopActiveSoundtrackNodes(0.14);
+  updateSoundtrackUi();
+}
+
+function createPanelLabelSprite(title, subtitle = '', accent = '#ffffff') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = subtitle ? 152 : 112;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = 'rgba(8, 15, 28, 0.88)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 3;
+  const radius = 18;
+  const width = canvas.width - 20;
+  const height = canvas.height - 20;
+  const x = 10;
+  const y = 10;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.fillRect(26, 24, 8, height - 28);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '700 34px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(title, 54, subtitle ? 50 : 56);
+
+  if (subtitle) {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '500 22px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(subtitle, 54, 96);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(5.6, subtitle ? 1.7 : 1.2, 1);
+  sprite.userData.disposeTexture = texture;
+  return sprite;
+}
+
+function registerStaticScenery(object3d, options = {}) {
+  STATIC_SCENERY.push({
+    object3d,
+    kind: options.kind || 'outdoor',
+    roomId: options.roomId ?? null,
+    distance: options.distance || (options.kind === 'room' ? ROOM_SCENERY_VISIBILITY_DISTANCE : OUTDOOR_SCENERY_VISIBILITY_DISTANCE)
+  });
+  return object3d;
+}
+
+function disposeSprite(sprite) {
+  if (!sprite) return;
+  if (sprite.material?.map) sprite.material.map.dispose();
+  if (sprite.material) sprite.material.dispose();
+}
+
+function refreshStaticSceneryVisibility() {
+  const currentRoom = localPlayer.currentRoom;
+  STATIC_SCENERY.forEach((entry) => {
+    if (!entry.object3d) return;
+    if (entry.kind === 'room') {
+      entry.object3d.visible = currentRoom === entry.roomId;
+      return;
+    }
+
+    if (!camera) return;
+    const distance = camera.position.distanceTo(entry.object3d.position);
+    entry.object3d.visible = distance <= entry.distance;
+  });
+}
+
+function frameIndependentLerp(current, target, dt, decay = 0.001) {
+  const factor = 1 - Math.pow(decay, dt);
+  return THREE.MathUtils.lerp(current, target, factor);
+}
+
+function scheduleRoomVisualRefresh() {
+  if (roomSignState.scheduledRefresh !== null) return;
+  roomSignState.scheduledRefresh = window.requestAnimationFrame(() => {
+    roomSignState.scheduledRefresh = null;
+    syncRoomVisuals();
+  });
+}
+
+function syncRoomVisuals() {
+  ROOMS.forEach((room) => {
+    const status = getRoomEventStatus(room);
+    const marker = ROOM_INDICATORS.get(room.id);
+    if (marker) {
+      const color = new THREE.Color(WORLD_CONFIG.roomBeaconColors[status.tone] || WORLD_CONFIG.roomBeaconColors.idle);
+      if (marker.glow) marker.glow.material.color.copy(color);
+      if (marker.glow) marker.glow.material.emissive.copy(color);
+      if (marker.ring) marker.ring.material.color.copy(color);
+      if (marker.light) marker.light.color.copy(color);
+      if (marker.light) {
+        marker.light.intensity = status.tone === 'live' ? 0.9 : status.tone === 'upcoming' ? 0.5 : 0.25;
+      }
+      marker.group.userData.statusTone = status.tone;
+    }
+
+    const signSprite = ROOM_SIGN_SPRITES.get(room.id);
+    if (signSprite) {
+      const nextSubtitle = `${ROOM_LAYOUTS[room.id]?.label || 'Room'} · ${status.label}`;
+      if (signSprite.userData.title !== room.name || signSprite.userData.subtitle !== nextSubtitle) {
+        const replacement = createPanelLabelSprite(room.name, nextSubtitle, ROOM_LAYOUTS[room.id]?.themeColor || WORLD_CONFIG.signAccent);
+        replacement.position.copy(signSprite.position);
+        replacement.userData.title = room.name;
+        replacement.userData.subtitle = nextSubtitle;
+        signSprite.parent.add(replacement);
+        signSprite.parent.remove(signSprite);
+        disposeSprite(signSprite);
+        ROOM_SIGN_SPRITES.set(room.id, replacement);
+      }
+    }
+  });
+  updateRoomAudioState();
+}
+
+function updateRoomIndicatorAnimations(now) {
+  const time = now * 0.001;
+  ROOM_INDICATORS.forEach((marker) => {
+    if (!marker.group.visible) return;
+    const statusTone = marker.group.userData.statusTone || 'idle';
+    const pulse = statusTone === 'live'
+      ? 1 + Math.sin(time * 3.6 + marker.seed) * 0.08
+      : 1 + Math.sin(time * 1.8 + marker.seed) * 0.04;
+    marker.ring.scale.setScalar(pulse);
+    marker.glow.material.opacity = statusTone === 'live' ? 0.55 + Math.sin(time * 4 + marker.seed) * 0.1 : 0.35;
+    marker.group.rotation.y += 0.0025;
+  });
+
+  animatedScenery.forEach((item) => {
+    if (!item.object.visible) return;
+    if (item.type === 'banner') {
+      item.object.rotation.z = Math.sin(time * item.speed + item.seed) * item.amplitude;
+    } else if (item.type === 'spark') {
+      item.object.position.y = item.baseY + Math.sin(time * item.speed + item.seed) * item.amplitude;
+    }
+  });
+}
+
+function initDebugPanel() {
+  debugPanel = document.getElementById('debug-panel');
+  debugStatsEl = document.getElementById('debug-stats');
+}
+
+function initSoundtrackUi() {
+  soundtrackCard = document.getElementById('soundtrack-card');
+  soundtrackTitleEl = document.getElementById('soundtrack-title');
+  soundtrackStatusEl = document.getElementById('soundtrack-status');
+  soundtrackToggleBtn = document.getElementById('soundtrack-toggle');
+  updateSoundtrackUi();
+}
+
+function updateDebugPanel(now) {
+  if (!DEBUG_STATE.enabled || !debugPanel || !debugStatsEl) return;
+
+  DEBUG_STATE.framesSinceSample += 1;
+  if (!DEBUG_STATE.lastFpsSampleAt) {
+    DEBUG_STATE.lastFpsSampleAt = now;
+  }
+  if (now - DEBUG_STATE.lastFpsSampleAt >= 500) {
+    DEBUG_STATE.fps = Math.round((DEBUG_STATE.framesSinceSample * 1000) / (now - DEBUG_STATE.lastFpsSampleAt));
+    DEBUG_STATE.framesSinceSample = 0;
+    DEBUG_STATE.lastFpsSampleAt = now;
+  }
+
+  const visibleScenery = STATIC_SCENERY.reduce((count, entry) => count + (entry.object3d.visible ? 1 : 0), 0);
+  const liveRooms = ROOMS.filter((room) => getRoomEventStatus(room).tone === 'live').length;
+  debugStatsEl.textContent = `FPS ${DEBUG_STATE.fps || '—'} · Players ${remotePlayers.size + (isJoined ? 1 : 0)} · Visible props ${visibleScenery} / ${STATIC_SCENERY.length} · Live rooms ${liveRooms}`;
+  debugPanel.classList.toggle('active', DEBUG_STATE.enabled);
+}
+
+function ensureAudioReady() {
+  if (audioCtx) return;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+
+  audioCtx = new AudioCtx();
+  audioListener = new THREE.AudioListener();
+  camera.add(audioListener);
+
+  if (soundtrackTracks.length === 0) {
+    soundtrackTracks = normalizeSoundtrackLibrary();
+  }
+  soundtrackMasterGain = audioCtx.createGain();
+  soundtrackMasterGain.gain.value = 0.0001;
+  soundtrackMasterGain.connect(audioCtx.destination);
+}
+
+function startAmbientRoomAudio() {
+  if (!audioCtx || ambientAudioStarted) return;
+  ambientAudioStarted = true;
+
+  ROOMS.forEach((room, index) => {
+    const marker = ROOM_INDICATORS.get(room.id);
+    if (!marker) return;
+
+    const oscillator = audioCtx.createOscillator();
+    oscillator.type = index % 2 === 0 ? 'triangle' : 'sine';
+    oscillator.frequency.value = 130 + index * 18;
+
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0;
+
+    const panner = audioCtx.createPanner();
+    panner.panningModel = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance = 5;
+    panner.maxDistance = 55;
+    panner.rolloffFactor = 1.2;
+    panner.positionX.value = marker.group.position.x;
+    panner.positionY.value = 2.2;
+    panner.positionZ.value = marker.group.position.z;
+
+    oscillator.connect(gain);
+    gain.connect(panner);
+    panner.connect(audioListener.getInput());
+    oscillator.start();
+
+    roomAudioNodes.set(room.id, { oscillator, gain, panner });
+  });
+}
+
+function updateRoomAudioState() {
+  if (!audioCtx || !audioListener) return;
+
+  roomAudioNodes.forEach((nodes, roomId) => {
+    const room = ROOMS[roomId];
+    if (!room) return;
+    const status = getRoomEventStatus(room);
+    const gainTarget = status.tone === 'live' ? 0.017 : status.tone === 'upcoming' ? 0.009 : 0.0;
+    nodes.gain.gain.setTargetAtTime(gainTarget, audioCtx.currentTime, 0.18);
+  });
+}
+
+async function resumeAudioContext() {
+  ensureAudioReady();
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') {
+    try {
+      await audioCtx.resume();
+    } catch (err) {
+      console.warn('Unable to resume audio context', err);
+    }
+  }
+  if (audioCtx.state === 'running') {
+    startAmbientRoomAudio();
+    updateRoomAudioState();
+    if (isJoined && SOUNDTRACK_STATE.enabled && !SOUNDTRACK_STATE.isPlaying) {
+      startSoundtrackPlayback();
+    }
+  }
+}
+
 // --- Initial Scene Setup ---
 function initEngine() {
   const container = document.getElementById('game-container');
   
   // 1. Scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color('#080b11');
-  scene.fog = new THREE.FogExp2('#080b11', 0.015);
+  scene.background = new THREE.Color(WORLD_CONFIG.skyBottom);
+  scene.fog = new THREE.FogExp2(WORLD_CONFIG.fogColor, 0.012);
+  placedAssetGroup = new THREE.Group();
+  scene.add(placedAssetGroup);
   
   // 2. Camera
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   
   // 3. Renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance'
+  });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   // PCF (not PCFSoft) + a 1024 map cuts shadow-pass fill cost ~4x for a stylized
   // low-poly scene where ultra-soft, high-res shadows aren't needed.
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
   container.appendChild(renderer.domElement);
   
   // 4. Controls
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
+  controls.dampingFactor = 0.08;
   controls.minDistance = 3;
   controls.maxDistance = 35;
   controls.maxPolarAngle = Math.PI / 2.1; // Don't clip below ground
+
+  if (window.THREE && THREE.TransformControls) {
+    editor.transformControls = new THREE.TransformControls(camera, renderer.domElement);
+    editor.transformControls.setMode(editor.mode);
+    editor.transformControls.visible = false;
+    editor.transformControls.addEventListener('dragging-changed', (event) => {
+      editor.transformDragging = Boolean(event.value);
+      controls.enabled = !editor.transformDragging;
+    });
+    editor.transformControls.addEventListener('objectChange', () => {
+      syncSelectedAssetFromObject();
+    });
+    scene.add(editor.transformControls);
+  }
   
   // 5. Lights
-  const ambientLight = new THREE.AmbientLight('#ffffff', 0.45);
-  scene.add(ambientLight);
+  sceneAmbientLight = new THREE.AmbientLight('#cbd5e1', 0.32);
+  scene.add(sceneAmbientLight);
+
+  sceneHemisphereLight = new THREE.HemisphereLight('#93c5fd', '#020617', 0.78);
+  sceneHemisphereLight.position.set(0, 40, 0);
+  scene.add(sceneHemisphereLight);
   
-  const sunLight = new THREE.DirectionalLight('#e0f2fe', 0.7);
-  sunLight.position.set(40, 60, 20);
-  sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 1024;
-  sunLight.shadow.mapSize.height = 1024;
-  sunLight.shadow.camera.near = 0.5;
-  sunLight.shadow.camera.far = 150;
+  sceneSunLight = new THREE.DirectionalLight('#dbeafe', 0.92);
+  sceneSunLight.position.set(40, 60, 20);
+  sceneSunLight.castShadow = true;
+  sceneSunLight.shadow.mapSize.width = 1024;
+  sceneSunLight.shadow.mapSize.height = 1024;
+  sceneSunLight.shadow.camera.near = 0.5;
+  sceneSunLight.shadow.camera.far = 150;
   
   const d = 60;
-  sunLight.shadow.camera.left = -d;
-  sunLight.shadow.camera.right = d;
-  sunLight.shadow.camera.top = d;
-  sunLight.shadow.camera.bottom = -d;
-  sunLight.shadow.bias = -0.0005;
-  scene.add(sunLight);
+  sceneSunLight.shadow.camera.left = -d;
+  sceneSunLight.shadow.camera.right = d;
+  sceneSunLight.shadow.camera.top = d;
+  sceneSunLight.shadow.camera.bottom = -d;
+  sceneSunLight.shadow.bias = -0.0005;
+  scene.add(sceneSunLight);
+
+  skyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(320, 24, 18),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        topColor: { value: new THREE.Color(WORLD_CONFIG.skyTop) },
+        bottomColor: { value: new THREE.Color(WORLD_CONFIG.skyBottom) },
+        offset: { value: 18 },
+        exponent: { value: 0.9 }
+      },
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float offset;
+        uniform float exponent;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = normalize(vWorldPosition + offset).y;
+          gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+        }
+      `
+    })
+  );
+  scene.add(skyDome);
   
   // Build the static map elements
   buildMap();
+  refreshStaticSceneryVisibility();
+  syncRoomVisuals();
   
   // Spawn NPC ambient characters
   spawnNpcs();
@@ -709,6 +1526,7 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 }
 
 // --- Environment & Building Construction ---
@@ -795,7 +1613,7 @@ function buildMap() {
     do {
       x = (Math.random() - 0.5) * (MAP_SIZE - 20);
       z = (Math.random() - 0.5) * (MAP_SIZE - 20);
-    } while (Math.abs(x) < 45 && Math.abs(z) < 25);
+    } while (Math.abs(x) < 32 && Math.abs(z) < 44);
     createFlower(x, z);
   }
 
@@ -805,9 +1623,11 @@ function buildMap() {
     do {
       x = (Math.random() - 0.5) * (MAP_SIZE - 20);
       z = (Math.random() - 0.5) * (MAP_SIZE - 20);
-    } while (Math.abs(x) < 45 && Math.abs(z) < 25);
+    } while (Math.abs(x) < 32 && Math.abs(z) < 44);
     createGrassTuft(x, z);
   }
+
+  buildExteriorPlaza();
 
   // 5. The Metalyceum Building (4x2 rooms grid)
   buildBuilding();
@@ -890,13 +1710,14 @@ function createTree() {
   do {
     x = (Math.random() - 0.5) * (MAP_SIZE - 15);
     z = (Math.random() - 0.5) * (MAP_SIZE - 15);
-  } while (Math.abs(x) < 45 && Math.abs(z) < 25);
+  } while (Math.abs(x) < 32 && Math.abs(z) < 44);
   
   const groundY = getTerrainHeight(x, z);
   tree.position.set(x, groundY, z);
   
   const scale = 0.85 + Math.random() * 0.45;
   tree.scale.set(scale, scale, scale);
+  registerStaticScenery(tree, { kind: 'outdoor' });
   scene.add(tree);
 }
 
@@ -921,13 +1742,14 @@ function createBoulder() {
   do {
     x = (Math.random() - 0.5) * (MAP_SIZE - 20);
     z = (Math.random() - 0.5) * (MAP_SIZE - 20);
-  } while (Math.abs(x) < 46 && Math.abs(z) < 26); // Avoid building area
+  } while (Math.abs(x) < 32 && Math.abs(z) < 44); // Avoid building area
 
   const groundY = getTerrainHeight(x, z) - 0.3; // Bury slightly
   boulder.position.set(x, groundY, z);
   boulder.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
   boulder.castShadow = true;
   boulder.receiveShadow = true;
+  registerStaticScenery(boulder, { kind: 'outdoor', distance: 72 });
   scene.add(boulder);
 }
 
@@ -959,6 +1781,7 @@ function createFlower(x, z) {
   
   const scale = 0.8 + Math.random() * 0.4;
   flower.scale.set(scale, scale, scale);
+  registerStaticScenery(flower, { kind: 'outdoor', distance: 42 });
   scene.add(flower);
 }
 
@@ -977,7 +1800,758 @@ function createGrassTuft(x, z) {
   
   const groundY = getTerrainHeight(x, z);
   tuft.position.set(x, groundY, z);
+  registerStaticScenery(tuft, { kind: 'outdoor', distance: 38 });
   scene.add(tuft);
+}
+
+function createBannerStand(x, z, rotationY, color) {
+  const group = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.85 });
+  const clothMat = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: 0.08,
+    roughness: 0.65
+  });
+
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.4, 6), poleMat);
+  pole.position.y = 3.2;
+  pole.castShadow = true;
+  group.add(pole);
+
+  const topper = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 6), poleMat);
+  topper.position.y = 6.7;
+  group.add(topper);
+
+  const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 2.6), clothMat);
+  cloth.position.set(0.95, 4.7, 0);
+  cloth.rotation.y = Math.PI / 2;
+  group.add(cloth);
+
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.8, 0.12), poleMat);
+  trim.position.set(0.05, 4.7, 0);
+  group.add(trim);
+
+  group.position.set(x, getTerrainHeight(x, z), z);
+  group.rotation.y = rotationY;
+  registerStaticScenery(group, { kind: 'outdoor' });
+  animatedScenery.push({
+    object: cloth,
+    type: 'banner',
+    seed: Math.random() * Math.PI * 2,
+    speed: 1.2 + Math.random() * 0.5,
+    amplitude: 0.06 + Math.random() * 0.03
+  });
+  scene.add(group);
+}
+
+function createGardenLantern(x, z, color = '#60a5fa') {
+  const group = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: '#111827', roughness: 0.9 });
+  const housingMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.65 });
+  const glowMat = new THREE.MeshBasicMaterial({ color });
+
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 2.8, 6), poleMat);
+  pole.position.y = 1.4;
+  group.add(pole);
+
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.7), housingMat);
+  housing.position.y = 2.9;
+  group.add(housing);
+
+  const glow = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.5, 0.46), glowMat);
+  glow.position.y = 2.9;
+  group.add(glow);
+
+  const light = new THREE.PointLight(color, 0.7, 8, 2);
+  light.position.y = 2.9;
+  group.add(light);
+
+  group.position.set(x, getTerrainHeight(x, z), z);
+  registerStaticScenery(group, { kind: 'outdoor' });
+  scene.add(group);
+}
+
+function createRoomIndicator(room) {
+  const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent, label: 'Room' };
+  const group = new THREE.Group();
+  
+  // Position near the room's corridor entrance
+  const indicatorX = room.x < 0 
+    ? room.x + room.width / 2 - 1.5 
+    : room.x - room.width / 2 + 1.5;
+  group.position.set(indicatorX, 0.15, room.z);
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9, 0.9, 0.18, 18),
+    new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.7, metalness: 0.2 })
+  );
+  base.position.y = 0.08;
+  base.userData.roomId = room.id;
+  group.add(base);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.45, 0.12, 10, 24),
+    new THREE.MeshStandardMaterial({ color: layout.themeColor, emissive: layout.themeColor, emissiveIntensity: 0.16 })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.24;
+  ring.userData.roomId = room.id;
+  group.add(ring);
+
+  const glow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.72, 1.32, 2.8, 18, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: layout.themeColor,
+      emissive: layout.themeColor,
+      emissiveIntensity: 0.38,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide
+    })
+  );
+  glow.position.y = 1.45;
+  glow.userData.roomId = room.id;
+  group.add(glow);
+
+  const light = new THREE.PointLight(layout.themeColor, 0.45, 9, 2);
+  light.position.y = 1.9;
+  group.add(light);
+
+  const sprite = createPanelLabelSprite(room.name, layout.label, layout.themeColor);
+  sprite.position.set(0, ROOM_LABEL_HEIGHT, 0);
+  sprite.userData.title = room.name;
+  sprite.userData.subtitle = layout.label;
+  group.add(sprite);
+
+  ROOM_INDICATORS.set(room.id, {
+    group,
+    ring,
+    glow,
+    light,
+    seed: Math.random() * Math.PI * 2
+  });
+  ROOM_SIGN_SPRITES.set(room.id, sprite);
+  clickableRoomMarkers.push(base, ring, glow);
+
+  registerStaticScenery(group, { kind: 'outdoor', distance: 120 });
+  scene.add(group);
+}
+
+function buildExteriorPlaza() {
+  const plazaMat = new THREE.MeshStandardMaterial({
+    color: WORLD_CONFIG.floorAccent,
+    roughness: 0.78,
+    metalness: 0.08
+  });
+  const pathMat = new THREE.MeshStandardMaterial({
+    color: '#1e293b',
+    roughness: 0.82
+  });
+
+  const plaza = new THREE.Mesh(new THREE.CircleGeometry(18, 48), plazaMat);
+  plaza.rotation.x = -Math.PI / 2;
+  plaza.position.set(0, 0.02, 49.5);
+  plaza.receiveShadow = true;
+  scene.add(plaza);
+
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(12, 28), pathMat);
+  path.rotation.x = -Math.PI / 2;
+  path.position.set(0, 0.03, 54.5);
+  path.receiveShadow = true;
+  scene.add(path);
+
+  createGardenLantern(-6.5, 48.5, '#38bdf8');
+  createGardenLantern(6.5, 48.5, '#38bdf8');
+  createGardenLantern(-8, 60, '#8b5cf6');
+  createGardenLantern(8, 60, '#8b5cf6');
+
+  createBannerStand(-10.5, 42.5, Math.PI * 0.08, '#38bdf8');
+  createBannerStand(10.5, 42.5, -Math.PI * 0.08, '#8b5cf6');
+}
+
+function buildRoomInteriorSet(room) {
+  const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent };
+  const group = new THREE.Group();
+  group.position.set(room.x, 0, room.z);
+
+  // Dynamic rug size
+  const rugRadius = Math.min(room.width, room.depth) * 0.35;
+  const rug = new THREE.Mesh(
+    new THREE.CylinderGeometry(rugRadius, rugRadius, 0.03, 28),
+    new THREE.MeshStandardMaterial({
+      color: '#0f172a',
+      emissive: layout.themeColor,
+      emissiveIntensity: 0.06,
+      roughness: 0.82
+    })
+  );
+  rug.position.y = 0.03;
+  group.add(rug);
+
+  // Dynamic entry strip (aligned along the vertical door frame)
+  const strip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.28, 0.04, 3.8),
+    new THREE.MeshStandardMaterial({
+      color: layout.themeColor,
+      emissive: layout.themeColor,
+      emissiveIntensity: 0.2,
+      roughness: 0.55
+    })
+  );
+  const stripX = room.x < 0 ? room.width / 2 - 0.1 : -room.width / 2 + 0.1;
+  strip.position.set(stripX, 0.04, 0);
+  group.add(strip);
+
+  // Benches along the North and South walls facing inward
+  const benchMat = new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.88 });
+  const benchFrameMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.78 });
+  
+  // Custom bench width based on room size
+  const benchWidth = room.width > 20 ? 4.0 : (room.width < 15 ? 2.2 : 3.0);
+  
+  // North bench (facing South)
+  const benchNorth = new THREE.Group();
+  const seatNorth = new THREE.Mesh(new THREE.BoxGeometry(benchWidth, 0.14, 0.7), benchMat);
+  seatNorth.position.y = 0.62;
+  benchNorth.add(seatNorth);
+  
+  const backNorth = new THREE.Mesh(new THREE.BoxGeometry(benchWidth, 0.8, 0.12), benchMat);
+  backNorth.position.set(0, 1.0, -0.28);
+  benchNorth.add(backNorth);
+  
+  [-benchWidth / 2 + 0.25, benchWidth / 2 - 0.25].forEach((legX) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.65, 4), benchFrameMat);
+    leg.position.set(legX, 0.3, -0.1);
+    benchNorth.add(leg);
+  });
+  benchNorth.position.set(0, 0, -room.depth / 2 + 1.2);
+  group.add(benchNorth);
+
+  // South bench (facing North)
+  const benchSouth = new THREE.Group();
+  const seatSouth = new THREE.Mesh(new THREE.BoxGeometry(benchWidth, 0.14, 0.7), benchMat);
+  seatSouth.position.y = 0.62;
+  benchSouth.add(seatSouth);
+  
+  const backSouth = new THREE.Mesh(new THREE.BoxGeometry(benchWidth, 0.8, 0.12), benchMat);
+  backSouth.position.set(0, 1.0, -0.28);
+  benchSouth.add(backSouth);
+  
+  [-benchWidth / 2 + 0.25, benchWidth / 2 - 0.25].forEach((legX) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.65, 4), benchFrameMat);
+    leg.position.set(legX, 0.3, -0.1);
+    benchSouth.add(leg);
+  });
+  benchSouth.position.set(0, 0, room.depth / 2 - 1.2);
+  benchSouth.rotation.y = Math.PI; // Face North
+  group.add(benchSouth);
+
+  // Corner Plant (opposite the entrance/screen areas)
+  const plant = new THREE.Group();
+  const planter = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.64, 0.7, 6),
+    new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.72 })
+  );
+  planter.position.y = 0.35;
+  plant.add(planter);
+
+  for (let i = 0; i < 4; i++) {
+    const leaf = new THREE.Mesh(
+      new THREE.ConeGeometry(0.24, 1.2, 5),
+      new THREE.MeshStandardMaterial({ color: '#14532d', roughness: 0.8, flatShading: true })
+    );
+    leaf.position.set(Math.cos((i / 4) * Math.PI * 2) * 0.12, 1 + Math.random() * 0.15, Math.sin((i / 4) * Math.PI * 2) * 0.12);
+    leaf.rotation.z = (Math.random() - 0.5) * 0.35;
+    leaf.rotation.x = (Math.random() - 0.5) * 0.35;
+    plant.add(leaf);
+  }
+  
+  // Position plant in the back corner (North-East for left rooms, North-West for right rooms)
+  const plantX = room.x < 0 ? room.width / 2 - 1.2 : -room.width / 2 + 1.2;
+  plant.position.set(plantX, 0, -room.depth / 2 + 1.2);
+  group.add(plant);
+
+  const spark = new THREE.Mesh(
+    new THREE.SphereGeometry(0.12, 6, 6),
+    new THREE.MeshBasicMaterial({ color: layout.themeColor })
+  );
+  spark.position.set(0, 2.25, 0);
+  group.add(spark);
+  animatedScenery.push({
+    object: spark,
+    type: 'spark',
+    seed: Math.random() * Math.PI * 2,
+    speed: 1.8 + Math.random() * 0.4,
+    amplitude: 0.22,
+    baseY: spark.position.y
+  });
+
+  registerStaticScenery(group, { kind: 'room', roomId: room.id });
+  scene.add(group);
+}
+
+function makePlacedAssetId() {
+  if (crypto && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `asset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function cloneAssetDef(asset) {
+  return {
+    id: asset.id,
+    type: asset.type,
+    x: Number(asset.x) || 0,
+    y: Number(asset.y) || 0,
+    z: Number(asset.z) || 0,
+    rotationY: Number(asset.rotationY) || 0,
+    scale: Number(asset.scale) || 1,
+    roomId: Number.isInteger(asset.roomId) ? asset.roomId : -1
+  };
+}
+
+function getRoomIdForPosition(x, z) {
+  for (const room of ROOMS) {
+    if (
+      x >= room.x - room.width / 2 &&
+      x <= room.x + room.width / 2 &&
+      z >= room.z - room.depth / 2 &&
+      z <= room.z + room.depth / 2
+    ) {
+      return room.id;
+    }
+  }
+  return -1;
+}
+
+function getSurfacePointFromPointer(event) {
+  if (!camera || !renderer) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  _raycaster.setFromCamera(mouse, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const point = new THREE.Vector3();
+  if (!_raycaster.ray.intersectPlane(plane, point)) return null;
+  const roomId = getRoomIdForPosition(point.x, point.z);
+  const y = roomId === -1 ? getTerrainHeight(point.x, point.z) : 0;
+  return { x: point.x, y, z: point.z, roomId };
+}
+
+function createPlacedAssetModel(type) {
+  const group = new THREE.Group();
+  const darkMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.8 });
+  const woodMat = new THREE.MeshStandardMaterial({ color: '#6b4f3b', roughness: 0.86 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: '#166534', roughness: 0.78, flatShading: true });
+  const stoneMat = new THREE.MeshStandardMaterial({ color: '#52525b', roughness: 0.9, flatShading: true });
+  const accentMat = new THREE.MeshStandardMaterial({ color: '#38bdf8', emissive: '#0ea5e9', emissiveIntensity: 0.15, roughness: 0.55 });
+
+  if (type === 'tree') {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 2.3, 6), woodMat);
+    trunk.position.y = 1.15;
+    const top = new THREE.Mesh(new THREE.ConeGeometry(1.05, 2.1, 7), leafMat);
+    top.position.y = 2.8;
+    const top2 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.55, 7), leafMat);
+    top2.position.y = 3.8;
+    group.add(trunk, top, top2);
+  } else if (type === 'boulder') {
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), stoneMat);
+    rock.scale.set(1.25, 0.72, 0.95);
+    rock.position.y = 0.45;
+    group.add(rock);
+  } else if (type === 'flower') {
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.55, 5), new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.85 }));
+    stem.position.y = 0.28;
+    const bloom = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), new THREE.MeshStandardMaterial({ color: '#f43f5e', roughness: 0.75, flatShading: true }));
+    bloom.position.y = 0.62;
+    group.add(stem, bloom);
+  } else if (type === 'grass_tuft') {
+    const grassMat = new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.9, flatShading: true });
+    for (let i = 0; i < 5; i++) {
+      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.48, 3), grassMat);
+      blade.position.y = 0.24;
+      blade.rotation.z = (i - 2) * 0.16;
+      blade.rotation.y = i * 1.25;
+      group.add(blade);
+    }
+  } else if (type === 'lantern') {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 6), darkMat);
+    pole.position.y = 1.1;
+    const housing = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.55), darkMat);
+    housing.position.y = 2.35;
+    const glow = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.42, 0.35), new THREE.MeshBasicMaterial({ color: '#38bdf8' }));
+    glow.position.y = 2.35;
+    group.add(pole, housing, glow, new THREE.PointLight('#38bdf8', 0.45, 7, 2));
+  } else if (type === 'banner') {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6), darkMat);
+    pole.position.y = 1.6;
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.8), accentMat);
+    cloth.position.set(0.65, 2.45, 0);
+    cloth.rotation.y = Math.PI / 2;
+    group.add(pole, cloth);
+  } else if (type === 'bench') {
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.16, 0.7), woodMat);
+    seat.position.y = 0.55;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.65, 0.12), woodMat);
+    back.position.set(0, 0.95, -0.33);
+    group.add(seat, back);
+    [-1.1, 1.1].forEach((x) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.55, 5), darkMat);
+      leg.position.set(x, 0.25, 0);
+      group.add(leg);
+    });
+  } else if (type === 'plant') {
+    const planter = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.55, 0.65, 7), stoneMat);
+    planter.position.y = 0.32;
+    group.add(planter);
+    for (let i = 0; i < 5; i++) {
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 5), leafMat);
+      leaf.position.set(Math.cos(i * 1.25) * 0.12, 1.05, Math.sin(i * 1.25) * 0.12);
+      leaf.rotation.z = (i - 2) * 0.12;
+      group.add(leaf);
+    }
+  } else if (type === 'desk') {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.16, 1.1), woodMat);
+    top.position.y = 0.85;
+    group.add(top);
+    [-0.95, 0.95].forEach((x) => {
+      [-0.38, 0.38].forEach((z) => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.8, 5), darkMat);
+        leg.position.set(x, 0.4, z);
+        group.add(leg);
+      });
+    });
+  } else if (type === 'podium') {
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.35, 1.1, 0.9), woodMat);
+    base.position.y = 0.55;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.82), woodMat);
+    top.position.set(0, 1.2, 0.08);
+    top.rotation.x = -Math.PI / 10;
+    group.add(base, top);
+  }
+
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+  return group;
+}
+
+function disposeObjectTree(root) {
+  root.traverse((child) => {
+    if (child.isMesh) {
+      if (child.geometry) child.geometry.dispose();
+      if (Array.isArray(child.material)) {
+        child.material.forEach((mat) => mat.dispose());
+      } else if (child.material) {
+        child.material.dispose();
+      }
+    }
+  });
+}
+
+function clearPlacedAssets() {
+  if (!placedAssetGroup) return;
+  for (const entry of placedAssets.values()) {
+    placedAssetGroup.remove(entry.group);
+    disposeObjectTree(entry.group);
+  }
+  placedAssets.clear();
+  editorSelectableObjects.length = 0;
+  PLACED_ASSET_COLLIDERS.length = 0;
+  if (editor.transformControls) {
+    editor.transformControls.detach();
+    editor.transformControls.visible = false;
+  }
+}
+
+function renderPlacedAssets(assetDefs, options = {}) {
+  clearPlacedAssets();
+  if (!placedAssetGroup) return;
+  const applyColliders = options.applyColliders !== false;
+
+  assetDefs.forEach((rawAsset) => {
+    const asset = cloneAssetDef(rawAsset);
+    if (!WORLD_ASSET_CATALOG[asset.type]) return;
+    const group = createPlacedAssetModel(asset.type);
+    group.position.set(asset.x, asset.y, asset.z);
+    group.rotation.y = asset.rotationY;
+    group.scale.setScalar(asset.scale);
+    group.userData.assetId = asset.id;
+    group.userData.assetType = asset.type;
+
+    group.traverse((child) => {
+      if (child.isMesh) {
+        child.userData.assetId = asset.id;
+        editorSelectableObjects.push(child);
+      }
+    });
+
+    placedAssetGroup.add(group);
+    placedAssets.set(asset.id, { group, asset });
+
+    const catalog = WORLD_ASSET_CATALOG[asset.type];
+    if (applyColliders && catalog.collidable) {
+      const half = catalog.footprint * asset.scale;
+      PLACED_ASSET_COLLIDERS.push({
+        assetId: asset.id,
+        minX: asset.x - half,
+        maxX: asset.x + half,
+        minZ: asset.z - half,
+        maxZ: asset.z + half
+      });
+    }
+  });
+
+  if (editor.selectedId && placedAssets.has(editor.selectedId)) {
+    attachEditorTransform(editor.selectedId);
+  } else {
+    selectEditorAsset(null);
+  }
+}
+
+function serializePlacedAssetsFromMap() {
+  return Array.from(placedAssets.values()).map(({ asset }) => cloneAssetDef(asset));
+}
+
+function getAssetIdFromObject(object) {
+  let current = object;
+  while (current) {
+    if (current.userData && current.userData.assetId) return current.userData.assetId;
+    current = current.parent;
+  }
+  return null;
+}
+
+function setEditorDirty(dirty) {
+  editor.dirty = dirty;
+  const saveBtn = document.getElementById('editor-save-btn');
+  if (saveBtn) saveBtn.disabled = !dirty;
+  updateEditorStatus();
+}
+
+function updateEditorStatus(message) {
+  const status = document.getElementById('editor-status-text');
+  if (!status) return;
+  if (message) {
+    status.textContent = message;
+  } else if (editor.placingType) {
+    status.textContent = `Click the world to place ${WORLD_ASSET_CATALOG[editor.placingType].label}.`;
+  } else if (editor.dirty) {
+    status.textContent = 'Unsaved world changes.';
+  } else {
+    status.textContent = 'Select an asset to place or edit.';
+  }
+}
+
+function updateEditorPalette() {
+  document.querySelectorAll('.editor-asset-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.assetType === editor.placingType);
+  });
+}
+
+function updateEditorInspector() {
+  const inspector = document.getElementById('editor-inspector');
+  const label = document.getElementById('editor-selection-label');
+  if (!inspector || !label) return;
+  const entry = editor.selectedId ? placedAssets.get(editor.selectedId) : null;
+  inspector.classList.toggle('editor-inspector-empty', !entry);
+
+  if (!entry) {
+    label.textContent = 'No asset selected.';
+    return;
+  }
+
+  const asset = entry.asset;
+  const catalog = WORLD_ASSET_CATALOG[asset.type];
+  label.textContent = catalog ? catalog.label : asset.type;
+  document.getElementById('editor-pos-x').value = asset.x.toFixed(1);
+  document.getElementById('editor-pos-y').value = asset.y.toFixed(1);
+  document.getElementById('editor-pos-z').value = asset.z.toFixed(1);
+  document.getElementById('editor-rot-y').value = String(Math.round(THREE.MathUtils.radToDeg(asset.rotationY)));
+  document.getElementById('editor-scale').value = asset.scale.toFixed(2);
+  const room = ROOMS[asset.roomId];
+  document.getElementById('editor-room-label').textContent = `Scope: ${room ? room.name : 'Outdoor'}`;
+}
+
+function attachEditorTransform(assetId) {
+  if (!editor.transformControls) return;
+  const entry = placedAssets.get(assetId);
+  if (!entry) {
+    editor.transformControls.detach();
+    editor.transformControls.visible = false;
+    return;
+  }
+  editor.transformControls.attach(entry.group);
+  editor.transformControls.setMode(editor.mode);
+  editor.transformControls.visible = editor.enabled;
+}
+
+function selectEditorAsset(assetId) {
+  editor.selectedId = assetId;
+  attachEditorTransform(assetId);
+  updateEditorInspector();
+}
+
+function syncSelectedAssetFromObject() {
+  if (!editor.selectedId) return;
+  const entry = placedAssets.get(editor.selectedId);
+  if (!entry) return;
+  const roomId = getRoomIdForPosition(entry.group.position.x, entry.group.position.z);
+  entry.asset.x = Number(entry.group.position.x.toFixed(3));
+  entry.asset.y = Number((roomId === -1 ? getTerrainHeight(entry.group.position.x, entry.group.position.z) : 0).toFixed(3));
+  entry.asset.z = Number(entry.group.position.z.toFixed(3));
+  entry.asset.roomId = roomId;
+  entry.asset.rotationY = Number(entry.group.rotation.y.toFixed(5));
+  entry.asset.scale = Number(THREE.MathUtils.clamp(entry.group.scale.x, 0.25, 3).toFixed(3));
+  entry.group.position.y = entry.asset.y;
+  entry.group.scale.setScalar(entry.asset.scale);
+  setEditorDirty(true);
+  updateEditorInspector();
+}
+
+function placeEditorAsset(type, point) {
+  const catalog = WORLD_ASSET_CATALOG[type];
+  if (!catalog) return;
+  const asset = {
+    id: makePlacedAssetId(),
+    type,
+    x: Number(point.x.toFixed(3)),
+    y: Number(point.y.toFixed(3)),
+    z: Number(point.z.toFixed(3)),
+    rotationY: 0,
+    scale: catalog.defaultScale,
+    roomId: point.roomId
+  };
+  const nextAssets = serializePlacedAssetsFromMap().concat(asset);
+  renderPlacedAssets(nextAssets, { applyColliders: false });
+  selectEditorAsset(asset.id);
+  setEditorDirty(true);
+}
+
+function handleEditorCanvasClick(event) {
+  if (!editor.enabled || editor.transformDragging) return false;
+
+  if (editor.placingType) {
+    const point = getSurfacePointFromPointer(event);
+    if (point) {
+      placeEditorAsset(editor.placingType, point);
+      return true;
+    }
+  }
+
+  const mouse = new THREE.Vector2();
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  _raycaster.setFromCamera(mouse, camera);
+  const intersects = _raycaster.intersectObjects(editorSelectableObjects, true);
+  selectEditorAsset(intersects.length > 0 ? getAssetIdFromObject(intersects[0].object) : null);
+  return true;
+}
+
+function setEditorEnabled(enabled) {
+  editor.enabled = enabled;
+  editor.placingType = null;
+  const panel = document.getElementById('world-editor-panel');
+  if (panel) {
+    panel.classList.toggle('active', enabled);
+    panel.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+  }
+  updateEditorPalette();
+  updateEditorStatus();
+  if (enabled) {
+    const roomPanel = document.getElementById('room-panel');
+    const roomModal = document.getElementById('video-input-modal');
+    if (roomPanel) roomPanel.classList.remove('room-panel-visible');
+    if (roomModal) roomModal.classList.remove('video-modal-visible');
+    editor.draftAssets = publishedWorldAssets.map(cloneAssetDef);
+    renderPlacedAssets(editor.draftAssets, { applyColliders: false });
+  } else {
+    selectEditorAsset(null);
+    setEditorDirty(false);
+    renderPlacedAssets(publishedWorldAssets, { applyColliders: true });
+  }
+}
+
+function applyPublishedWorldAssets(assetDefs) {
+  publishedWorldAssets = Array.isArray(assetDefs) ? assetDefs.map(cloneAssetDef) : [];
+  if (editor.enabled && editor.dirty) {
+    updateEditorStatus('Published layout changed. Save or cancel your draft.');
+    return;
+  }
+  renderPlacedAssets(publishedWorldAssets, { applyColliders: !editor.enabled });
+}
+
+function saveWorldAssets() {
+  if (!socket || socket.readyState !== WebSocket.OPEN || !editor.authed) {
+    updateEditorStatus('Editor is not connected.');
+    return;
+  }
+  socket.send(JSON.stringify({
+    type: 'world_assets_save',
+    assets: serializePlacedAssetsFromMap()
+  }));
+  setEditorDirty(false);
+  updateEditorStatus('Saving world layout...');
+}
+
+function cancelWorldAssetDraft() {
+  editor.placingType = null;
+  updateEditorPalette();
+  setEditorDirty(false);
+  renderPlacedAssets(publishedWorldAssets, { applyColliders: false });
+  updateEditorStatus('Draft discarded.');
+}
+
+function duplicateSelectedAsset() {
+  if (!editor.selectedId) return;
+  const entry = placedAssets.get(editor.selectedId);
+  if (!entry) return;
+  const copy = cloneAssetDef(entry.asset);
+  copy.id = makePlacedAssetId();
+  copy.x = Number((copy.x + 1).toFixed(3));
+  copy.z = Number((copy.z + 1).toFixed(3));
+  copy.y = copy.roomId === -1 ? Number(getTerrainHeight(copy.x, copy.z).toFixed(3)) : 0;
+  const nextAssets = serializePlacedAssetsFromMap().concat(copy);
+  renderPlacedAssets(nextAssets, { applyColliders: false });
+  selectEditorAsset(copy.id);
+  setEditorDirty(true);
+}
+
+function deleteSelectedAsset() {
+  if (!editor.selectedId) return;
+  const nextAssets = serializePlacedAssetsFromMap().filter((asset) => asset.id !== editor.selectedId);
+  renderPlacedAssets(nextAssets, { applyColliders: false });
+  selectEditorAsset(null);
+  setEditorDirty(true);
+}
+
+function applyInspectorValues() {
+  if (!editor.selectedId) return;
+  const entry = placedAssets.get(editor.selectedId);
+  if (!entry) return;
+  const x = Number.parseFloat(document.getElementById('editor-pos-x').value);
+  const y = Number.parseFloat(document.getElementById('editor-pos-y').value);
+  const z = Number.parseFloat(document.getElementById('editor-pos-z').value);
+  const rot = Number.parseFloat(document.getElementById('editor-rot-y').value);
+  const scale = Number.parseFloat(document.getElementById('editor-scale').value);
+  if (![x, y, z, rot, scale].every(Number.isFinite)) return;
+  entry.asset.x = THREE.MathUtils.clamp(x, -80, 80);
+  entry.asset.z = THREE.MathUtils.clamp(z, -80, 80);
+  entry.asset.roomId = getRoomIdForPosition(entry.asset.x, entry.asset.z);
+  entry.asset.y = entry.asset.roomId === -1 ? THREE.MathUtils.clamp(y, -10, 40) : 0;
+  entry.asset.rotationY = THREE.MathUtils.degToRad(rot);
+  entry.asset.scale = THREE.MathUtils.clamp(scale, 0.25, 3);
+  entry.group.position.set(entry.asset.x, entry.asset.y, entry.asset.z);
+  entry.group.rotation.y = entry.asset.rotationY;
+  entry.group.scale.setScalar(entry.asset.scale);
+  setEditorDirty(true);
+  updateEditorInspector();
 }
 
 function createDoorFrame(cx, cz, dir, width) {
@@ -1140,24 +2714,24 @@ function buildClassroomAssets() {
   
   const classroomGroup = new THREE.Group();
   
-  // Helper to create a desk
+  // Helper to create a desk aligned vertically (running along Z)
   function createDesk(dx, dz) {
     const desk = new THREE.Group();
     // Top
-    const topGeo = new THREE.BoxGeometry(3.5, 0.1, 1.2);
+    const topGeo = new THREE.BoxGeometry(1.2, 0.1, 3.5);
     const top = new THREE.Mesh(topGeo, woodMat);
     top.position.y = 1.0;
     top.castShadow = true;
     top.receiveShadow = true;
     desk.add(top);
     
-    // Legs
+    // Legs at the corners
     const legGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.0, 4);
     const legOffsets = [
-      { x: -1.6, z: -0.5 },
-      { x: 1.6, z: -0.5 },
-      { x: -1.6, z: 0.5 },
-      { x: 1.6, z: 0.5 }
+      { x: -0.5, z: -1.6 },
+      { x: 0.5, z: -1.6 },
+      { x: -0.5, z: 1.6 },
+      { x: 0.5, z: 1.6 }
     ];
     legOffsets.forEach(offset => {
       const leg = new THREE.Mesh(legGeo, legMat);
@@ -1170,24 +2744,24 @@ function buildClassroomAssets() {
     classroomGroup.add(desk);
   }
   
-  // Helper to create a bench
+  // Helper to create a bench aligned vertically (running along Z)
   function createBench(bx, bz) {
     const bench = new THREE.Group();
     // Seat
-    const seatGeo = new THREE.BoxGeometry(3.0, 0.08, 0.5);
+    const seatGeo = new THREE.BoxGeometry(0.5, 0.08, 3.0);
     const seat = new THREE.Mesh(seatGeo, woodMat);
     seat.position.y = 0.6;
     seat.castShadow = true;
     seat.receiveShadow = true;
     bench.add(seat);
     
-    // Legs
+    // Legs at corners
     const legGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.6, 4);
     const legOffsets = [
-      { x: -1.4, z: -0.2 },
-      { x: 1.4, z: -0.2 },
-      { x: -1.4, z: 0.2 },
-      { x: 1.4, z: 0.2 }
+      { x: -0.2, z: -1.4 },
+      { x: 0.2, z: -1.4 },
+      { x: -0.2, z: 1.4 },
+      { x: 0.2, z: 1.4 }
     ];
     legOffsets.forEach(offset => {
       const leg = new THREE.Mesh(legGeo, legMat);
@@ -1200,44 +2774,39 @@ function buildClassroomAssets() {
     classroomGroup.add(bench);
   }
   
-  // Place 3 rows of desks and benches relative to Room 6 center (10, 10)
-  // Local coordinates range from -10 to 10.
-  const rows = [
-    { dz: -6 },
-    { dz: -2 },
-    { dz: 2 }
-  ];
+  // Place 3 columns of desks and benches running along Z, in 3 rows along X.
+  // Room 6 is 24m wide (X: -12 to 12) and 20m deep (Z: -10 to 10).
+  const cols = [-5, 0, 5];
+  const rows = [-6, -1, 4]; // Closer to East wall (at X = 12)
   
-  rows.forEach(row => {
-    // Left Desk & Bench
-    createDesk(5 - 10, row.dz);
-    createBench(5 - 10, row.dz - 1.0);
-    
-    // Right Desk & Bench
-    createDesk(15 - 10, row.dz);
-    createBench(15 - 10, row.dz - 1.0);
+  rows.forEach(dx => {
+    cols.forEach(dz => {
+      createDesk(dx, dz);
+      createBench(dx - 1.0, dz); // Bench on the West side of the desk so students face East
+    });
   });
   
-  // Speaker/Teacher's Podium
+  // Speaker/Teacher's Podium at the front (East side) facing West
   const podiumGroup = new THREE.Group();
-  const podiumGeo = new THREE.BoxGeometry(2.2, 1.2, 1.2);
+  const podiumGeo = new THREE.BoxGeometry(1.2, 1.2, 2.2);
   const podium = new THREE.Mesh(podiumGeo, woodMat);
   podium.position.y = 0.6;
   podium.castShadow = true;
   podium.receiveShadow = true;
   podiumGroup.add(podium);
   
-  // Lectern top
-  const topGeo = new THREE.BoxGeometry(1.0, 0.1, 0.8);
-  topGeo.rotateX(-Math.PI / 8); // Slanted book rest
+  // Lectern top slanted towards West
+  const topGeo = new THREE.BoxGeometry(0.8, 0.1, 1.8);
+  topGeo.rotateZ(Math.PI / 8); // Slanted book rest
   const top = new THREE.Mesh(topGeo, woodMat);
-  top.position.set(0, 1.25, 0.1);
+  top.position.set(-0.1, 1.25, 0);
   podiumGroup.add(top);
   
-  podiumGroup.position.set(0, 0, 7.5);
+  podiumGroup.position.set(8.5, 0, 0);
   classroomGroup.add(podiumGroup);
   
-  classroomGroup.position.set(10, 0, 10);
+  classroomGroup.position.set(17, 0, 8);
+  registerStaticScenery(classroomGroup, { kind: 'room', roomId: 6 });
   scene.add(classroomGroup);
 }
 
@@ -1251,40 +2820,42 @@ function buildBuilding() {
   
   const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.75 });
   const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
-  const pillarMat = new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.7 });
   const frameMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 });
   const screenMat = new THREE.MeshStandardMaterial({ color: '#090d16', roughness: 0.2, emissive: '#020617', emissiveIntensity: 0.2 });
-  
-  // Total dimensions: X is 80m, Z is 40m
-  const startX = -40;
-  const startZ = -20;
-  const endX = 40;
-  const endZ = 20;
 
-  // 1. FLOOR PLACEMENT (Alternating Wood and Stone rooms in a checkerboard pattern)
-  const roomFloorGeo = new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH);
+  // 1. FLOOR PLACEMENT (Dynamic Room Floors & Central Lobby Floor)
   ROOMS.forEach((room) => {
-    const isWood = (Math.round((room.x + 30) / 20) + Math.round((room.z + 10) / 20)) % 2 === 0;
+    const isWood = room.id % 2 === 0;
     const mat = isWood ? woodFloorMat : stoneFloorMat;
+    const roomFloorGeo = new THREE.PlaneGeometry(room.width, room.depth);
     const roomFloor = new THREE.Mesh(roomFloorGeo, mat);
     roomFloor.rotation.x = -Math.PI / 2;
     roomFloor.position.set(room.x, 0.01, room.z);
     roomFloor.receiveShadow = true;
     scene.add(roomFloor);
+
+    buildRoomInteriorSet(room);
   });
+
+  // Central Lobby/Corridor Floor (Stone, 10m x 80m, X: [-5, 5], Z: [-40, 40])
+  const lobbyFloorGeo = new THREE.PlaneGeometry(10, 80);
+  const lobbyFloor = new THREE.Mesh(lobbyFloorGeo, stoneFloorMat);
+  lobbyFloor.rotation.x = -Math.PI / 2;
+  lobbyFloor.position.set(0, 0.015, 0); // Slightly raised above ground to prevent z-fighting
+  lobbyFloor.receiveShadow = true;
+  scene.add(lobbyFloor);
 
   // Helper function to create wall meshes and register collision bounding boxes
   function addWallSegment(xStart, zStart, xEnd, zEnd, height = ROOM_HEIGHT) {
     const dx = xEnd - xStart;
     const dz = zEnd - zStart;
     const len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 0.01) return; // Skip tiny segments
     const angle = Math.atan2(dz, dx);
     
     const thickness = 0.5;
-    
-    // Split wall into lower (opaque) and upper (fading) parts
     const lowerHeight = 3.5;
-    const upperHeight = height - lowerHeight; // 2.0
+    const upperHeight = height - lowerHeight;
     
     // Lower wall segment
     const lowerGeo = new THREE.BoxGeometry(len, lowerHeight, thickness);
@@ -1311,7 +2882,7 @@ function buildBuilding() {
     const baseboardHeight = 0.35;
     const baseboardThickness = 0.08;
     const baseboardGeo = new THREE.BoxGeometry(len, baseboardHeight, baseboardThickness);
-    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 }); // Dark timber
+    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
     
     const baseboard1 = new THREE.Mesh(baseboardGeo, baseboardMat);
     baseboard1.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, thickness / 2 + baseboardThickness / 2);
@@ -1335,64 +2906,123 @@ function buildBuilding() {
     });
   }
 
-  // 2. EXTERIOR WALLS (80m x 40m Building bounds)
-  // Outer North Wall
-  addWallSegment(-40, -20, -3, -20);
-  addWallSegment(3, -20, 40, -20);
-  
-  // Outer South Wall
-  addWallSegment(-40, 20, -3, 20);
-  addWallSegment(3, 20, 40, 20);
-  
-  // Outer East & West Walls
-  addWallSegment(-40, -20, -40, 20);
-  addWallSegment(40, -20, 40, 20);
+  // Helper to create Doric Columns
+  function createDoricColumn(x, z, height) {
+    const columnGroup = new THREE.Group();
+    columnGroup.position.set(x, 0, z);
 
-  // 3. INTERIOR DIVISION WALLS
-  for (let x = -40; x < 40; x += 20) {
-    addWallSegment(x, 0, x + 8.5, 0);
-    addWallSegment(x + 11.5, 0, x + 20, 0);
+    const columnColor = '#f1f5f9'; // Off-white clean marble-like color
+    const columnMat = new THREE.MeshStandardMaterial({
+      color: columnColor,
+      roughness: 0.6,
+      metalness: 0.1
+    });
+
+    // Doric shaft is tapered (narrower at the top)
+    const shaftHeight = height - 0.6;
+    const shaftGeo = new THREE.CylinderGeometry(0.3, 0.38, shaftHeight, 16);
+    const shaft = new THREE.Mesh(shaftGeo, columnMat);
+    shaft.position.y = shaftHeight / 2;
+    shaft.castShadow = true;
+    shaft.receiveShadow = true;
+    columnGroup.add(shaft);
+
+    // Doric Capital Echinus (flared cylinder)
+    const echinusHeight = 0.3;
+    const echinusGeo = new THREE.CylinderGeometry(0.5, 0.3, echinusHeight, 16);
+    const echinus = new THREE.Mesh(echinusGeo, columnMat);
+    echinus.position.y = shaftHeight + echinusHeight / 2;
+    echinus.castShadow = true;
+    echinus.receiveShadow = true;
+    columnGroup.add(echinus);
+
+    // Doric Capital Abacus (flat square block)
+    const abacusHeight = 0.3;
+    const abacusGeo = new THREE.BoxGeometry(1.1, abacusHeight, 1.1);
+    const abacus = new THREE.Mesh(abacusGeo, columnMat);
+    abacus.position.y = shaftHeight + echinusHeight + abacusHeight / 2;
+    abacus.castShadow = true;
+    abacus.receiveShadow = true;
+    columnGroup.add(abacus);
+
+    scene.add(columnGroup);
   }
 
-  // Vertical dividing walls
-  const vertPositions = [-20, 0, 20];
-  for (const vx of vertPositions) {
-    addWallSegment(vx, -20, vx, -11.5);
-    addWallSegment(vx, -8.5, vx, 0);
-    
-    addWallSegment(vx, 0, vx, 8.5);
-    addWallSegment(vx, 11.5, vx, 20);
-  }
-
-  // 3b. DOOR FRAMES AND LINTELS
-  createDoorFrame(0, 20, 'H', 6);
-  createDoorFrame(0, -20, 'H', 6);
-  
-  createDoorFrame(-30, 0, 'H', 3);
-  createDoorFrame(-10, 0, 'H', 3);
-  createDoorFrame(10, 0, 'H', 3);
-  createDoorFrame(30, 0, 'H', 3);
-  
-  const doorVertPositions = [-20, 0, 20];
-  for (const vx of doorVertPositions) {
-    createDoorFrame(vx, -10, 'V', 3);
-    createDoorFrame(vx, 10, 'V', 3);
-  }
-
-  // 4. PILLARS & CORNER DECORATIONS
-  const pillarGeo = new THREE.CylinderGeometry(0.4, 0.4, ROOM_HEIGHT, 8);
-  for (let x = -40; x <= 40; x += 20) {
-    for (let z = -20; z <= 20; z += 20) {
-      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-      pillar.position.set(x, ROOM_HEIGHT / 2, z);
-      pillar.castShadow = true;
-      pillar.receiveShadow = true;
-      scene.add(pillar);
-    }
-  }
-
-  // 5. EMBEDDED SCREENS & WALL MOUNTED TORCHES IN ROOMS
+  // 2. BUILD ROOM WALLS (Outer, Partition, and Corridor-Facing Walls)
   ROOMS.forEach((room) => {
+    const xMin = room.x - room.width / 2;
+    const xMax = room.x + room.width / 2;
+    const zMin = room.z - room.depth / 2;
+    const zMax = room.z + room.depth / 2;
+
+    // West outer wall (for Left rooms) or East outer wall (for Right rooms)
+    if (room.x < 0) {
+      addWallSegment(xMin, zMin, xMin, zMax);
+    } else {
+      addWallSegment(xMax, zMin, xMax, zMax);
+    }
+
+    // North wall (spans from outer edge to corridor)
+    addWallSegment(xMin, zMin, xMax, zMin);
+
+    // South wall (spans from outer edge to corridor)
+    addWallSegment(xMin, zMax, xMax, zMax);
+
+    // Corridor-Facing wall (at X = -5 or X = 5) with a centered 4m doorway
+    const corridorX = room.x < 0 ? -5 : 5;
+    addWallSegment(corridorX, zMin, corridorX, room.z - 2);
+    addWallSegment(corridorX, room.z + 2, corridorX, zMax);
+  });
+
+  // 3. FILL CORRIDOR WALL GAPS (Enclosing the grand lobby corridor where no rooms exist)
+  // Left side gaps at X = -5
+  addWallSegment(-5, -20, -5, -18);
+  addWallSegment(-5, -2, -5, 2);
+  addWallSegment(-5, 14, -5, 18);
+  addWallSegment(-5, 34, -5, 40);
+
+  // Right side gaps at X = 5
+  addWallSegment(5, -40, 5, -38);
+  addWallSegment(5, -22, 5, -18);
+  addWallSegment(5, -6, 5, -2);
+  addWallSegment(5, 18, 5, 20);
+  addWallSegment(5, 36, 5, 40);
+
+  // 4. CLOSING BACK WALL & BUILDING THE GRAND FRONT ENTRANCE
+  // Close the back of the lobby corridor at Z = -40
+  addWallSegment(-5, -40, 5, -40);
+
+  // South grand entrance wall at Z = 40 (leaves a 4m central gap from X: -2 to 2)
+  addWallSegment(-5, 40, -2, 40);
+  addWallSegment(2, 40, 5, 40);
+
+  // 5. DOOR FRAMES FOR ALL ROOM ENTRANCES AND THE MAIN ENTRANCE
+  ROOMS.forEach((room) => {
+    const corridorX = room.x < 0 ? -5 : 5;
+    createDoorFrame(corridorX, room.z, 'V', 4);
+  });
+
+  // Front entrance door frame
+  createDoorFrame(0, 40, 'H', 4);
+
+  // 6. COLONNADE PLACEMENT (Doric Columns inside the Lobby & Front Portico)
+  const colsZ = [-35, -25, -15, -5, 5, 15, 25, 35];
+  
+  // Left lobby colonnade (at X = -4.2)
+  colsZ.forEach(cz => createDoricColumn(-4.2, cz, ROOM_HEIGHT));
+
+  // Right lobby colonnade (at X = 4.2)
+  colsZ.forEach(cz => createDoricColumn(4.2, cz, ROOM_HEIGHT));
+
+  // Front entrance portico (4 Doric columns standing in front at Z = 40.8)
+  createDoricColumn(-3.5, 40.8, ROOM_HEIGHT);
+  createDoricColumn(-1.5, 40.8, ROOM_HEIGHT);
+  createDoricColumn(1.5, 40.8, ROOM_HEIGHT);
+  createDoricColumn(3.5, 40.8, ROOM_HEIGHT);
+
+  // 7. EMBEDDED SCREENS & WALL MOUNTED TORCHES IN ROOMS
+  ROOMS.forEach((room) => {
+    const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent };
     const screenGroup = new THREE.Group();
     
     const outerGeo = new THREE.BoxGeometry(7, 4, 0.2);
@@ -1407,39 +3037,51 @@ function buildBuilding() {
     clickableScreens.push(innerScreen);
     screenGroup.add(innerScreen);
 
-    const borderMat = new THREE.MeshBasicMaterial({ color: '#3b82f6', wireframe: true });
+    const borderMat = new THREE.MeshBasicMaterial({ color: layout.themeColor, wireframe: true });
     const screenBorder = new THREE.Mesh(innerGeo, borderMat);
     screenBorder.position.z = 0.11;
     screenBorder.scale.set(1.02, 1.02, 1.02);
     screenGroup.add(screenBorder);
     
-    if (room.z < 0) {
-      screenGroup.position.set(room.x, 3.5, -19.8);
-      screenGroup.rotation.y = 0;
+    // Position screen on the far wall (West for left rooms, East for right rooms)
+    if (room.x < 0) {
+      // Left room: West wall, facing East
+      const xPos = room.x - room.width / 2 + 0.15;
+      screenGroup.position.set(xPos, 3.5, room.z);
+      screenGroup.rotation.y = Math.PI / 2;
+      scene.add(screenGroup);
+      
+      // Flanking wall torches
+      createWallTorch(room.x - room.width / 2 + 0.25, 2.5, room.z - 4, Math.PI / 2, room.id, true);
+      createWallTorch(room.x - room.width / 2 + 0.25, 2.5, room.z + 4, Math.PI / 2, room.id, false);
     } else {
-      screenGroup.position.set(room.x, 3.5, 19.8);
-      screenGroup.rotation.y = Math.PI;
+      // Right room: East wall, facing West
+      const xPos = room.x + room.width / 2 - 0.15;
+      screenGroup.position.set(xPos, 3.5, room.z);
+      screenGroup.rotation.y = -Math.PI / 2;
+      scene.add(screenGroup);
+      
+      // Flanking wall torches
+      createWallTorch(room.x + room.width / 2 - 0.25, 2.5, room.z - 4, -Math.PI / 2, room.id, true);
+      createWallTorch(room.x + room.width / 2 - 0.25, 2.5, room.z + 4, -Math.PI / 2, room.id, false);
     }
     
-    scene.add(screenGroup);
-
-    createWallTorch(room.x - 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI, true);
-    createWallTorch(room.x + 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI, false);
+    createRoomIndicator(room);
   });
 
-  // 6. CEILING / ROOF PLACEMENT (Fades out when player is indoors)
+  // 8. CEILING / ROOF PLACEMENT (Fades out when player is indoors)
   ceilingMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, transparent: true, opacity: 1.0 });
-  const ceilingGeo = new THREE.BoxGeometry(80, 0.2, 40);
+  const ceilingGeo = new THREE.BoxGeometry(60, 0.2, 80); // Covered bounds (X: [-30, 30], Z: [-40, 40])
   ceilingMesh = new THREE.Mesh(ceilingGeo, ceilingMat);
   ceilingMesh.position.set(0, ROOM_HEIGHT + 0.1, 0);
   ceilingMesh.castShadow = true;
   ceilingMesh.receiveShadow = true;
   scene.add(ceilingMesh);
 
-  // 7. CLASSROOM ASSETS (Benches and desks in Room 6)
+  // 9. CLASSROOM ASSETS (Benches and desks in Room 6)
   buildClassroomAssets();
 
-  // 8. EXTERIOR SIGN BOARD (Metalyceum & Canada Council)
+  // 10. EXTERIOR SIGN BOARD (Metalyceum & Canada Council)
   const signTex = createSignBoardTexture();
   signFrontMat = new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.6, transparent: true, opacity: 1.0 });
   signSideMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.8, transparent: true, opacity: 1.0 });
@@ -1448,15 +3090,15 @@ function buildBuilding() {
   const signGeo = new THREE.BoxGeometry(10.5, 1.4, 0.1);
   const signMesh = new THREE.Mesh(signGeo, signMaterials);
   
-  // Position right above entrance on the South upper wall (Z: 20)
-  signMesh.position.set(0, 4.4, 20.3);
+  // Position right above entrance on the South upper wall (Z: 40)
+  signMesh.position.set(0, 4.4, 40.3);
   signMesh.castShadow = true;
   signMesh.receiveShadow = true;
   scene.add(signMesh);
-  upperWalls.push(signMesh); // Toggle visibility in sync with upper walls
+  upperWalls.push(signMesh);
 }
 
-function createWallTorch(x, y, z, rotationY, withLight = true) {
+function createWallTorch(x, y, z, rotationY, roomId = null, withLight = true) {
   initSceneryAssets();
   const torchGroup = new THREE.Group();
 
@@ -1495,6 +3137,9 @@ function createWallTorch(x, y, z, rotationY, withLight = true) {
   torchGroup.position.set(x, y, z);
   torchGroup.rotation.y = rotationY;
 
+  if (roomId !== null) {
+    registerStaticScenery(torchGroup, { kind: 'room', roomId });
+  }
   scene.add(torchGroup);
 
   // Track flame mesh (always) and light (when present) for the flicker animation
@@ -1642,6 +3287,13 @@ function checkCollision(targetX, targetZ) {
     }
   }
 
+  for (const collider of PLACED_ASSET_COLLIDERS) {
+    if (targetX >= collider.minX && targetX <= collider.maxX &&
+        targetZ >= collider.minZ && targetZ <= collider.maxZ) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -1654,9 +3306,19 @@ const _camDir = new THREE.Vector3();
 const _camRight = new THREE.Vector3();
 const _targetDir = new THREE.Vector3();
 const _delta = new THREE.Vector3();
+const _desiredCameraPos = new THREE.Vector3();
+const _raycaster = new THREE.Raycaster();
+const _projectedLabelPos = new THREE.Vector3();
 
 function updateLocalPlayer(dt) {
   if (!isJoined || !localPlayer.mesh) return;
+  if (editor.enabled) {
+    localPlayer.isMoving = false;
+    localPlayer.velocity.x = 0;
+    localPlayer.velocity.z = 0;
+    animateAvatarWalk(localPlayer, dt);
+    return;
+  }
 
   const oldPos = _oldPos.copy(localPlayer.mesh.position);
 
@@ -1782,12 +3444,14 @@ function updateLocalPlayer(dt) {
   localPlayer.mesh.position.set(localPlayer.x, localPlayer.y, localPlayer.z);
   localPlayer.mesh.rotation.y = localPlayer.ry;
   
-  // Update controls target and camera position in lockstep with player movement delta
+  // Update controls target and camera follow with a small amount of smoothing so
+  // the player still feels anchored while camera movement is less abrupt.
   const delta = _delta.subVectors(localPlayer.mesh.position, oldPos);
-  camera.position.add(delta);
-  controls.target.copy(localPlayer.mesh.position);
-  controls.target.y += 1.2;
-  controls.update();
+  _desiredCameraPos.copy(camera.position).add(delta);
+  camera.position.lerp(_desiredCameraPos, CAMERA_FOLLOW_LERP);
+  controls.target.x = frameIndependentLerp(controls.target.x, localPlayer.mesh.position.x, dt, 0.0009);
+  controls.target.y = frameIndependentLerp(controls.target.y, localPlayer.mesh.position.y + 1.2, dt, 0.0009);
+  controls.target.z = frameIndependentLerp(controls.target.z, localPlayer.mesh.position.z, dt, 0.0009);
 
   // 4. Leg and Arm Swing Walking Animation
   animateAvatarWalk(localPlayer, dt);
@@ -1991,10 +3655,10 @@ function detectRoomEntry() {
     const rz = room.z;
     
     // Bounds boundaries
-    const minX = rx - ROOM_WIDTH / 2;
-    const maxX = rx + ROOM_WIDTH / 2;
-    const minZ = rz - ROOM_DEPTH / 2;
-    const maxZ = rz + ROOM_DEPTH / 2;
+    const minX = rx - room.width / 2;
+    const maxX = rx + room.width / 2;
+    const minZ = rz - room.depth / 2;
+    const maxZ = rz + room.depth / 2;
 
     if (localPlayer.x >= minX && localPlayer.x <= maxX &&
         localPlayer.z >= minZ && localPlayer.z <= maxZ) {
@@ -2345,6 +4009,8 @@ function connectMultiplayer() {
             }
           }
           renderEventBoard();
+          scheduleRoomVisualRefresh();
+          applyPublishedWorldAssets(data.worldAssets || []);
 
           // Spawn existing players
           data.players.forEach((p) => {
@@ -2387,10 +4053,39 @@ function connectMultiplayer() {
           addChatLog(data.username, data.message);
           break;
 
+        case "editor_auth": {
+          editor.authed = Boolean(data.ok);
+          const authPanel = document.getElementById('editor-auth-panel');
+          const authStatus = document.getElementById('editor-auth-status');
+          if (authStatus) {
+            authStatus.textContent = editor.authed ? 'Editor unlocked.' : 'Invalid editor token.';
+          }
+          if (editor.authed) {
+            if (authPanel) authPanel.classList.remove('active');
+            setEditorEnabled(true);
+          }
+          break;
+        }
+
+        case "world_assets_update":
+          applyPublishedWorldAssets(data.assets || []);
+          if (editor.enabled && !editor.dirty) {
+            updateEditorStatus('World layout saved.');
+          }
+          break;
+
+        case "error":
+          if (typeof data.reason === 'string') {
+            addChatLog('System', data.reason, 'system-msg');
+            if (editor.enabled) updateEditorStatus(data.reason);
+          }
+          break;
+
         case "room_update": {
           const rIdx = Number.isInteger(data.room?.roomId) ? data.room.roomId : data.roomId;
           applyRoomData(rIdx, data.room || data);
           renderEventBoard();
+          scheduleRoomVisualRefresh();
           if (localPlayer.currentRoom === rIdx) {
             updateRoomPanelDetails();
             setupRoomVideo(rIdx);
@@ -2402,6 +4097,7 @@ function connectMultiplayer() {
           const rIdx = data.room;
           applyRoomData(rIdx, { sourceValue: data.videoId });
           renderEventBoard();
+          scheduleRoomVisualRefresh();
           if (localPlayer.currentRoom === rIdx) {
             updateRoomPanelDetails();
             setupRoomVideo(rIdx);
@@ -2671,7 +4367,6 @@ function animate() {
   if (deltaTheta !== 0 || deltaPhi !== 0) {
     orbitCamera(deltaTheta, deltaPhi);
   }
-  controls.update();
   
   // 2. Animate Torches (Point light flickering & flame wiggling)
   const time = now * 0.005;
@@ -2693,7 +4388,7 @@ function animate() {
   
   // 4. Update Remote Players Positions (Interpolate / lerp for smooth motion)
   remotePlayers.forEach((p) => {
-    const lerpSpeed = 10.0 * dt;
+    const lerpSpeed = 1 - Math.pow(REMOTE_PLAYER_SMOOTHING, dt);
     
     p.x = THREE.MathUtils.lerp(p.x, p.targetX, lerpSpeed);
     p.y = THREE.MathUtils.lerp(p.y, p.targetY, lerpSpeed);
@@ -2711,7 +4406,16 @@ function animate() {
     
     // Limbs walk animation
     animateAvatarWalk(p, dt);
+
+    const horizontalDistance = camera.position.distanceTo(p.mesh.position);
+    p.mesh.visible = horizontalDistance < 95;
+    if (p.nameTag) {
+      p.nameTag.visible = horizontalDistance < 42;
+    }
   });
+
+  updateRoomIndicatorAnimations(now);
+  refreshStaticSceneryVisibility();
   
   // 4b. Update Ceilings and Upper Walls (Fade out when indoors)
   const isInside = localPlayer.currentRoom !== -1;
@@ -2737,8 +4441,31 @@ function animate() {
   // 4c. Update projected classroom board position
   updateClassroomBoard();
 
+  if (sceneSunLight) {
+    sceneSunLight.intensity = localPlayer.currentRoom === -1 ? 0.92 : 0.62;
+  }
+  if (sceneHemisphereLight) {
+    sceneHemisphereLight.intensity = localPlayer.currentRoom === -1 ? 0.78 : 0.55;
+  }
+
+  controls.update();
+  updateDebugPanel(now);
+
   // 5. Render Scene
   renderer.render(scene, camera);
+}
+
+function startAnimationLoop() {
+  if (!renderer || animationLoopRunning) return;
+  lastTime = performance.now();
+  renderer.setAnimationLoop(animate);
+  animationLoopRunning = true;
+}
+
+function stopAnimationLoop() {
+  if (!renderer || !animationLoopRunning) return;
+  renderer.setAnimationLoop(null);
+  animationLoopRunning = false;
 }
 
 // --- Theater Mode & Raycaster Interactions ---
@@ -2813,18 +4540,46 @@ function closeTheaterMode() {
   }
 }
 
+function focusRoomFromLobbyMarker(roomId) {
+  const room = ROOMS[roomId];
+  if (!room || !localPlayer.mesh) return;
+
+  localPlayer.x = room.x;
+  localPlayer.z = room.z + (room.z < 0 ? 5.2 : -5.2);
+  localPlayer.y = getTerrainHeight(localPlayer.x, localPlayer.z);
+  localPlayer.velocity.set(0, 0, 0);
+  localPlayer.mesh.position.set(localPlayer.x, localPlayer.y, localPlayer.z);
+  controls.target.set(room.x, 1.4, room.z);
+  addChatLog('System', `Moved closer to ${room.name}.`, 'system-msg');
+  detectRoomEntry();
+  syncPosition();
+}
+
 function onCanvasClick(event) {
-  // Only detect screen clicks when the user is inside a room
-  if (localPlayer.currentRoom === -1) return;
-  
+  if (handleEditorCanvasClick(event)) {
+    return;
+  }
+
   // Calculate mouse position in normalized device coordinates
   const mouse = new THREE.Vector2();
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObjects(clickableScreens);
+  _raycaster.setFromCamera(mouse, camera);
+
+  if (localPlayer.currentRoom === -1) {
+    const markerIntersects = _raycaster.intersectObjects(clickableRoomMarkers);
+    if (markerIntersects.length > 0) {
+      const targetRoom = markerIntersects[0].object.userData?.roomId;
+      if (targetRoom !== undefined) {
+        focusRoomFromLobbyMarker(targetRoom);
+        return;
+      }
+    }
+    return;
+  }
+
+  const intersects = _raycaster.intersectObjects(clickableScreens);
   
   if (intersects.length > 0) {
     const clickedScreen = intersects[0].object;
@@ -2834,8 +4589,99 @@ function onCanvasClick(event) {
   }
 }
 
+function initEditorUiHandlers() {
+  const palette = document.getElementById('editor-asset-palette');
+  if (palette) {
+    palette.innerHTML = '';
+    Object.entries(WORLD_ASSET_CATALOG).forEach(([type, config]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'editor-asset-btn';
+      btn.dataset.assetType = type;
+      btn.textContent = config.label;
+      btn.addEventListener('click', () => {
+        if (!editor.enabled) return;
+        editor.placingType = editor.placingType === type ? null : type;
+        updateEditorPalette();
+        updateEditorStatus();
+      });
+      palette.appendChild(btn);
+    });
+  }
+
+  const toggleBtn = document.getElementById('editor-toggle-btn');
+  const authPanel = document.getElementById('editor-auth-panel');
+  const authForm = document.getElementById('editor-auth-panel');
+  const authInput = document.getElementById('editor-token-input');
+  const authStatus = document.getElementById('editor-auth-status');
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      if (editor.authed) {
+        setEditorEnabled(!editor.enabled);
+      } else if (authPanel) {
+        authPanel.classList.toggle('active');
+        if (authInput) authInput.focus();
+      }
+    });
+  }
+
+  if (authForm) {
+    authForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        if (authStatus) authStatus.textContent = 'Connect to Metalyceum before unlocking the editor.';
+        return;
+      }
+      socket.send(JSON.stringify({
+        type: 'editor_auth',
+        token: authInput ? authInput.value : ''
+      }));
+      if (authStatus) authStatus.textContent = 'Checking token...';
+    });
+  }
+
+  const exitBtn = document.getElementById('editor-exit-btn');
+  if (exitBtn) {
+    exitBtn.addEventListener('click', () => setEditorEnabled(false));
+  }
+
+  document.querySelectorAll('.editor-mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      editor.mode = btn.dataset.editorMode || 'move';
+      document.querySelectorAll('.editor-mode-btn').forEach((modeBtn) => {
+        modeBtn.classList.toggle('active', modeBtn === btn);
+      });
+      if (editor.transformControls) {
+        editor.transformControls.setMode(editor.mode);
+      }
+    });
+  });
+
+  ['editor-pos-x', 'editor-pos-y', 'editor-pos-z', 'editor-rot-y', 'editor-scale'].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.addEventListener('change', applyInspectorValues);
+    }
+  });
+
+  const duplicateBtn = document.getElementById('editor-duplicate-btn');
+  if (duplicateBtn) duplicateBtn.addEventListener('click', duplicateSelectedAsset);
+
+  const deleteBtn = document.getElementById('editor-delete-btn');
+  if (deleteBtn) deleteBtn.addEventListener('click', deleteSelectedAsset);
+
+  const cancelBtn = document.getElementById('editor-cancel-btn');
+  if (cancelBtn) cancelBtn.addEventListener('click', cancelWorldAssetDraft);
+
+  const saveBtn = document.getElementById('editor-save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', saveWorldAssets);
+}
+
 // --- Form & UI Handle Bindings ---
 function initUiHandlers() {
+  initEditorUiHandlers();
+
   // Login form submission
   document.getElementById('login-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -2873,8 +4719,8 @@ function initUiHandlers() {
     
     // Initialize multiplayer connection
     connectMultiplayer();
-    
     isJoined = true;
+    resumeAudioContext();
   });
 
   // Color picker synchronization
@@ -2900,6 +4746,36 @@ function initUiHandlers() {
     addChatLog(localPlayer.username, msg);
     
     input.value = '';
+  });
+
+  document.getElementById('event-board-list').addEventListener('click', (e) => {
+    const card = e.target.closest('.event-board-item');
+    if (!card) return;
+    const roomId = Number.parseInt(card.dataset.roomId || '', 10);
+    if (Number.isNaN(roomId)) return;
+    focusRoomFromLobbyMarker(roomId);
+  });
+
+  document.getElementById('event-board-list').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.event-board-item');
+    if (!card) return;
+    e.preventDefault();
+    const roomId = Number.parseInt(card.dataset.roomId || '', 10);
+    if (!Number.isNaN(roomId)) {
+      focusRoomFromLobbyMarker(roomId);
+    }
+  });
+
+  document.getElementById('soundtrack-toggle').addEventListener('click', async () => {
+    SOUNDTRACK_STATE.enabled = !SOUNDTRACK_STATE.enabled;
+    if (!SOUNDTRACK_STATE.enabled) {
+      pauseSoundtrackPlayback();
+      updateSoundtrackUi();
+      return;
+    }
+    updateSoundtrackUi();
+    await resumeAudioContext();
   });
 
   // Room side panel close btn
@@ -3005,6 +4881,7 @@ function initUiHandlers() {
   // Keyboard controls listeners
   window.addEventListener('keydown', (e) => {
     if (document.activeElement.tagName === 'INPUT') return; // Ignore movement keys when typing in chat
+    if (editor.enabled && e.key !== 'Escape') return;
     
     const key = e.key.toLowerCase();
     if (key === 'w') keys.w = true;
@@ -3018,9 +4895,27 @@ function initUiHandlers() {
     if (e.key === 'ArrowRight') cameraKeys.ArrowRight = true;
     if (e.key === 'ArrowUp') cameraKeys.ArrowUp = true;
     if (e.key === 'ArrowDown') cameraKeys.ArrowDown = true;
+    if (e.key === '`') {
+      DEBUG_STATE.enabled = !DEBUG_STATE.enabled;
+      if (debugPanel) {
+        debugPanel.classList.toggle('active', DEBUG_STATE.enabled);
+      }
+    }
   });
 
   window.addEventListener('keyup', (e) => {
+    if (editor.enabled) {
+      keys.w = false;
+      keys.a = false;
+      keys.s = false;
+      keys.d = false;
+      keys.space = false;
+      cameraKeys.ArrowLeft = false;
+      cameraKeys.ArrowRight = false;
+      cameraKeys.ArrowUp = false;
+      cameraKeys.ArrowDown = false;
+      return;
+    }
     const key = e.key.toLowerCase();
     if (key === 'w') keys.w = false;
     if (key === 's') keys.s = false;
@@ -3062,10 +4957,25 @@ function initUiHandlers() {
   if (renderer && renderer.domElement) {
     renderer.domElement.addEventListener('click', onCanvasClick);
   }
+
+  window.addEventListener('pointerdown', () => {
+    if (isJoined) {
+      resumeAudioContext();
+    }
+  });
   
   // Focus helper: pressing ESC defocuses inputs and exits theater mode
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (editor.enabled) {
+        if (editor.placingType) {
+          editor.placingType = null;
+          updateEditorPalette();
+          updateEditorStatus();
+        } else {
+          selectEditorAsset(null);
+        }
+      }
       document.activeElement.blur();
       modal.classList.remove('video-modal-visible');
       closeTheaterMode();
@@ -3078,42 +4988,47 @@ function initUiHandlers() {
 function initPerformanceOptimization() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        // Send a standby status
+      stopAnimationLoop();
+      pauseSoundtrackPlayback();
+      if (ytPlayer && ytPlayer.pauseVideo) {
+        try { ytPlayer.pauseVideo(); } catch (e) {}
       }
+      if (boardYtPlayer && boardYtPlayer.pauseVideo) {
+        try { boardYtPlayer.pauseVideo(); } catch (e) {}
+      }
+      return;
+    }
+    startAnimationLoop();
+    if (localPlayer.currentRoom !== -1) {
+      setupRoomVideo(localPlayer.currentRoom);
+    }
+    if (isJoined) {
+      resumeAudioContext();
     }
   });
 
-  // Attach contentvisibilityautostatechange to game canvas container to defer calculations
   const gameContainer = document.getElementById('game-container');
   gameContainer.style.contentVisibility = 'auto';
   gameContainer.style.containIntrinsicSize = 'auto none auto 100vh';
-  
-  gameContainer.addEventListener('contentvisibilityautostatechange', (event) => {
-    if (event.skipped) {
-      // Browser skipped rendering this, throttle down
-      renderer.setAnimationLoop(null);
-    } else {
-      // Browser resumes, kick off animation loop again
-      lastTime = performance.now();
-      renderer.setAnimationLoop(animate);
-    }
-  });
 }
 
 // --- App Entry Point ---
 window.addEventListener('DOMContentLoaded', () => {
+  soundtrackTracks = normalizeSoundtrackLibrary();
   initEngine();
+  initDebugPanel();
+  initSoundtrackUi();
   initUiHandlers();
   initPerformanceOptimization();
   renderEventBoard();
   roomStatusTimer = window.setInterval(() => {
     renderEventBoard();
+    scheduleRoomVisualRefresh();
     if (localPlayer.currentRoom !== -1) {
       updateRoomPanelDetails();
     }
   }, 30000);
   
   // Kickstart animation loop (WebGL updates)
-  renderer.setAnimationLoop(animate);
+  startAnimationLoop();
 });

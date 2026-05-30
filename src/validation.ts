@@ -3,10 +3,48 @@
 // plain Node/Vitest environment, and reused across the Durable Object handlers.
 
 export type RoomSourceType = "none" | "youtube" | "meet";
+export type WorldAssetType =
+  | "tree"
+  | "boulder"
+  | "flower"
+  | "grass_tuft"
+  | "lantern"
+  | "banner"
+  | "bench"
+  | "plant"
+  | "desk"
+  | "podium";
+
+export interface WorldAssetDefinition {
+  id: string;
+  type: WorldAssetType;
+  x: number;
+  y: number;
+  z: number;
+  rotationY: number;
+  scale: number;
+  roomId: number;
+}
 
 export const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 export const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 export const MAX_DURATION_MINUTES = 24 * 60;
+export const WORLD_ASSET_TYPES: WorldAssetType[] = [
+  "tree",
+  "boulder",
+  "flower",
+  "grass_tuft",
+  "lantern",
+  "banner",
+  "bench",
+  "plant",
+  "desk",
+  "podium"
+];
+export const WORLD_ASSET_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+export const MAX_WORLD_ASSETS = 200;
+export const WORLD_ASSET_MIN_SCALE = 0.25;
+export const WORLD_ASSET_MAX_SCALE = 3;
 
 // Coerce to a string, strip control characters, trim, and cap length.
 export function sanitizeText(v: unknown, maxLen: number): string {
@@ -81,4 +119,84 @@ export function parseStartTime(v: unknown): string | null {
 export function parseDurationMinutes(v: unknown, fallback: number): number {
   if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
   return Math.min(MAX_DURATION_MINUTES, Math.max(0, Math.round(v)));
+}
+
+export function sanitizeAssetId(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const id = v.trim();
+  return WORLD_ASSET_ID_RE.test(id) ? id : null;
+}
+
+export function parseAssetType(v: unknown): WorldAssetType | null {
+  if (typeof v !== "string") return null;
+  return (WORLD_ASSET_TYPES as string[]).includes(v) ? (v as WorldAssetType) : null;
+}
+
+export function parseWorldAssetDefinition(
+  v: unknown,
+  limits: {
+    worldLimit: number;
+    yMin: number;
+    yMax: number;
+    roomCount: number;
+  }
+): WorldAssetDefinition | null {
+  if (!v || typeof v !== "object") return null;
+  const raw = v as Record<string, unknown>;
+  const id = sanitizeAssetId(raw.id);
+  const type = parseAssetType(raw.type);
+  if (!id || !type) return null;
+
+  const roomId = raw.roomId;
+  if (typeof roomId !== "number" || !Number.isInteger(roomId) || roomId < -1 || roomId >= limits.roomCount) {
+    return null;
+  }
+
+  const nums = [raw.x, raw.y, raw.z, raw.rotationY, raw.scale];
+  if (!nums.every((num) => typeof num === "number" && Number.isFinite(num))) return null;
+
+  const x = raw.x as number;
+  const y = raw.y as number;
+  const z = raw.z as number;
+  const rotationY = raw.rotationY as number;
+  const scale = raw.scale as number;
+
+  if (Math.abs(x) > limits.worldLimit || Math.abs(z) > limits.worldLimit) return null;
+  if (y < limits.yMin || y > limits.yMax) return null;
+  if (scale < WORLD_ASSET_MIN_SCALE || scale > WORLD_ASSET_MAX_SCALE) return null;
+
+  return {
+    id,
+    type,
+    x: Number(x.toFixed(3)),
+    y: Number(y.toFixed(3)),
+    z: Number(z.toFixed(3)),
+    rotationY: Number(rotationY.toFixed(5)),
+    scale: Number(scale.toFixed(3)),
+    roomId
+  };
+}
+
+export function parseWorldAssets(
+  v: unknown,
+  limits: {
+    worldLimit: number;
+    yMin: number;
+    yMax: number;
+    roomCount: number;
+    maxAssets?: number;
+  }
+): WorldAssetDefinition[] | null {
+  if (!Array.isArray(v)) return null;
+  if (v.length > (limits.maxAssets ?? MAX_WORLD_ASSETS)) return null;
+
+  const seen = new Set<string>();
+  const assets: WorldAssetDefinition[] = [];
+  for (const rawAsset of v) {
+    const asset = parseWorldAssetDefinition(rawAsset, limits);
+    if (!asset || seen.has(asset.id)) return null;
+    seen.add(asset.id);
+    assets.push(asset);
+  }
+  return assets;
 }

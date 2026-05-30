@@ -19,6 +19,7 @@
   <!-- Three.js and OrbitControls via CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
   
   <!-- YouTube IFrame Player API -->
   <script src="https://www.youtube.com/iframe_api"></script>
@@ -92,6 +93,73 @@
         <span id="event-board-count">0 live · 0 upcoming</span>
       </div>
       <div id="event-board-list" class="event-board-list"></div>
+    </div>
+
+    <div id="soundtrack-card" class="hud-card soundtrack-card glass">
+      <div class="soundtrack-card-top">
+        <div>
+          <span class="soundtrack-label">Ambient playlist</span>
+          <strong id="soundtrack-title">Ambient soundtrack</strong>
+        </div>
+        <button id="soundtrack-toggle" type="button" class="secondary-button soundtrack-toggle">Mute</button>
+      </div>
+      <p id="soundtrack-status">Ready after join</p>
+    </div>
+
+    <button id="editor-toggle-btn" class="editor-toggle glass" type="button">World Editor</button>
+
+    <form id="editor-auth-panel" class="editor-auth-panel glass" autocomplete="off">
+      <label for="editor-token-input">Editor token</label>
+      <div class="editor-auth-row">
+        <input type="password" id="editor-token-input" placeholder="Enter token">
+        <button type="submit" class="btn-primary btn-sm">Unlock</button>
+      </div>
+      <p id="editor-auth-status"></p>
+    </form>
+
+    <div id="world-editor-panel" class="world-editor-panel glass" aria-hidden="true">
+      <div class="editor-panel-header">
+        <div>
+          <h3>World Editor</h3>
+          <p id="editor-status-text">Select an asset to place.</p>
+        </div>
+        <button id="editor-exit-btn" class="editor-icon-btn" type="button" title="Close editor">x</button>
+      </div>
+
+      <div class="editor-section">
+        <span class="editor-section-label">Assets</span>
+        <div id="editor-asset-palette" class="editor-asset-palette"></div>
+      </div>
+
+      <div class="editor-section">
+        <span class="editor-section-label">Transform</span>
+        <div class="editor-mode-row">
+          <button class="editor-mode-btn active" type="button" data-editor-mode="move">Move</button>
+          <button class="editor-mode-btn" type="button" data-editor-mode="rotate">Rotate</button>
+          <button class="editor-mode-btn" type="button" data-editor-mode="scale">Scale</button>
+        </div>
+      </div>
+
+      <div id="editor-inspector" class="editor-inspector editor-inspector-empty">
+        <p id="editor-selection-label">No asset selected.</p>
+        <div class="editor-field-grid">
+          <label>X<input id="editor-pos-x" type="number" step="0.1"></label>
+          <label>Y<input id="editor-pos-y" type="number" step="0.1"></label>
+          <label>Z<input id="editor-pos-z" type="number" step="0.1"></label>
+          <label>Rot<input id="editor-rot-y" type="number" step="1"></label>
+          <label>Scale<input id="editor-scale" type="number" min="0.25" max="3" step="0.05"></label>
+        </div>
+        <p id="editor-room-label" class="editor-room-label">Scope: Outdoor</p>
+        <div class="editor-action-row">
+          <button id="editor-duplicate-btn" class="btn-secondary btn-sm" type="button">Duplicate</button>
+          <button id="editor-delete-btn" class="btn-secondary btn-sm danger" type="button">Delete</button>
+        </div>
+      </div>
+
+      <div class="editor-save-row">
+        <button id="editor-cancel-btn" class="btn-secondary btn-sm" type="button">Cancel</button>
+        <button id="editor-save-btn" class="btn-primary btn-sm" type="button" disabled>Save</button>
+      </div>
     </div>
 
     <!-- Bottom-Left: Real-time Chat Box -->

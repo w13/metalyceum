@@ -7,12 +7,15 @@ import {
   parseVideoInput,
   parseOptionalVideoInput,
   parseStartTime,
-  parseDurationMinutes
+  parseDurationMinutes,
+  parseWorldAssets,
+  type WorldAssetDefinition
 } from "./validation";
 
-interface Env {
+interface Bindings {
   METALYCEUM_WORLD: DurableObjectNamespace;
   ASSETS: { fetch: typeof fetch };
+  WORLD_EDITOR_TOKEN?: string;
 }
 
 const ROOM_COUNT = 8;
@@ -53,6 +56,7 @@ interface Player {
 interface Session {
   id: string;
   player?: Player;
+  canEdit: boolean;
   tokens: number;     // token-bucket allowance for flood protection
   lastRefill: number; // ms timestamp of last bucket refill
   lastChat: number;   // ms timestamp of last accepted chat message
@@ -70,6 +74,7 @@ const CHAT_MIN_INTERVAL = 400; // ms between accepted chat messages
 const BUCKET_CAPACITY = 180;   // burst allowance per connection
 const BUCKET_REFILL = 90;      // tokens/sec (legit movement peaks ~60/s)
 const MAX_ROOM_NAME_LEN = 48;
+const MAX_WORLD_ASSETS = 200;
 
 // Pure validation/sanitization helpers live in ./validation (unit-tested).
 
@@ -81,52 +86,14 @@ function logEvent(event: string, fields: Record<string, unknown> = {}): void {
 export class MetalyceumWorld extends DurableObject {
   sessions: Map<WebSocket, Session> = new Map();
   rooms: RoomEvent[] = [];
+  worldAssets: WorldAssetDefinition[] = [];
+  private readonly bindings: Bindings;
 
-  private tableExists(tableName: string): boolean {
-    const cursor = this.ctx.storage.sql.exec(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
-      tableName
-    );
-    return cursor.toArray().length > 0;
-  }
-
-  private persistRoom(room: RoomEvent): void {
-    this.ctx.storage.sql.exec(
-      `INSERT OR REPLACE INTO room_events
-        (room_id, name, source_value, start_time, duration_minutes, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      room.roomId,
-      room.name,
-      room.sourceValue,
-      room.startTime,
-      room.durationMinutes,
-      room.updatedAt
-    );
-  }
-
-  private serializeRoom(room: RoomEvent) {
-    return {
-      ...room,
-      sourceType: deriveSourceType(room.sourceValue)
-    };
-  }
-
-  // Token-bucket flood protection: refills over time, each message costs 1.
-  // Sized so legitimate movement (~60 msgs/s) passes while abuse is capped.
-  private allow(session: Session, cost = 1): boolean {
-    const now = Date.now();
-    const elapsed = (now - session.lastRefill) / 1000;
-    session.tokens = Math.min(BUCKET_CAPACITY, session.tokens + elapsed * BUCKET_REFILL);
-    session.lastRefill = now;
-    if (session.tokens < cost) return false;
-    session.tokens -= cost;
-    return true;
-  }
-
-  constructor(ctx: DurableObjectState, env: Env) {
+  constructor(ctx: DurableObjectState, env: Bindings) {
     super(ctx, env);
+    this.bindings = env;
 
-    // Retrieve saved room metadata or initialize/migrate using SQLite Storage API.
+    // Retrieve saved room metadata and world assets, or initialize/migrate using SQLite Storage API.
     this.ctx.blockConcurrencyWhile(async () => {
       try {
         this.ctx.storage.sql.exec(
@@ -137,6 +104,21 @@ export class MetalyceumWorld extends DurableObject {
             start_time TEXT,
             duration_minutes INTEGER NOT NULL DEFAULT 0,
             updated_at INTEGER NOT NULL DEFAULT 0
+          )`
+        );
+
+        this.ctx.storage.sql.exec(
+          `CREATE TABLE IF NOT EXISTS world_assets (
+            id TEXT PRIMARY KEY,
+            asset_type TEXT NOT NULL,
+            x REAL NOT NULL,
+            y REAL NOT NULL,
+            z REAL NOT NULL,
+            rotation_y REAL NOT NULL,
+            scale REAL NOT NULL,
+            room_id INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
           )`
         );
 
@@ -203,11 +185,127 @@ export class MetalyceumWorld extends DurableObject {
           }
         }
         this.rooms = repairedRooms;
+
+        const assetRows = this.ctx.storage.sql.exec(
+          `SELECT id, asset_type, x, y, z, rotation_y, scale, room_id
+           FROM world_assets
+           ORDER BY created_at ASC, id ASC`
+        ).toArray() as {
+          id: string;
+          asset_type: string;
+          x: number;
+          y: number;
+          z: number;
+          rotation_y: number;
+          scale: number;
+          room_id: number;
+        }[];
+
+        const parsedAssets = parseWorldAssets(assetRows.map((row) => ({
+          id: row.id,
+          type: row.asset_type,
+          x: row.x,
+          y: row.y,
+          z: row.z,
+          rotationY: row.rotation_y,
+          scale: row.scale,
+          roomId: row.room_id
+        })), this.worldAssetLimits());
+
+        this.worldAssets = parsedAssets ?? [];
+        if (!parsedAssets && assetRows.length > 0) {
+          logEvent("world_assets_load_repaired", { originalCount: assetRows.length });
+        }
       } catch (err) {
         console.error("Failed to initialize SQLite storage:", err);
         this.rooms = DEFAULT_ROOMS.map((room) => ({ ...room }));
+        this.worldAssets = [];
       }
     });
+  }
+
+  private tableExists(tableName: string): boolean {
+    const cursor = this.ctx.storage.sql.exec(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+      tableName
+    );
+    return cursor.toArray().length > 0;
+  }
+
+  private persistRoom(room: RoomEvent): void {
+    this.ctx.storage.sql.exec(
+      `INSERT OR REPLACE INTO room_events
+        (room_id, name, source_value, start_time, duration_minutes, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      room.roomId,
+      room.name,
+      room.sourceValue,
+      room.startTime,
+      room.durationMinutes,
+      room.updatedAt
+    );
+  }
+
+  private persistWorldAssets(assets: WorldAssetDefinition[]): void {
+    const now = Date.now();
+    this.ctx.storage.sql.exec("DELETE FROM world_assets");
+    for (const asset of assets) {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO world_assets
+          (id, asset_type, x, y, z, rotation_y, scale, room_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        asset.id,
+        asset.type,
+        asset.x,
+        asset.y,
+        asset.z,
+        asset.rotationY,
+        asset.scale,
+        asset.roomId,
+        now,
+        now
+      );
+    }
+  }
+
+  private serializeRoom(room: RoomEvent) {
+    return {
+      ...room,
+      sourceType: deriveSourceType(room.sourceValue)
+    };
+  }
+
+  private worldAssetLimits() {
+    return {
+      worldLimit: WORLD_LIMIT,
+      yMin: Y_MIN,
+      yMax: Y_MAX,
+      roomCount: ROOM_COUNT,
+      maxAssets: MAX_WORLD_ASSETS
+    };
+  }
+
+  private editorTokenMatches(token: unknown): boolean {
+    const expected = this.bindings.WORLD_EDITOR_TOKEN;
+    if (typeof token !== "string" || !expected) return false;
+    const maxLen = Math.max(token.length, expected.length);
+    let diff = token.length ^ expected.length;
+    for (let i = 0; i < maxLen; i++) {
+      diff |= (token.charCodeAt(i) || 0) ^ (expected.charCodeAt(i) || 0);
+    }
+    return diff === 0;
+  }
+
+  // Token-bucket flood protection: refills over time, each message costs 1.
+  // Sized so legitimate movement (~60 msgs/s) passes while abuse is capped.
+  private allow(session: Session, cost = 1): boolean {
+    const now = Date.now();
+    const elapsed = (now - session.lastRefill) / 1000;
+    session.tokens = Math.min(BUCKET_CAPACITY, session.tokens + elapsed * BUCKET_REFILL);
+    session.lastRefill = now;
+    if (session.tokens < cost) return false;
+    session.tokens -= cost;
+    return true;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -240,6 +338,7 @@ export class MetalyceumWorld extends DurableObject {
     const id = crypto.randomUUID();
     this.sessions.set(socket, {
       id,
+      canEdit: false,
       tokens: BUCKET_CAPACITY,
       lastRefill: Date.now(),
       lastChat: 0
@@ -249,7 +348,7 @@ export class MetalyceumWorld extends DurableObject {
     socket.addEventListener("message", async (msg) => {
       try {
         if (typeof msg.data !== "string") return;
-        if (msg.data.length > 4096) return; // reject oversized frames outright
+        if (msg.data.length > 65536) return; // reject oversized frames outright
 
         const session = this.sessions.get(socket);
         if (!session) return;
@@ -301,7 +400,8 @@ export class MetalyceumWorld extends DurableObject {
               playerId: id,
               players: playersList,
               rooms: this.rooms.map((room) => this.serializeRoom(room)),
-              videos: this.rooms.map((room) => room.sourceValue)
+              videos: this.rooms.map((room) => room.sourceValue),
+              worldAssets: this.worldAssets
             }));
 
             // Broadcast join to all other players
@@ -314,6 +414,55 @@ export class MetalyceumWorld extends DurableObject {
               username: player.username,
               players: Array.from(this.sessions.values()).filter((s) => s.player).length
             });
+            break;
+          }
+
+          case "editor_auth": {
+            if (!session.player) break;
+            const ok = this.editorTokenMatches(data.token);
+            session.canEdit = ok;
+            socket.send(JSON.stringify({
+              type: "editor_auth",
+              ok
+            }));
+            logEvent(ok ? "editor_auth_success" : "editor_auth_failed", { id });
+            break;
+          }
+
+          case "world_assets_save": {
+            if (!session.player || !session.canEdit) {
+              logEvent("world_assets_save_rejected", { id, reason: "unauthorized" });
+              break;
+            }
+            if (!this.allow(session, 10)) break;
+
+            const assets = parseWorldAssets(data.assets, this.worldAssetLimits());
+            if (!assets) {
+              logEvent("world_assets_save_rejected", { id, reason: "invalid_payload" });
+              socket.send(JSON.stringify({
+                type: "error",
+                reason: "Invalid world asset layout."
+              }));
+              break;
+            }
+
+            try {
+              this.persistWorldAssets(assets);
+              this.worldAssets = assets;
+            } catch (dbErr) {
+              console.error("Failed to update world assets in SQLite database:", dbErr);
+              socket.send(JSON.stringify({
+                type: "error",
+                reason: "Failed to save world asset layout."
+              }));
+              break;
+            }
+
+            this.broadcast({
+              type: "world_assets_update",
+              assets: this.worldAssets
+            });
+            logEvent("world_assets_save", { id, count: this.worldAssets.length });
             break;
           }
 
@@ -518,7 +667,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 };
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     // Route websocket handshake

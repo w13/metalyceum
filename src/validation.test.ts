@@ -8,6 +8,8 @@ import {
   parseOptionalVideoInput,
   parseStartTime,
   parseDurationMinutes,
+  parseWorldAssets,
+  parseWorldAssetDefinition,
   MAX_DURATION_MINUTES
 } from "./validation";
 
@@ -153,5 +155,82 @@ describe("parseDurationMinutes", () => {
     expect(parseDurationMinutes("60", 15)).toBe(15);
     expect(parseDurationMinutes(NaN, 15)).toBe(15);
     expect(parseDurationMinutes(null, 15)).toBe(15);
+  });
+});
+
+const assetLimits = {
+  worldLimit: 80,
+  yMin: -10,
+  yMax: 40,
+  roomCount: 8,
+  maxAssets: 3
+};
+
+describe("parseWorldAssetDefinition", () => {
+  const validAsset = {
+    id: "asset_123456",
+    type: "tree",
+    x: 12.34567,
+    y: 0,
+    z: -5.4321,
+    rotationY: Math.PI,
+    scale: 1.25,
+    roomId: -1
+  };
+
+  it("accepts and rounds a valid placed asset", () => {
+    expect(parseWorldAssetDefinition(validAsset, assetLimits)).toEqual({
+      id: "asset_123456",
+      type: "tree",
+      x: 12.346,
+      y: 0,
+      z: -5.432,
+      rotationY: 3.14159,
+      scale: 1.25,
+      roomId: -1
+    });
+  });
+
+  it("rejects unknown asset types and invalid ids", () => {
+    expect(parseWorldAssetDefinition({ ...validAsset, type: "dragon" }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, id: "<script>" }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, id: "short" }, assetLimits)).toBeNull();
+  });
+
+  it("rejects invalid transforms and scope", () => {
+    expect(parseWorldAssetDefinition({ ...validAsset, x: Infinity }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, z: 81 }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, y: 41 }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, scale: 0.1 }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, scale: 4 }, assetLimits)).toBeNull();
+    expect(parseWorldAssetDefinition({ ...validAsset, roomId: 8 }, assetLimits)).toBeNull();
+  });
+});
+
+describe("parseWorldAssets", () => {
+  const makeAsset = (id: string) => ({
+    id,
+    type: "bench",
+    x: 0,
+    y: 0,
+    z: 0,
+    rotationY: 0,
+    scale: 1,
+    roomId: 0
+  });
+
+  it("accepts an array of valid assets", () => {
+    expect(parseWorldAssets([makeAsset("asset_1111"), makeAsset("asset_2222")], assetLimits)).toHaveLength(2);
+  });
+
+  it("rejects duplicate ids, non-arrays, and oversized arrays", () => {
+    expect(parseWorldAssets("nope", assetLimits)).toBeNull();
+    expect(parseWorldAssets([makeAsset("asset_1111"), makeAsset("asset_1111")], assetLimits)).toBeNull();
+    expect(parseWorldAssets([
+      makeAsset("asset_1111"),
+      makeAsset("asset_2222"),
+      makeAsset("asset_3333"),
+      makeAsset("asset_4444")
+    ], assetLimits)).toBeNull();
   });
 });
