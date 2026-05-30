@@ -507,6 +507,16 @@ export class MetalyceumWorld extends DurableObject {
   }
 }
 
+// Header-only protections (the CSP itself is delivered via a <meta> tag in
+// index.html, which is verifiable offline). frame-ancestors / nosniff /
+// referrer cannot be set from a meta tag, so they are applied here to every
+// static asset response.
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Frame-Options": "SAMEORIGIN",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin"
+};
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -518,9 +528,16 @@ export default {
       return stub.fetch(request);
     }
 
-    // Default static assets handler
+    // Default static assets handler (with security headers attached)
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+      const res = await env.ASSETS.fetch(request);
+      const headers = new Headers(res.headers);
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) headers.set(k, v);
+      return new Response(res.body, {
+        status: res.status,
+        statusText: res.statusText,
+        headers
+      });
     }
 
     return new Response("Not Found", { status: 404 });
