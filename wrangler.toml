@@ -2,6 +2,11 @@ name = "metalyceum"
 main = "src/index.ts"
 compatibility_date = "2026-05-29"
 
+# Workers Logs: capture invocation logs / structured events for observability
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # Route to custom domain
 [[routes]]
 pattern = "metalyceum.app"

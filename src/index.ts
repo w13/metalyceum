@@ -95,6 +95,11 @@ function parseVideoInput(v: unknown): string | null {
   return null;
 }
 
+// Emit a single-line JSON event for Workers Logs / `wrangler tail`.
+function logEvent(event: string, fields: Record<string, unknown> = {}): void {
+  console.log(JSON.stringify({ event, ts: Date.now(), ...fields }));
+}
+
 export class MetalyceumWorld extends DurableObject {
   sessions: Map<WebSocket, Session> = new Map();
   videos: string[] = [];
@@ -221,6 +226,7 @@ export class MetalyceumWorld extends DurableObject {
             if (!session.player) {
               const joined = Array.from(this.sessions.values()).filter((s) => s.player).length;
               if (joined >= MAX_PLAYERS) {
+                logEvent("join_rejected", { id, reason: "world_full", players: joined });
                 socket.send(JSON.stringify({
                   type: "error",
                   reason: `World is full (max ${MAX_PLAYERS} players).`
@@ -262,6 +268,11 @@ export class MetalyceumWorld extends DurableObject {
               type: "join",
               player
             }, id);
+            logEvent("join", {
+              id,
+              username: player.username,
+              players: Array.from(this.sessions.values()).filter((s) => s.player).length
+            });
             break;
           }
 
@@ -357,6 +368,7 @@ export class MetalyceumWorld extends DurableObject {
               room,
               videoId
             });
+            logEvent("video_change", { id, room, videoId });
             break;
           }
         }
@@ -369,6 +381,10 @@ export class MetalyceumWorld extends DurableObject {
       const session = this.sessions.get(socket);
       if (session) {
         this.sessions.delete(socket);
+        logEvent("disconnect", {
+          id: session.id,
+          players: Array.from(this.sessions.values()).filter((s) => s.player).length
+        });
         this.broadcast({
           type: "leave",
           id: session.id
