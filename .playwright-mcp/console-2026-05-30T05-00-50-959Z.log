@@ -1,0 +1,8 @@
+[   42347ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   51205ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   57466ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   62469ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   67472ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   72476ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   77482ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error during WebSocket handshake: Unexpected response code: 404 @ http://127.0.0.1:8770/app.js:1952
+[   82485ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:8770/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8770/app.js:1952

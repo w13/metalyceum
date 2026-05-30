@@ -79,6 +79,72 @@ const clickableScreens = [];
 // Torch list for flickering animation
 const torches = [];
 
+// --- Security helpers (defense-in-depth against XSS / CSS injection) ---
+// All player-supplied values (usernames, chat, colors, video URLs) are rendered
+// via textContent / validated attributes, never raw innerHTML interpolation.
+function sanitizeColor(c, fallback = '#3b82f6') {
+  return (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? c : fallback;
+}
+
+// Accept only a meet.google.com link; return a normalized https URL or null.
+function safeMeetUrl(v) {
+  if (typeof v !== 'string') return null;
+  try {
+    const u = new URL(v.startsWith('http') ? v : 'https://' + v);
+    if (u.hostname === 'meet.google.com' || u.hostname.endsWith('.meet.google.com')) {
+      return `https://meet.google.com${u.pathname}`;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Strictly parse a media input into a YouTube ID or a meet.google.com URL.
+// Returns the normalized value, or null to reject.
+function parseVideoInput(raw) {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s) return null;
+  const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+  if (YT_ID.test(s)) return s;
+  try {
+    const u = new URL(s.startsWith('http') ? s : 'https://' + s);
+    if (u.hostname === 'meet.google.com' || u.hostname.endsWith('.meet.google.com')) {
+      return `https://meet.google.com${u.pathname}`;
+    }
+    if (u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') {
+      const id = u.searchParams.get('v');
+      return id && YT_ID.test(id) ? id : null;
+    }
+    if (u.hostname === 'youtu.be') {
+      const id = u.pathname.slice(1).split('/')[0];
+      return YT_ID.test(id) ? id : null;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Build a Google Meet info card with DOM APIs (no innerHTML interpolation).
+function populateMeetCard(el, videoId, isBoard) {
+  el.innerHTML = ''; // static clear only
+  const icon = document.createElement('span');
+  icon.style.cssText = `font-size: ${isBoard ? 28 : 32}px; margin-bottom: ${isBoard ? 6 : 8}px;`;
+  icon.textContent = '🌐';
+  const title = document.createElement('div');
+  title.style.cssText = "font-weight:600;font-size:14px;margin-bottom:4px;font-family:'Plus Jakarta Sans',sans-serif;";
+  title.textContent = 'Google Meet Active';
+  const sub = document.createElement('div');
+  sub.style.cssText = "font-size:11px;color:#94a3b8;margin-bottom:12px;font-family:'Plus Jakarta Sans',sans-serif;";
+  sub.textContent = isBoard ? 'Classroom is currently in a live meeting.' : 'This room has a live video call.';
+  const a = document.createElement('a');
+  a.style.cssText = "background:#2563eb;color:#fff;padding:6px 12px;border-radius:4px;font-size:11px;text-decoration:none;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;pointer-events:auto;";
+  const url = safeMeetUrl(videoId);
+  if (url) a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.textContent = 'Join Meeting';
+  el.append(icon, title, sub, a);
+}
+
 // --- Procedural Texture Generators ---
 function createGrassTexture() {
   const canvas = document.createElement('canvas');
@@ -1692,25 +1758,29 @@ function refreshRoomPlayersList() {
   
   if (localPlayer.currentRoom === -1) return;
 
+  // Build a list item with safe DOM APIs (color validated, name via textContent)
+  function makePlayerItem(color, label, strong) {
+    const li = document.createElement('li');
+    li.className = 'room-player-item';
+    const badge = document.createElement('span');
+    badge.className = 'room-player-badge';
+    badge.style.backgroundColor = sanitizeColor(color);
+    const name = document.createElement(strong ? 'strong' : 'span');
+    name.textContent = label;
+    li.appendChild(badge);
+    li.appendChild(name);
+    return li;
+  }
+
   // Add self
-  const selfLi = document.createElement('li');
-  selfLi.className = 'room-player-item';
-  selfLi.innerHTML = `
-    <span class="room-player-badge" style="background-color: ${localPlayer.color}"></span>
-    <strong>${localPlayer.username} (You)</strong>
-  `;
-  listContainer.appendChild(selfLi);
+  listContainer.appendChild(
+    makePlayerItem(localPlayer.color, `${localPlayer.username} (You)`, true)
+  );
 
   // Add matching remote players
   remotePlayers.forEach((p) => {
     if (p.room === localPlayer.currentRoom) {
-      const li = document.createElement('li');
-      li.className = 'room-player-item';
-      li.innerHTML = `
-        <span class="room-player-badge" style="background-color: ${p.color}"></span>
-        <span>${p.username}</span>
-      `;
-      listContainer.appendChild(li);
+      listContainer.appendChild(makePlayerItem(p.color, p.username, false));
     }
   });
 
@@ -1761,12 +1831,7 @@ function setupRoomVideo(roomId) {
         boardMeet.style.cssText = "width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: #fff; text-align: center; padding: 20px; box-sizing: border-box;";
         boardContainer.appendChild(boardMeet);
       }
-      boardMeet.innerHTML = `
-        <span style="font-size: 28px; margin-bottom: 6px;">🌐</span>
-        <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; font-family: 'Plus Jakarta Sans', sans-serif;">Google Meet Active</div>
-        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif;">Classroom is currently in a live meeting.</div>
-        <a href="${videoId.startsWith('http') ? videoId : 'https://' + videoId}" target="_blank" style="background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; text-decoration: none; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; pointer-events: auto;">Join Meeting</a>
-      `;
+      populateMeetCard(boardMeet, videoId, true);
       boardMeet.style.display = 'flex';
     } else {
       // Hide Meet, show YT
@@ -1823,12 +1888,7 @@ function setupRoomVideo(roomId) {
       roomMeet.style.cssText = "width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: #fff; text-align: center; padding: 15px; box-sizing: border-box;";
       roomContainer.appendChild(roomMeet);
     }
-    roomMeet.innerHTML = `
-      <span style="font-size: 32px; margin-bottom: 8px;">🌐</span>
-      <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; font-family: 'Plus Jakarta Sans', sans-serif;">Google Meet Active</div>
-      <div style="font-size: 11px; color: #94a3b8; margin-bottom: 12px; font-family: 'Plus Jakarta Sans', sans-serif;">This room has a live video call.</div>
-      <a href="${videoId.startsWith('http') ? videoId : 'https://' + videoId}" target="_blank" style="background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; text-decoration: none; font-weight: 600; font-family: 'Plus Jakarta Sans', sans-serif; pointer-events: auto;">Join Meeting</a>
-    `;
+    populateMeetCard(roomMeet, videoId, false);
     roomMeet.style.display = 'flex';
     activeRoomVideoId = videoId;
   } else {
@@ -2094,10 +2154,17 @@ function addChatLog(author, message, className = "") {
   
   if (className) {
     msgDiv.className = className;
-    msgDiv.innerText = message;
+    msgDiv.textContent = message;
   } else {
     msgDiv.className = 'chat-msg';
-    msgDiv.innerHTML = `<span class="chat-author" style="color: ${author === localPlayer.username ? '#818cf8' : '#38bdf8'}">${author}:</span><span>${message}</span>`;
+    const authorSpan = document.createElement('span');
+    authorSpan.className = 'chat-author';
+    authorSpan.style.color = author === localPlayer.username ? '#818cf8' : '#38bdf8';
+    authorSpan.textContent = `${author}:`;
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    msgDiv.appendChild(authorSpan);
+    msgDiv.appendChild(msgSpan);
   }
   
   log.appendChild(msgDiv);
@@ -2490,32 +2557,30 @@ function initUiHandlers() {
     urlInput.value = '';
   });
 
+  // Reset the invalid-input indicator whenever the user edits the field
+  urlInput.addEventListener('input', () => {
+    urlInput.style.borderColor = '';
+  });
+
   submitBtn.addEventListener('click', () => {
-    const rawVal = urlInput.value.trim();
-    if (!rawVal) return;
+    // Strictly accept only a YouTube ID/URL or a meet.google.com URL
+    const videoId = parseVideoInput(urlInput.value);
+    if (!videoId) {
+      urlInput.style.borderColor = '#f43f5e'; // signal rejection
+      urlInput.focus();
+      return;
+    }
 
-    let videoId = rawVal;
-    
-    // Handle full YouTube URLs to extract video ID
-    try {
-      if (rawVal.includes('youtube.com/watch')) {
-        const urlObj = new URL(rawVal);
-        videoId = urlObj.searchParams.get('v') || rawVal;
-      } else if (rawVal.includes('youtu.be/')) {
-        const parts = rawVal.split('/');
-        videoId = parts[parts.length - 1].split('?')[0] || rawVal;
-      }
-    } catch(e) {}
-
-    if (videoId && socket && socket.readyState === WebSocket.OPEN && localPlayer.currentRoom !== -1) {
+    if (socket && socket.readyState === WebSocket.OPEN && localPlayer.currentRoom !== -1) {
       socket.send(JSON.stringify({
         type: "video_change",
         room: localPlayer.currentRoom,
         videoId: videoId
       }));
-      
+
       modal.classList.remove('video-modal-visible');
       urlInput.value = '';
+      urlInput.style.borderColor = '';
     }
   });
 

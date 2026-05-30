@@ -30,9 +30,86 @@ interface Player {
   isMoving: boolean;
 }
 
+interface Session {
+  id: string;
+  player?: Player;
+  tokens: number;     // token-bucket allowance for flood protection
+  lastRefill: number; // ms timestamp of last bucket refill
+  lastChat: number;   // ms timestamp of last accepted chat message
+}
+
+// --- Validation constants & helpers (server-side trust boundary) ---
+const MAX_PLAYERS = 10;        // matches the "10 Players" UI capacity
+const MAX_USERNAME_LEN = 24;
+const MAX_CHAT_LEN = 280;
+const WORLD_LIMIT = 80;        // |x|,|z| bound (client map is 150 wide → ±75)
+const Y_MIN = -10;
+const Y_MAX = 40;
+const MAX_MOVE_STEP = 15;      // reject single-message teleports larger than this
+const CHAT_MIN_INTERVAL = 400; // ms between accepted chat messages
+const BUCKET_CAPACITY = 180;   // burst allowance per connection
+const BUCKET_REFILL = 90;      // tokens/sec (legit movement peaks ~60/s)
+
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+function sanitizeText(v: unknown, maxLen: number): string {
+  if (typeof v !== "string") return "";
+  // Strip control characters, trim, and cap length
+  return v.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, maxLen);
+}
+
+function clampNum(v: unknown, min: number, max: number, fallback: number): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
+}
+
+function sanitizeColor(v: unknown, fallback = "#3b82f6"): string {
+  return typeof v === "string" && COLOR_RE.test(v) ? v : fallback;
+}
+
+// Accept only a bare 11-char YouTube ID, a YouTube URL, or a meet.google.com
+// URL. Returns a normalized safe value, or null to reject.
+function parseVideoInput(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (YT_ID_RE.test(s)) return s;
+  try {
+    const url = new URL(s.startsWith("http") ? s : "https://" + s);
+    if (url.hostname === "meet.google.com" || url.hostname.endsWith(".meet.google.com")) {
+      // Drop any query/fragment; keep only the meeting-code path
+      return `https://meet.google.com${url.pathname}`;
+    }
+    if (url.hostname === "www.youtube.com" || url.hostname === "youtube.com") {
+      const id = url.searchParams.get("v");
+      return id && YT_ID_RE.test(id) ? id : null;
+    }
+    if (url.hostname === "youtu.be") {
+      const id = url.pathname.slice(1).split("/")[0];
+      return YT_ID_RE.test(id) ? id : null;
+    }
+  } catch {
+    // not a parseable URL
+  }
+  return null;
+}
+
 export class MetalyceumWorld extends DurableObject {
-  sessions: Map<WebSocket, { id: string; player?: Player }> = new Map();
+  sessions: Map<WebSocket, Session> = new Map();
   videos: string[] = [];
+
+  // Token-bucket flood protection: refills over time, each message costs 1.
+  // Sized so legitimate movement (~60 msgs/s) passes while abuse is capped.
+  private allow(session: Session, cost = 1): boolean {
+    const now = Date.now();
+    const elapsed = (now - session.lastRefill) / 1000;
+    session.tokens = Math.min(BUCKET_CAPACITY, session.tokens + elapsed * BUCKET_REFILL);
+    session.lastRefill = now;
+    if (session.tokens < cost) return false;
+    session.tokens -= cost;
+    return true;
+  }
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -116,33 +193,57 @@ export class MetalyceumWorld extends DurableObject {
     socket.accept();
 
     const id = crypto.randomUUID();
-    this.sessions.set(socket, { id });
+    this.sessions.set(socket, {
+      id,
+      tokens: BUCKET_CAPACITY,
+      lastRefill: Date.now(),
+      lastChat: 0
+    });
 
     // Initial state setup for the socket
     socket.addEventListener("message", async (msg) => {
       try {
         if (typeof msg.data !== "string") return;
+        if (msg.data.length > 4096) return; // reject oversized frames outright
+
+        const session = this.sessions.get(socket);
+        if (!session) return;
+
+        // Per-connection flood protection (covers every message type)
+        if (!this.allow(session)) return;
+
         const data = JSON.parse(msg.data);
+        if (!data || typeof data !== "object" || typeof data.type !== "string") return;
 
         switch (data.type) {
           case "join": {
+            // Enforce world capacity (ignore re-joins from an existing session)
+            if (!session.player) {
+              const joined = Array.from(this.sessions.values()).filter((s) => s.player).length;
+              if (joined >= MAX_PLAYERS) {
+                socket.send(JSON.stringify({
+                  type: "error",
+                  reason: `World is full (max ${MAX_PLAYERS} players).`
+                }));
+                socket.close(1013, "World full");
+                return;
+              }
+            }
+
             const player: Player = {
               id,
-              username: data.username || "Guest",
-              x: data.x || 0,
-              y: data.y || 0,
-              z: data.z || 0,
-              ry: data.ry || 0,
-              color: data.color || "#3b82f6",
-              avatar: data.avatar || "adventurer",
+              username: sanitizeText(data.username, MAX_USERNAME_LEN) || "Guest",
+              x: clampNum(data.x, -WORLD_LIMIT, WORLD_LIMIT, 0),
+              y: clampNum(data.y, Y_MIN, Y_MAX, 0),
+              z: clampNum(data.z, -WORLD_LIMIT, WORLD_LIMIT, 0),
+              ry: clampNum(data.ry, -1000, 1000, 0),
+              color: sanitizeColor(data.color),
+              avatar: sanitizeText(data.avatar, 20) || "explorer",
               room: -1,
               isMoving: false
             };
 
-            const session = this.sessions.get(socket);
-            if (session) {
-              session.player = player;
-            }
+            session.player = player;
 
             // Send full initial state to this new client
             const playersList = Array.from(this.sessions.values())
@@ -165,78 +266,97 @@ export class MetalyceumWorld extends DurableObject {
           }
 
           case "move": {
-            const session = this.sessions.get(socket);
-            if (session && session.player) {
-              session.player.x = data.x;
-              session.player.y = data.y;
-              session.player.z = data.z;
-              session.player.ry = data.ry;
-              session.player.isMoving = data.isMoving;
+            if (!session.player) break;
+            const p = session.player;
 
-              // Broadcast player movement
-              this.broadcast({
-                type: "move",
-                id,
-                x: data.x,
-                y: data.y,
-                z: data.z,
-                ry: data.ry,
-                isMoving: data.isMoving
-              }, id);
-            }
+            const nx = clampNum(data.x, -WORLD_LIMIT, WORLD_LIMIT, p.x);
+            const ny = clampNum(data.y, Y_MIN, Y_MAX, p.y);
+            const nz = clampNum(data.z, -WORLD_LIMIT, WORLD_LIMIT, p.z);
+
+            // Reject single-message teleports (anti-cheat / NaN already filtered)
+            const dx = nx - p.x;
+            const dz = nz - p.z;
+            if (Math.sqrt(dx * dx + dz * dz) > MAX_MOVE_STEP) break;
+
+            p.x = nx;
+            p.y = ny;
+            p.z = nz;
+            p.ry = clampNum(data.ry, -1000, 1000, p.ry);
+            p.isMoving = Boolean(data.isMoving);
+
+            this.broadcast({
+              type: "move",
+              id,
+              x: p.x,
+              y: p.y,
+              z: p.z,
+              ry: p.ry,
+              isMoving: p.isMoving
+            }, id);
             break;
           }
 
           case "room_change": {
-            const session = this.sessions.get(socket);
-            if (session && session.player) {
-              session.player.room = data.room;
+            if (!session.player) break;
+            const room = Number(data.room);
+            if (!Number.isInteger(room) || room < -1 || room > 7) break;
 
-              this.broadcast({
-                type: "room_change",
-                id,
-                room: data.room
-              }, id);
-            }
+            session.player.room = room;
+            this.broadcast({
+              type: "room_change",
+              id,
+              room
+            }, id);
             break;
           }
 
           case "chat": {
-            const session = this.sessions.get(socket);
-            if (session && session.player) {
-              this.broadcast({
-                type: "chat",
-                id,
-                username: session.player.username,
-                message: data.message
-              });
-            }
+            if (!session.player) break;
+
+            const now = Date.now();
+            if (now - session.lastChat < CHAT_MIN_INTERVAL) break; // anti-spam
+            const message = sanitizeText(data.message, MAX_CHAT_LEN);
+            if (!message) break;
+            session.lastChat = now;
+
+            this.broadcast({
+              type: "chat",
+              id,
+              username: session.player.username,
+              message
+            });
             break;
           }
 
           case "video_change": {
-            const roomIdx = data.room;
-            const videoId = data.videoId;
-            if (roomIdx >= 0 && roomIdx < 8 && videoId) {
-              this.videos[roomIdx] = videoId;
-              
-              // Persist change in SQLite database
-              try {
-                this.ctx.storage.sql.exec(
-                  "INSERT OR REPLACE INTO room_videos (room_id, video_id) VALUES (?, ?)",
-                  roomIdx,
-                  videoId
-                );
-              } catch (dbErr) {
-                console.error("Failed to update video in SQLite database:", dbErr);
-              }
+            if (!session.player) break;
+            const room = Number(data.room);
+            if (!Number.isInteger(room) || room < 0 || room > 7) break;
 
-              this.broadcast({
-                type: "video_change",
-                room: roomIdx,
+            // Permission gate: you may only change the room you are inside
+            if (session.player.room !== room) break;
+
+            const videoId = parseVideoInput(data.videoId);
+            if (!videoId) break;
+
+            this.videos[room] = videoId;
+
+            // Persist change in SQLite database
+            try {
+              this.ctx.storage.sql.exec(
+                "INSERT OR REPLACE INTO room_videos (room_id, video_id) VALUES (?, ?)",
+                room,
                 videoId
-              });
+              );
+            } catch (dbErr) {
+              console.error("Failed to update video in SQLite database:", dbErr);
             }
+
+            this.broadcast({
+              type: "video_change",
+              room,
+              videoId
+            });
             break;
           }
         }
