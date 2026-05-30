@@ -660,7 +660,9 @@ function initEngine() {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // PCF (not PCFSoft) + a 1024 map cuts shadow-pass fill cost ~4x for a stylized
+  // low-poly scene where ultra-soft, high-res shadows aren't needed.
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   container.appendChild(renderer.domElement);
   
@@ -679,8 +681,8 @@ function initEngine() {
   const sunLight = new THREE.DirectionalLight('#e0f2fe', 0.7);
   sunLight.position.set(40, 60, 20);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 2048;
-  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.mapSize.width = 1024;
+  sunLight.shadow.mapSize.height = 1024;
   sunLight.shadow.camera.near = 0.5;
   sunLight.shadow.camera.far = 150;
   
@@ -1421,8 +1423,8 @@ function buildBuilding() {
     
     scene.add(screenGroup);
 
-    createWallTorch(room.x - 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI);
-    createWallTorch(room.x + 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI);
+    createWallTorch(room.x - 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI, true);
+    createWallTorch(room.x + 6, 2.5, room.z < 0 ? -19.7 : 19.7, room.z < 0 ? 0 : Math.PI, false);
   });
 
   // 6. CEILING / ROOF PLACEMENT (Fades out when player is indoors)
@@ -1454,7 +1456,7 @@ function buildBuilding() {
   upperWalls.push(signMesh); // Toggle visibility in sync with upper walls
 }
 
-function createWallTorch(x, y, z, rotationY) {
+function createWallTorch(x, y, z, rotationY, withLight = true) {
   initSceneryAssets();
   const torchGroup = new THREE.Group();
 
@@ -1478,22 +1480,28 @@ function createWallTorch(x, y, z, rotationY) {
   particle.position.set(0, 0.65, 0.1);
   torchGroup.add(particle);
 
-  // Dynamic Point Light (Flickering source)
-  const light = new THREE.PointLight('#f97316', 0.8, 8);
-  light.position.set(0, 0.7, 0.15);
-  light.castShadow = false;
-  torchGroup.add(light);
+  // Dynamic Point Light (flickering source). Every PBR fragment evaluates every
+  // point light, so we light one torch per room (8 total) rather than all 16;
+  // the unlit torches keep their emissive flame glow. A slightly higher
+  // intensity/range compensates for the lit torch covering the whole room.
+  let light = null;
+  if (withLight) {
+    light = new THREE.PointLight('#f97316', 1.1, 11);
+    light.position.set(0, 0.7, 0.15);
+    light.castShadow = false;
+    torchGroup.add(light);
+  }
 
   torchGroup.position.set(x, y, z);
   torchGroup.rotation.y = rotationY;
-  
+
   scene.add(torchGroup);
 
-  // Track light and flame mesh to animate flickering
+  // Track flame mesh (always) and light (when present) for the flicker animation
   torches.push({
     light,
     flame,
-    baseIntensity: 0.8,
+    baseIntensity: light ? light.intensity : 0,
     seed: Math.random() * 100
   });
 }
@@ -2669,7 +2677,7 @@ function animate() {
   const time = now * 0.005;
   torches.forEach((t) => {
     const flicker = Math.sin(time * 3 + t.seed) * Math.cos(time * 7 + t.seed) * 0.15;
-    t.light.intensity = t.baseIntensity + flicker;
+    if (t.light) t.light.intensity = t.baseIntensity + flicker;
     t.flame.scale.set(
       1 + flicker * 0.1, 
       1 + Math.sin(time * 10 + t.seed) * 0.15, 
