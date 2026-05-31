@@ -6,7 +6,7 @@
   <!-- Content Security Policy: scripts may only load from self + the known CDNs
        (there are no inline scripts), mitigating injected-script XSS. Embeds are
        limited to YouTube/Google Meet; the WebSocket uses connect-src 'self'. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.youtube.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://meet.google.com https://accounts.google.com; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.youtube.com https://dl.polyhaven.org; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://meet.google.com https://accounts.google.com; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
   <title>Metalyceum | 3D Social Event World</title>
   <meta name="description" content="A real-time 3D social world for chatting together in rooms and joining shared YouTube Live or Google Meet events.">
   <!-- Inline SVG favicon (avoids a 404 on /favicon.ico without shipping a binary) -->
@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://www.youtube.com">
+  <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Three.js and OrbitControls via CDN -->
@@ -21,20 +23,16 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
   
-  <!-- YouTube IFrame Player API -->
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <!-- Lil-gui: lightweight debug overlay for live parameter tweaking -->
+  <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.umd.min.js"></script>
+  
+  <!-- YouTube IFrame Player API — loaded on-demand in setupRoomVideo -->
 </head>
 <body>
   <!-- 3D World Canvas Container -->
   <div id="game-container"></div>
 
-  <!-- Classroom Board Embedded YouTube Video Container -->
-  <div id="embedded-board-container" style="position: absolute; pointer-events: auto; display: none; z-index: 5; border: 2px solid #334155; background: #000; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);">
-    <div id="embedded-youtube-player"></div>
-    <button id="board-maximize-btn" style="position: absolute; top: 8px; right: 8px; z-index: 10; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.25); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; pointer-events: auto;">
-      <span>📺 Maximize Screen</span>
-    </button>
-  </div>
+  <!-- (Legacy board container removed — video plays in the room panel sidebar) -->
 
   <!-- Loading State -->
   <div id="loading-screen" class="overlay">
@@ -69,50 +67,82 @@
         </div>
 
         <button type="submit" class="btn-primary">Enter Metalyceum</button>
+        <p class="login-music-hint" id="login-music-hint">
+          <span class="login-music-icon">🎵</span> Click anywhere to start ambient music
+        </p>
       </form>
     </div>
   </div>
 
   <!-- Main Game HUD (Heads Up Display) -->
   <div id="hud-container">
-    <!-- Top-Left: Presence & Schedule -->
-    <div class="hud-card stats-card glass">
-      <div class="stats-row">
-        <span class="status-dot connected" id="connection-status"></span>
-        <span class="player-name-tag" id="hud-username">Guest</span>
-      </div>
-      <div class="stats-location" id="hud-location">Exploring Outdoors</div>
+    <!-- Connection status dot -->
+    <div class="status-dot connected" id="connection-status" style="position: absolute; top: 1.5rem; left: 1.5rem; z-index: 10;"></div>
+
+    <!-- Right-side icon toolbar -->
+    <div class="hud-icon-bar" id="hud-icon-bar">
+      <button id="music-icon-btn" class="hud-icon-square glass" type="button" aria-label="Music player" title="Music">
+        <span class="hud-icon-glyph">🎵</span>
+        <span class="hud-icon-label">Music</span>
+      </button>
+      <button id="events-icon-btn" class="hud-icon-square glass" type="button" aria-label="Event board" title="Events">
+        <span class="hud-icon-glyph">📅</span>
+        <span class="hud-icon-label">Events</span>
+      </button>
+      <button id="editor-toggle-btn" class="hud-icon-square glass" type="button" aria-label="World editor" title="World Editor">
+        <span class="hud-icon-glyph">🛠️</span>
+        <span class="hud-icon-label">Editor</span>
+      </button>
+      <button id="debug-icon-btn" class="hud-icon-square glass" type="button" aria-label="Debug panel" title="Debug">
+        <span class="hud-icon-glyph">🐞</span>
+        <span class="hud-icon-label">Debug</span>
+      </button>
     </div>
 
-    <div class="hud-card event-board glass">
+    <!-- Music popup panel -->
+    <div id="soundtrack-card" class="hud-card soundtrack-card glass" aria-hidden="true">
+      <div class="soundtrack-card-top">
+        <div class="soundtrack-info">
+          <span class="soundtrack-label">MIDI playlist</span>
+          <strong id="soundtrack-title">Ambient soundtrack</strong>
+        </div>
+        <div class="soundtrack-transport">
+          <button id="soundtrack-prev-btn" type="button" class="soundtrack-icon-btn" aria-label="Previous track" title="Previous track">⏮</button>
+          <button id="soundtrack-playpause-btn" type="button" class="soundtrack-icon-btn soundtrack-play-btn" aria-label="Play" title="Play / Pause">▶</button>
+          <button id="soundtrack-next-btn" type="button" class="soundtrack-icon-btn" aria-label="Next track" title="Next track">⏭</button>
+        </div>
+      </div>
+      <p id="soundtrack-status">Ready · 1 / 10</p>
+      <div id="soundtrack-tracklist" class="soundtrack-tracklist"></div>
+    </div>
+
+    <!-- Events popup panel -->
+    <div id="events-panel" class="hud-card event-board glass" aria-hidden="true">
       <div class="event-board-header">
         <div>
           <h3>Event Board</h3>
-          <p>What is live or starting soon. Click a card or room beacon to move there.</p>
+          <p>Live &amp; upcoming. Click a card to go there.</p>
         </div>
         <span id="event-board-count">0 live · 0 upcoming</span>
       </div>
       <div id="event-board-list" class="event-board-list"></div>
     </div>
 
-    <div id="soundtrack-card" class="hud-card soundtrack-card glass">
-      <div class="soundtrack-card-top">
+    <form id="editor-auth-panel" class="editor-auth-panel glass" autocomplete="off" aria-hidden="true">
+      <div class="modal-header editor-auth-header">
         <div>
-          <span class="soundtrack-label">Ambient playlist</span>
-          <strong id="soundtrack-title">Ambient soundtrack</strong>
+          <h3 id="editor-auth-title">Unlock Editor</h3>
+          <p>Use the editor token to enable world editing tools.</p>
         </div>
-        <button id="soundtrack-toggle" type="button" class="secondary-button soundtrack-toggle">Mute</button>
+        <button type="button" class="modal-close-btn" id="close-editor-auth-btn" aria-label="Close editor unlock dialog">✕</button>
       </div>
-      <p id="soundtrack-status">Ready after join</p>
-    </div>
-
-    <button id="editor-toggle-btn" class="editor-toggle glass" type="button">World Editor</button>
-
-    <form id="editor-auth-panel" class="editor-auth-panel glass" autocomplete="off">
       <label for="editor-token-input">Editor token</label>
       <div class="editor-auth-row">
         <input type="password" id="editor-token-input" placeholder="Enter token">
         <button type="submit" class="btn-primary btn-sm">Unlock</button>
+      </div>
+      <div class="editor-auth-actions">
+        <button type="button" class="btn-text" id="cancel-editor-auth-btn">Cancel</button>
       </div>
       <p id="editor-auth-status"></p>
     </form>
@@ -164,6 +194,14 @@
 
     <!-- Bottom-Left: Real-time Chat Box -->
     <div class="chat-wrapper glass">
+      <div class="chat-toolbar">
+        <div class="chat-toolbar-group">
+          <span class="chat-toolbar-label">Show</span>
+          <button type="button" class="chat-chip active" data-chat-filter="all">All</button>
+          <button type="button" class="chat-chip" data-chat-filter="global">Global</button>
+          <button type="button" class="chat-chip" data-chat-filter="room">Room</button>
+        </div>
+      </div>
       <div class="chat-log" id="chat-log">
         <div class="system-msg">Welcome to Metalyceum. Walk through rooms, chat with others, and open live events together.</div>
       </div>
@@ -183,28 +221,7 @@
 
       <div class="room-status-row">
        <span id="room-status-badge" class="event-status-badge idle">Idle</span>
-       <span id="room-source-type" class="room-source-type">Not set</span>
-      </div>
-      <p id="room-status-text" class="room-status-text">No event scheduled yet.</p>
-
-      <div class="room-details-grid">
-       <div class="room-detail-card">
-         <span>Starts</span>
-         <strong id="room-start-time">Not scheduled</strong>
-       </div>
-       <div class="room-detail-card">
-         <span>Ends</span>
-         <strong id="room-end-time">—</strong>
-       </div>
-       <div class="room-detail-card">
-         <span>Duration</span>
-         <strong id="room-duration">Open-ended</strong>
-       </div>
-      </div>
-
-      <div class="room-source-box">
-       <span>Source</span>
-       <strong id="room-source-value">No YouTube Live or Meet link set</strong>
+       <span id="room-status-text" class="room-status-text"></span>
       </div>
 
       <!-- Event embed area -->
@@ -228,9 +245,17 @@
       <!-- Room Event Controls -->
       <div class="video-control-section">
         <button class="btn-secondary" id="change-video-btn">Edit Room Event</button>
-        <div id="video-input-modal" class="video-modal-hidden glass">
-          <h4>Update Room Event</h4>
-          <p class="modal-help">Name the room, set an optional start time and duration, and add either a YouTube Live link or Google Meet URL.</p>
+      </div>
+      <div id="video-input-modal" class="panel-modal-shell" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="video-input-title">
+        <div class="panel-modal-backdrop"></div>
+        <form id="video-input-form" class="panel-modal-card glass" autocomplete="off" novalidate>
+          <div class="modal-header">
+            <div>
+              <h4 id="video-input-title">Update Room Event</h4>
+              <p class="modal-help">Name the room, set an optional start time and duration, and add either a YouTube Live link or Google Meet URL.</p>
+            </div>
+            <button type="button" class="modal-close-btn" id="close-video-btn" aria-label="Close room event editor">✕</button>
+          </div>
           <div class="modal-field">
             <label for="room-name-input">Room name</label>
             <input type="text" id="room-name-input" maxlength="48" placeholder="Room name" autocomplete="off">
@@ -249,9 +274,11 @@
               <input type="number" id="room-duration-input" min="0" max="1440" placeholder="90">
             </div>
           </div>
-          <button class="btn-primary btn-sm" id="submit-video-btn">Save Event</button>
-          <button class="btn-text" id="cancel-video-btn">Cancel</button>
-        </div>
+          <div class="modal-actions">
+            <button type="submit" class="btn-primary btn-sm" id="submit-video-btn">Save Event</button>
+            <button type="button" class="btn-text" id="cancel-video-btn">Cancel</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -264,15 +291,73 @@
     <div class="legend-item"><kbd>Drag Mouse</kbd><span>Rotate Camera</span></div>
     <div class="legend-item"><kbd>Scroll</kbd><span>Zoom</span></div>
     <div class="legend-item"><kbd>`</kbd><span>Toggle Debug</span></div>
+    <div class="legend-item"><kbd>M</kbd><span>Toggle Map</span></div>
   </div>
 
-  <div id="debug-panel" class="debug-panel glass">
-    <strong>Runtime</strong>
-    <span id="debug-stats">FPS —</span>
+  <!-- Debug popup panel -->
+  <div id="debug-panel" class="hud-card debug-card glass" aria-hidden="true">
+    <div class="debug-header">
+      <div>
+        <h3>System Diagnostics</h3>
+        <p>Real-time player, camera, and engine metrics</p>
+      </div>
+      <button id="copy-debug-btn" class="btn-primary btn-sm" style="width: auto; padding: 4px 8px; font-size: 0.7rem; border-radius: var(--radius-sm); font-weight: 600;" type="button">Copy Info</button>
+    </div>
+    <hr class="debug-divider">
+    <div class="debug-section">
+      <div class="debug-metric-row">
+        <span class="debug-metric-label">Player Position</span>
+        <span id="debug-player-pos" class="debug-metric-value">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+      </div>
+      <div class="debug-metric-row">
+        <span class="debug-metric-label">Camera Position</span>
+        <span id="debug-camera-pos" class="debug-metric-value">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+      </div>
+      <div class="debug-metric-row">
+        <span class="debug-metric-label">Camera Direction</span>
+        <span id="debug-camera-dir" class="debug-metric-value">X: 0.00 | Y: 0.00 | Z: 0.00</span>
+      </div>
+    </div>
+    <hr class="debug-divider">
+    <div class="debug-section">
+      <div class="debug-grid">
+        <div class="debug-grid-item">
+          <span class="debug-grid-label">FPS</span>
+          <span id="debug-fps-val" class="debug-grid-value">—</span>
+        </div>
+        <div class="debug-grid-item">
+          <span class="debug-grid-label">Players</span>
+          <span id="debug-players-val" class="debug-grid-value">1</span>
+        </div>
+        <div class="debug-grid-item">
+          <span class="debug-grid-label">Visible Props</span>
+          <span id="debug-props-val" class="debug-grid-value">0 / 0</span>
+        </div>
+        <div class="debug-grid-item">
+          <span class="debug-grid-label">Live Rooms</span>
+          <span id="debug-rooms-val" class="debug-grid-value">0</span>
+        </div>
+      </div>
+    </div>
+    <hr class="debug-divider">
+    <div class="debug-section">
+      <span class="debug-section-title">Console Errors</span>
+      <div id="debug-errors" class="debug-errors-list"></div>
+    </div>
+  </div>
+
+  <!-- Paused / reconnecting dim shown on tab-return while WS is re-establishing -->
+  <div id="reconnect-overlay" style="display:none" aria-live="polite" aria-label="Reconnecting">
+    <span class="reconnect-label">Reconnecting…</span>
+  </div>
+
+  <div id="fatal-error-banner" class="glass" style="display:none; position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 1200; max-width: min(92vw, 720px); padding: 0.85rem 1rem; color: #fecaca; border: 1px solid rgba(248, 113, 113, 0.5); background: rgba(69, 10, 10, 0.88);" aria-live="assertive">
+    <strong style="display:block; margin-bottom: 0.25rem;">Metalyceum error</strong>
+    <span id="fatal-error-message"></span>
   </div>
 
   <!-- Theater/Maximize Screen Modal -->
-  <div id="theater-modal" class="overlay">
+  <div id="theater-modal" class="overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="theater-title">
     <div class="theater-card glass">
       <button class="close-theater-btn" id="close-theater-btn">✕</button>
       <div class="theater-header">
@@ -284,10 +369,15 @@
       <div class="theater-body">
         <div id="theater-player-container"></div>
       </div>
+      <div class="theater-footer">
+        <p class="modal-shortcut-hint">Press Esc or click outside to close.</p>
+        <button type="button" class="btn-secondary btn-sm" id="close-theater-footer-btn">Close</button>
+      </div>
     </div>
   </div>
 
   <!-- Script initialization -->
-  <script src="app.js" type="module"></script>
+  <!-- v3: cache-bust — update version on each deploy to force re-fetch -->
+  <script src="app.js?v=3" type="module"></script>
 </body>
 </html>

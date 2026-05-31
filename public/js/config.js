@@ -3,9 +3,23 @@
 export const ROOM_WIDTH = 20;
 export const ROOM_DEPTH = 20;
 export const ROOM_HEIGHT = 5.5;
-export const MAP_SIZE = 150; // Size of the grassy area
+export const MAP_SIZE = 600; // Size of the grassy area
 export const ROOM_LABEL_HEIGHT = 5.1;
 export const CAMERA_FOLLOW_LERP = 1 - Math.pow(0.00035, 1 / 60);
+export const CAMERA_DEFAULT_DISTANCE = 14.25;
+export const CAMERA_DEFAULT_POLAR_ANGLE = 0.98;
+export const CAMERA_TARGET_LOOK_HEIGHT = 1.45;
+export const CAMERA_TARGET_LOOK_AHEAD = 0.55;
+export const CAMERA_TARGET_DECAY = 0.04;
+export const CAMERA_EXIT_WATCH_DISTANCE = 11.5;
+export const CAMERA_EXIT_WATCH_DURATION_MS = 1400;
+export const CAMERA_EXIT_WATCH_POLAR_ANGLE = 1.02;
+export const CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET = 1.6;
+export const CAMERA_EXIT_WATCH_YAW = 0;
+export const CAMERA_AUTO_ALIGN_DECAY = 0.22;
+export const CAMERA_AUTO_ALIGN_DELAY_MS = 1800;
+export const CAMERA_AUTO_ALIGN_START_DELAY_MS = 0.7 * 1000;
+export const CAMERA_HEADING_DECAY = 0.35;
 export const REMOTE_PLAYER_SMOOTHING = 0.001;
 export const ROOM_SCENERY_VISIBILITY_DISTANCE = 48;
 export const OUTDOOR_SCENERY_VISIBILITY_DISTANCE = 88;
@@ -49,7 +63,9 @@ export const ROOM_LAYOUTS = {
   4: { themeColor: '#14b8a6', label: 'Lounge room' },
   5: { themeColor: '#22c55e', label: 'Crit room' },
   6: { themeColor: '#38bdf8', label: 'Screening room' },
-  7: { themeColor: '#f97316', label: 'Commons room' }
+  7: { themeColor: '#f97316', label: 'Commons room' },
+  8: { themeColor: '#22c55e', label: 'Open-air amphitheater' },
+  9: { themeColor: '#a855f7', label: 'Concert venue' }
 };
 
 export const WORLD_ASSET_CATALOG = {
@@ -60,7 +76,7 @@ export const WORLD_ASSET_CATALOG = {
   lantern: { label: 'Lantern', defaultScale: 1, collidable: true, footprint: 0.55 },
   banner: { label: 'Banner', defaultScale: 1, collidable: true, footprint: 0.65 },
   bench: { label: 'Bench', defaultScale: 1, collidable: true, footprint: 1.7 },
-  plant: { label: 'Plant', defaultScale: 1, collidable: true, footprint: 0.7 },
+  plant: { label: 'Plant', defaultScale: 1, collidable: false, footprint: 0.7 },
   desk: { label: 'Desk', defaultScale: 1, collidable: true, footprint: 1.9 },
   podium: { label: 'Podium', defaultScale: 1, collidable: true, footprint: 1.2 }
 };
@@ -87,191 +103,115 @@ export const NOTE_OFFSETS = {
 
 export const SOUNDTRACK_LIBRARY = [
   {
-    title: 'Atrium Glass',
-    bpm: 68,
-    lengthBeats: 32,
-    lanes: [
-      {
-        wave: 'triangle',
-        volume: 0.08,
-        attack: 1.4,
-        release: 2.8,
-        pan: -0.22,
-        notes: [
-          [0, 'C4', 8, 0.72], [0, 'G4', 8, 0.48], [0, 'D5', 8, 0.3],
-          [8, 'A3', 8, 0.66], [8, 'E4', 8, 0.42], [8, 'B4', 8, 0.28],
-          [16, 'F3', 8, 0.68], [16, 'C4', 8, 0.44], [16, 'G4', 8, 0.3],
-          [24, 'G3', 8, 0.72], [24, 'D4', 8, 0.46], [24, 'A4', 8, 0.3]
-        ]
-      },
-      {
-        wave: 'sine',
-        volume: 0.045,
-        attack: 0.05,
-        release: 1.8,
-        pan: 0.24,
-        notes: [
-          [1, 'G5', 1.5, 0.36], [3, 'A5', 1.5, 0.28], [5, 'D5', 1.5, 0.32], [7, 'E5', 1.5, 0.24],
-          [9, 'B5', 1.5, 0.38], [11, 'A5', 1.5, 0.26], [13, 'E5', 1.5, 0.3], [15, 'D5', 1.5, 0.24],
-          [17, 'A5', 1.5, 0.34], [19, 'G5', 1.5, 0.24], [21, 'D5', 1.5, 0.28], [23, 'C5', 1.5, 0.22],
-          [25, 'B5', 1.5, 0.36], [27, 'A5', 1.5, 0.28], [29, 'E5', 1.5, 0.28], [31, 'D5', 1.0, 0.22]
-        ]
-      },
-      {
-        wave: 'sine',
-        volume: 0.055,
-        attack: 0.18,
-        release: 1.1,
-        pan: 0,
-        notes: [
-          [0, 'C2', 4, 0.48], [4, 'G2', 4, 0.38], [8, 'A2', 4, 0.44], [12, 'E2', 4, 0.34],
-          [16, 'F2', 4, 0.42], [20, 'C2', 4, 0.34], [24, 'G2', 4, 0.46], [28, 'D2', 4, 0.36]
-        ]
-      }
+    title: 'Velvet Neon Stroll',
+    fallbackBpm: 86,
+    sources: [
+      { path: '/midi/kit-1-d-sharp/bass.mid', wave: 'triangle', volume: 0.18, attack: 0.02, release: 0.22, pan: -0.08, transpose: -12 },
+      { path: '/midi/kit-1-d-sharp/keys.mid', wave: 'sawtooth', volume: 0.13, attack: 0.04, release: 0.34, pan: -0.2, transpose: 0 },
+      { path: '/midi/kit-1-d-sharp/keys.mid', wave: 'sine', volume: 0.07, attack: 0.08, release: 0.86, pan: 0.08, transpose: 12 },
+      { path: '/midi/kit-1-d-sharp/pluck.mid', wave: 'square', volume: 0.11, attack: 0.01, release: 0.14, pan: 0.22, transpose: 0 },
+      { path: '/midi/shared/starlight-hats.mid', wave: 'square', volume: 0.04, attack: 0.005, release: 0.04, pan: 0.28, transpose: 0 }
     ]
   },
   {
-    title: 'Fog Over Commons',
-    bpm: 62,
-    lengthBeats: 32,
-    lanes: [
-      {
-        wave: 'sawtooth',
-        volume: 0.045,
-        attack: 1.6,
-        release: 3.2,
-        pan: -0.18,
-        notes: [
-          [0, 'D4', 8, 0.52], [0, 'A4', 8, 0.34], [0, 'E5', 8, 0.24],
-          [8, 'Bb3', 8, 0.48], [8, 'F4', 8, 0.34], [8, 'C5', 8, 0.22],
-          [16, 'F4', 8, 0.52], [16, 'C5', 8, 0.36], [16, 'G5', 8, 0.24],
-          [24, 'C4', 8, 0.48], [24, 'G4', 8, 0.34], [24, 'D5', 8, 0.22]
-        ]
-      },
-      {
-        wave: 'triangle',
-        volume: 0.05,
-        attack: 0.08,
-        release: 1.4,
-        pan: 0.28,
-        notes: [
-          [2, 'A5', 1.5, 0.26], [4, 'G5', 1.5, 0.24], [6, 'F5', 1.5, 0.26],
-          [10, 'C6', 1.5, 0.28], [12, 'A5', 1.5, 0.24], [14, 'G5', 1.5, 0.24],
-          [18, 'G5', 1.5, 0.26], [20, 'F5', 1.5, 0.22], [22, 'E5', 1.5, 0.22],
-          [26, 'D5', 1.5, 0.24], [28, 'G5', 1.5, 0.24], [30, 'A5', 1.0, 0.2]
-        ]
-      },
-      {
-        wave: 'sine',
-        volume: 0.05,
-        attack: 0.14,
-        release: 1.6,
-        pan: 0,
-        notes: [
-          [0, 'D2', 4, 0.4], [4, 'A1', 4, 0.32], [8, 'Bb1', 4, 0.36], [12, 'F2', 4, 0.3],
-          [16, 'F2', 4, 0.38], [20, 'C2', 4, 0.3], [24, 'C2', 4, 0.36], [28, 'G1', 4, 0.3]
-        ]
-      }
+    title: 'Candlelit Market Steps',
+    fallbackBpm: 96,
+    sources: [
+      { path: '/midi/kit-2-f/bass.mid', wave: 'triangle', volume: 0.19, attack: 0.02, release: 0.18, pan: -0.08, transpose: -12 },
+      { path: '/midi/kit-2-f/keys.mid', wave: 'triangle', volume: 0.1, attack: 0.03, release: 0.48, pan: -0.18, transpose: 0 },
+      { path: '/midi/kit-2-f/keys.mid', wave: 'sine', volume: 0.06, attack: 0.1, release: 0.92, pan: 0.12, transpose: 12 },
+      { path: '/midi/kit-2-f/pluck.mid', wave: 'square', volume: 0.11, attack: 0.01, release: 0.12, pan: 0.24, transpose: 12 },
+      { path: '/midi/shared/pulse-drive.mid', wave: 'triangle', volume: 0.1, attack: 0.004, release: 0.08, pan: -0.02, transpose: -12 },
+      { path: '/midi/shared/starlight-hats.mid', wave: 'square', volume: 0.038, attack: 0.005, release: 0.03, pan: 0.26, transpose: 0 }
     ]
   },
   {
-    title: 'Starlight Lobby',
-    bpm: 74,
-    lengthBeats: 32,
-    lanes: [
-      {
-        wave: 'triangle',
-        volume: 0.07,
-        attack: 1.2,
-        release: 2.5,
-        pan: -0.2,
-        notes: [
-          [0, 'E4', 8, 0.56], [0, 'B4', 8, 0.36], [0, 'F#5', 8, 0.24],
-          [8, 'C4', 8, 0.5], [8, 'G4', 8, 0.34], [8, 'D5', 8, 0.24],
-          [16, 'G3', 8, 0.54], [16, 'D4', 8, 0.36], [16, 'A4', 8, 0.24],
-          [24, 'D4', 8, 0.58], [24, 'A4', 8, 0.38], [24, 'E5', 8, 0.24]
-        ]
-      },
-      {
-        wave: 'sine',
-        volume: 0.04,
-        attack: 0.04,
-        release: 1.5,
-        pan: 0.18,
-        notes: [
-          [1, 'B5', 1, 0.24], [2.5, 'C6', 1, 0.2], [5, 'A5', 1.5, 0.22], [7, 'G5', 1, 0.2],
-          [9, 'D6', 1, 0.24], [10.5, 'C6', 1, 0.2], [13, 'A5', 1.5, 0.22], [15, 'G5', 1, 0.2],
-          [17, 'A5', 1, 0.22], [18.5, 'B5', 1, 0.2], [21, 'G5', 1.5, 0.2], [23, 'F#5', 1, 0.2],
-          [25, 'E6', 1, 0.24], [26.5, 'D6', 1, 0.2], [29, 'A5', 1.5, 0.22], [31, 'F#5', 0.8, 0.18]
-        ]
-      },
-      {
-        wave: 'sine',
-        volume: 0.052,
-        attack: 0.12,
-        release: 1.2,
-        pan: 0,
-        notes: [
-          [0, 'E2', 4, 0.36], [4, 'B1', 4, 0.28], [8, 'C2', 4, 0.32], [12, 'G1', 4, 0.28],
-          [16, 'G1', 4, 0.34], [20, 'D2', 4, 0.28], [24, 'D2', 4, 0.36], [28, 'A1', 4, 0.3]
-        ]
-      }
+    title: 'Glass Rain Promenade',
+    fallbackBpm: 78,
+    sources: [
+      { path: '/midi/kit-3-g-sharp/bass.mid', wave: 'sine', volume: 0.18, attack: 0.03, release: 0.34, pan: -0.05, transpose: -12 },
+      { path: '/midi/kit-3-g-sharp/keys.mid', wave: 'sawtooth', volume: 0.12, attack: 0.06, release: 0.34, pan: 0.08, transpose: 0 },
+      { path: '/midi/kit-3-g-sharp/keys.mid', wave: 'triangle', volume: 0.07, attack: 0.08, release: 1, pan: -0.16, transpose: 12 },
+      { path: '/midi/shared/copper-snaps.mid', wave: 'triangle', volume: 0.032, attack: 0.005, release: 0.04, pan: 0.12, transpose: 0 }
     ]
   },
   {
-    title: 'After Hours Studio',
-    bpm: 66,
-    lengthBeats: 32,
-    lanes: [
-      {
-        wave: 'triangle',
-        volume: 0.075,
-        attack: 1.5,
-        release: 3.4,
-        pan: -0.12,
-        notes: [
-          [0, 'A3', 8, 0.58], [0, 'E4', 8, 0.38], [0, 'B4', 8, 0.24],
-          [8, 'F3', 8, 0.52], [8, 'C4', 8, 0.36], [8, 'G4', 8, 0.22],
-          [16, 'C4', 8, 0.56], [16, 'G4', 8, 0.36], [16, 'D5', 8, 0.24],
-          [24, 'G3', 8, 0.52], [24, 'D4', 8, 0.36], [24, 'A4', 8, 0.22]
-        ]
-      },
-      {
-        wave: 'triangle',
-        volume: 0.04,
-        attack: 0.05,
-        release: 1.7,
-        pan: 0.25,
-        notes: [
-          [2, 'E5', 2, 0.24], [6, 'G5', 2, 0.24], [10, 'C5', 2, 0.22], [14, 'D5', 2, 0.22],
-          [18, 'G5', 2, 0.24], [22, 'E5', 2, 0.22], [26, 'A5', 2, 0.22], [30, 'G5', 1.5, 0.18]
-        ]
-      },
-      {
-        wave: 'sine',
-        volume: 0.05,
-        attack: 0.14,
-        release: 1.3,
-        pan: 0,
-        notes: [
-          [0, 'A1', 4, 0.36], [4, 'E2', 4, 0.28], [8, 'F2', 4, 0.32], [12, 'C2', 4, 0.28],
-          [16, 'C2', 4, 0.34], [20, 'G1', 4, 0.28], [24, 'G1', 4, 0.34], [28, 'D2', 4, 0.28]
-        ]
-      }
+    title: 'Ember Alley Chase',
+    fallbackBpm: 102,
+    sources: [
+      { path: '/midi/kit-4-d-sharp/bass.mid', wave: 'triangle', volume: 0.19, attack: 0.015, release: 0.16, pan: -0.1, transpose: -12 },
+      { path: '/midi/kit-4-d-sharp/keys.mid', wave: 'sawtooth', volume: 0.13, attack: 0.03, release: 0.26, pan: -0.16, transpose: 0 },
+      { path: '/midi/kit-4-d-sharp/pluck.mid', wave: 'square', volume: 0.11, attack: 0.008, release: 0.1, pan: 0.18, transpose: 12 },
+      { path: '/midi/shared/pulse-drive.mid', wave: 'triangle', volume: 0.11, attack: 0.004, release: 0.08, pan: -0.02, transpose: -12 },
+      { path: '/midi/shared/copper-snaps.mid', wave: 'square', volume: 0.05, attack: 0.004, release: 0.03, pan: 0.16, transpose: 0 }
+    ]
+  },
+  {
+    title: 'Lantern Bazaar Afterglow',
+    fallbackBpm: 92,
+    sources: [
+      { path: '/midi/kit-5-a-sharp/bass.mid', wave: 'triangle', volume: 0.18, attack: 0.02, release: 0.2, pan: -0.08, transpose: -12 },
+      { path: '/midi/kit-5-a-sharp/keys.mid', wave: 'triangle', volume: 0.11, attack: 0.05, release: 0.42, pan: -0.18, transpose: 0 },
+      { path: '/midi/kit-5-a-sharp/keys.mid', wave: 'sine', volume: 0.06, attack: 0.09, release: 0.94, pan: 0.1, transpose: 12 },
+      { path: '/midi/kit-5-a-sharp/pluck.mid', wave: 'square', volume: 0.1, attack: 0.01, release: 0.12, pan: 0.2, transpose: 12 },
+      { path: '/midi/shared/starlight-hats.mid', wave: 'square', volume: 0.035, attack: 0.005, release: 0.03, pan: 0.26, transpose: 0 }
+    ]
+  },
+  {
+    title: 'Midnight Rail Through the Atrium',
+    fallbackBpm: 98,
+    sources: [
+      { path: '/midi/kit-1-d-sharp/bass.mid', wave: 'triangle', volume: 0.18, attack: 0.02, release: 0.2, pan: -0.1, transpose: -12 },
+      { path: '/midi/kit-4-d-sharp/keys.mid', wave: 'sawtooth', volume: 0.12, attack: 0.04, release: 0.3, pan: -0.02, transpose: 0 },
+      { path: '/midi/kit-4-d-sharp/keys.mid', wave: 'sine', volume: 0.06, attack: 0.09, release: 0.84, pan: 0.16, transpose: 12 },
+      { path: '/midi/kit-1-d-sharp/pluck.mid', wave: 'square', volume: 0.09, attack: 0.01, release: 0.12, pan: 0.22, transpose: 12 },
+      { path: '/midi/shared/pulse-drive.mid', wave: 'triangle', volume: 0.09, attack: 0.004, release: 0.08, pan: -0.08, transpose: -12 },
+      { path: '/midi/shared/starlight-hats.mid', wave: 'square', volume: 0.03, attack: 0.005, release: 0.03, pan: 0.24, transpose: 0 }
+    ]
+  },
+  {
+    title: 'Starlight Esplanade',
+    fallbackBpm: 96,
+    sources: [
+      { path: '/midi/starlight-esplanade/bass.mid', wave: 'triangle', volume: 0.18, attack: 0.02, release: 0.2, pan: -0.08, transpose: -12 },
+      { path: '/midi/starlight-esplanade/keys.mid', wave: 'sawtooth', volume: 0.11, attack: 0.04, release: 0.36, pan: -0.16, transpose: 0 },
+      { path: '/midi/starlight-esplanade/keys.mid', wave: 'sine', volume: 0.055, attack: 0.1, release: 0.96, pan: 0.08, transpose: 12 },
+      { path: '/midi/starlight-esplanade/lead.mid', wave: 'square', volume: 0.11, attack: 0.01, release: 0.16, pan: 0.18, transpose: 0 },
+      { path: '/midi/shared/starlight-hats.mid', wave: 'square', volume: 0.034, attack: 0.005, release: 0.03, pan: 0.26, transpose: 0 }
+    ]
+  },
+  {
+    title: 'Moonlit Archive Shelves',
+    fallbackBpm: 82,
+    sources: [
+      { path: '/midi/moonlit-archive/bass.mid', wave: 'sine', volume: 0.16, attack: 0.03, release: 0.34, pan: -0.08, transpose: -12 },
+      { path: '/midi/moonlit-archive/keys.mid', wave: 'triangle', volume: 0.1, attack: 0.08, release: 0.72, pan: -0.14, transpose: 0 },
+      { path: '/midi/moonlit-archive/keys.mid', wave: 'sine', volume: 0.06, attack: 0.12, release: 1.1, pan: 0.14, transpose: 12 },
+      { path: '/midi/moonlit-archive/lead.mid', wave: 'sawtooth', volume: 0.08, attack: 0.03, release: 0.26, pan: 0.18, transpose: 0 },
+      { path: '/midi/shared/copper-snaps.mid', wave: 'triangle', volume: 0.022, attack: 0.005, release: 0.03, pan: 0.1, transpose: 0 }
+    ]
+  },
+  {
+    title: 'Ironwood March at Dawn',
+    fallbackBpm: 104,
+    sources: [
+      { path: '/midi/ironwood-march/bass.mid', wave: 'triangle', volume: 0.18, attack: 0.016, release: 0.16, pan: -0.08, transpose: -12 },
+      { path: '/midi/ironwood-march/keys.mid', wave: 'sawtooth', volume: 0.11, attack: 0.02, release: 0.18, pan: -0.12, transpose: 0 },
+      { path: '/midi/ironwood-march/lead.mid', wave: 'square', volume: 0.1, attack: 0.01, release: 0.14, pan: 0.18, transpose: 0 },
+      { path: '/midi/shared/pulse-drive.mid', wave: 'triangle', volume: 0.11, attack: 0.004, release: 0.08, pan: -0.02, transpose: -12 },
+      { path: '/midi/shared/copper-snaps.mid', wave: 'square', volume: 0.046, attack: 0.004, release: 0.03, pan: 0.18, transpose: 0 }
+    ]
+  },
+  {
+    title: 'Skyport Jubilee Parade',
+    fallbackBpm: 110,
+    sources: [
+      { path: '/midi/skyport-jubilee/bass.mid', wave: 'triangle', volume: 0.18, attack: 0.018, release: 0.18, pan: -0.08, transpose: -12 },
+      { path: '/midi/skyport-jubilee/keys.mid', wave: 'triangle', volume: 0.11, attack: 0.03, release: 0.3, pan: -0.12, transpose: 0 },
+      { path: '/midi/skyport-jubilee/lead.mid', wave: 'square', volume: 0.1, attack: 0.01, release: 0.12, pan: 0.2, transpose: 0 },
+      { path: '/midi/shared/pulse-drive.mid', wave: 'triangle', volume: 0.1, attack: 0.004, release: 0.08, pan: -0.04, transpose: -12 },
+      { path: '/midi/shared/starlight-hats.mid', wave: 'square', volume: 0.038, attack: 0.005, release: 0.03, pan: 0.24, transpose: 0 },
+      { path: '/midi/shared/copper-snaps.mid', wave: 'square', volume: 0.036, attack: 0.004, release: 0.03, pan: 0.16, transpose: 0 }
     ]
   }
 ];
-
-export const SOUNDTRACK_STATE = {
-  enabled: true,
-  isPlaying: false,
-  trackIndex: 0,
-  nextEventIndex: 0,
-  trackStartedAt: 0,
-  trackEndTime: 0,
-  schedulerId: null,
-  transitionId: null,
-  activeNodes: new Set(),
-  lookAheadSeconds: 0.28,
-  schedulerIntervalMs: 90
-};

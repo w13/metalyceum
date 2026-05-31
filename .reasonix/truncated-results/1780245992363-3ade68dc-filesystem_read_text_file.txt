@@ -1,0 +1,749 @@
+}
+
+  // ── Road 1: Fountain → Amphitheater ─────────────────────────────────────
+  buildRoad(fx, fz + 3.5, 65, 150, 5.0);
+  // ── Road 2: Fountain → Concert Venue ────────────────────────────────────
+  buildRoad(fx, fz + 3.5, -85, 140, 5.0);
+  // ── Road 3: Fountain → Main Building Entrance ───────────────────────────
+  buildRoad(fx, fz - 3.5, 0, 42, 5.0);
+
+  // ═════════════════════════════════════════════════════════════════════
+  //  AMPHITHEATER — semi-circular stepped seating with stage & screen
+  //  Center: (65, 150), facing south-west (toward the road)
+  // ═════════════════════════════════════════════════��═══════════════════
+  buildAmphitheater();
+  // ═════════════════════════════════════════════════════════════════════
+  //  CONCERT VENUE — large enclosed building with stage & giant screen
+  //  Center: (-85, 140)
+  // ═════════════════════════════════════════════════════════════════════
+  buildConcertVenue();
+}
+
+function buildAmphitheater() {
+  const ax = 65, az = 150;
+  const baseY = getTerrainHeight(ax, az); // follow natural terrain
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: '#94a3b8', roughness: 0.78
+  });
+  const seatMat = new THREE.MeshStandardMaterial({
+    color: '#64748b', roughness: 0.72, flatShading: true
+  });
+  const stageMat = new THREE.MeshStandardMaterial({
+    color: '#4a5568', roughness: 0.6, metalness: 0.08
+  });
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: '#1e293b', roughness: 0.5, metalness: 0.2
+  });
+  const screenMat = new THREE.MeshStandardMaterial({
+    color: '#090d16', roughness: 0.2, emissive: '#020617', emissiveIntensity: 0.2
+  });
+
+  // ── Ground platform ─────────────────────────────────────────────────────
+  const platform = new THREE.Mesh(
+    new THREE.CircleGeometry(26, 48),
+    new THREE.MeshStandardMaterial({ color: '#3a5a3a', roughness: 0.85 })
+  );
+  platform.rotation.x = -Math.PI / 2;
+  platform.position.set(ax, baseY + 0.02, az);
+  platform.receiveShadow = true;
+  state.scene.add(platform);
+
+  // ── Stepped seating (concentric arcs) ────────────────────────────────────
+  const rowCount = 10;
+  const rowStartRadius = 8;
+  const rowSpacing = 2.0;
+  const rowHeightStep = 0.4;
+  const arcAngle = Math.PI * 0.7; // ~126° arc
+
+  for (let row = 0; row < rowCount; row++) {
+    const radius = rowStartRadius + row * rowSpacing;
+    const segments = 20 + row * 2;
+    const stepGeo = new THREE.RingGeometry(
+      radius - 0.5,
+      radius + 0.5,
+      segments,
+      1,
+      -arcAngle / 2,
+      arcAngle
+    );
+    const step = new THREE.Mesh(stepGeo, seatMat);
+    step.rotation.x = -Math.PI / 2;
+    step.position.set(ax, baseY + 0.03 + row * rowHeightStep, az);
+    // Rotate so the arc opens toward the road (south-west)
+    step.rotation.z = Math.PI * 0.25;
+    step.receiveShadow = true;
+    state.scene.add(step);
+
+    // Vertical riser face for each step
+    if (row > 0) {
+      const riserGeo = new THREE.RingGeometry(
+        radius - 0.5,
+        radius + 0.5,
+        segments,
+        1,
+        -arcAngle / 2,
+        arcAngle
+      );
+      // Extrude the ring into a thin wall by using CylinderGeometry instead
+      const riser = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius + 0.5, radius + 0.5, rowHeightStep - 0.03, segments, 1, true, -arcAngle / 2, arcAngle),
+        stoneMat
+      );
+      riser.position.set(ax, baseY + (row - 0.5) * rowHeightStep, az);
+      riser.rotation.y = Math.PI * 0.25;
+      state.scene.add(riser);
+    }
+  }
+
+  // Aisle walls (sides of seating)
+  [-1, 1].forEach((side) => {
+    const wallAngle = Math.PI * 0.25 + side * arcAngle / 2;
+    const endRadius = rowStartRadius + (rowCount - 1) * rowSpacing + 0.5;
+    for (let r = rowStartRadius; r <= endRadius; r += 2.0) {
+      const pillar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15, 1.2, 0.15),
+        stoneMat
+      );
+      pillar.position.set(
+        ax + Math.cos(wallAngle) * r,
+        baseY + 0.6,
+        az + Math.sin(wallAngle) * r
+      );
+      pillar.castShadow = true;
+      state.scene.add(pillar);
+    }
+  });
+
+  // ── Stage ────────────────────────────────────────────────────────────────
+  const stageW = 18, stageD = 8;
+  const stage = new THREE.Mesh(
+    new THREE.BoxGeometry(stageW, 0.3, stageD),
+    stageMat
+  );
+  // Stage sits inside the seating arc at the focal point (inside innermost row)
+  const stageAngle = Math.PI * 0.25; // direction the arc opens toward
+  const stageDist = rowStartRadius - 1.0;
+  stage.position.set(
+    ax + Math.cos(stageAngle) * stageDist,
+    baseY + 0.15,
+    az + Math.sin(stageAngle) * stageDist
+  );
+  stage.receiveShadow = true;
+  stage.castShadow = true;
+  state.scene.add(stage);
+
+  // Stage border trim
+  const stageTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(stageW + 0.4, 0.05, stageD + 0.4),
+    new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.5, metalness: 0.15 })
+  );
+  stageTrim.position.copy(stage.position);
+  stageTrim.position.y = baseY + 0.02;
+  state.scene.add(stageTrim);
+
+  // ── Screen frame behind the stage (elevated backdrop) ──────���─────────────
+  const screenW = 14, screenH = 8;
+  const screenDist = stageDist + stageD / 2 + 1.5;
+  const screenX = ax + Math.cos(stageAngle) * screenDist;
+  const screenZ = az + Math.sin(stageAngle) * screenDist;
+  const perpAngle = stageAngle + Math.PI / 2;
+
+  // Frame posts
+  [-1, 1].forEach((side) => {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, screenH + 0.8, 0.25),
+      frameMat
+    );
+    post.position.set(
+      screenX + Math.cos(perpAngle) * (screenW / 2) * side,
+      baseY + (screenH + 0.8) / 2,
+      screenZ + Math.sin(perpAngle) * (screenW / 2) * side
+    );
+    post.castShadow = true;
+    state.scene.add(post);
+  });
+
+  // Top beam
+  const topBeam = new THREE.Mesh(
+    new THREE.BoxGeometry(screenW + 0.5, 0.2, 0.25),
+    frameMat
+  );
+  topBeam.position.set(screenX, baseY + screenH + 0.4, screenZ);
+  topBeam.castShadow = true;
+  state.scene.add(topBeam);
+
+  // Bottom beam
+  const bottomBeam = new THREE.Mesh(
+    new THREE.BoxGeometry(screenW + 0.5, 0.15, 0.25),
+    frameMat
+  );
+  bottomBeam.position.set(screenX, baseY + 0.15, screenZ);
+  state.scene.add(bottomBeam);
+
+  // ── Screen surface (clickable) ───────────────────────────────────────────
+  const screenMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(screenW, screenH),
+    screenMat.clone()
+  );
+  screenMesh.position.set(screenX, baseY + screenH / 2 + 0.4, screenZ);
+  // Face toward the seating arc (same direction as stageAngle)
+  screenMesh.rotation.y = stageAngle;
+  screenMesh.userData = { roomId: 8 };
+  state.clickableScreens.push(screenMesh);
+  state.roomScreens.set(8, {
+    material: screenMesh.material,
+    baseColor: screenMesh.material.color.clone(),
+    baseEmissive: screenMesh.material.emissive.clone()
+  });
+  state.scene.add(screenMesh);
+
+  // Screen glow border
+  const glowEdgeGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(screenW + 0.2, screenH + 0.2));
+  const glowBorder = new THREE.LineSegments(
+    glowEdgeGeo,
+    new THREE.LineBasicMaterial({ color: '#22c55e', transparent: true, opacity: 0.2 })
+  );
+  glowBorder.position.copy(screenMesh.position);
+  glowBorder.rotation.copy(screenMesh.rotation);
+  state.scene.add(glowBorder);
+
+  // ── Entrance marker poles flanking the stage approach ───────────────────
+  const poleApproachDist = rowStartRadius - 2;
+  [-8, 8].forEach((xOff) => {
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.15, 4, 6),
+      new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.7 })
+    );
+    pole.position.set(
+      ax + Math.cos(stageAngle) * poleApproachDist + Math.cos(perpAngle) * xOff,
+      baseY + 2.0,
+      az + Math.sin(stageAngle) * poleApproachDist + Math.sin(perpAngle) * xOff
+    );
+    pole.castShadow = true;
+    state.scene.add(pole);
+
+    const topper = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 6, 6),
+      new THREE.MeshBasicMaterial({ color: '#22c55e' })
+    );
+    topper.position.copy(pole.position);
+    topper.position.y = baseY + 4.2;
+    state.scene.add(topper);
+  });
+
+  // ── Collision barrier around the amphitheater ────────────────────────────
+  state.PLACED_ASSET_COLLIDERS.push({
+    minX: ax - 28, maxX: ax + 28,
+    minZ: az - 28, maxZ: az + 28,
+    assetId: 'amphitheater'
+  });
+
+  // Register as static scenery
+  registerStaticScenery(platform, { kind: 'outdoor', distance: 140 });
+}
+
+function buildConcertVenue() {
+  const vx = -85, vz = 140;
+  const baseY = getTerrainHeight(vx, vz); // follow natural terrain
+
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: '#1e293b', roughness: 0.7, metalness: 0.05
+  });
+  const floorMat = new THREE.MeshStandardMaterial({
+    color: '#2d1e18', roughness: 0.8
+  });
+  const stageMat = new THREE.MeshStandardMaterial({
+    color: '#3d2b1f', roughness: 0.6, metalness: 0.08
+  });
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: '#0f172a', roughness: 0.5, metalness: 0.2
+  });
+  const screenMat = new THREE.MeshStandardMaterial({
+    color: '#090d16', roughness: 0.2, emissive: '#020617', emissiveIntensity: 0.2
+  });
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: '#1a1a2e', roughness: 0.8
+  });
+
+  const venueW = 46, venueD = 34, venueH = 10;
+
+  // ── Floor ────────────────────────────────────────────────────────────────
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(venueW, venueD),
+    floorMat
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(vx, baseY + 0.02, vz);
+  floor.receiveShadow = true;
+  state.scene.add(floor);
+
+  // ── Walls ────────────────────────────────────────────────────────────────
+  // Back wall (facing away from the road, toward the building)
+  const backWall = new THREE.Mesh(
+    new THREE.BoxGeometry(venueW, venueH, 0.25),
+    wallMat
+  );
+  backWall.position.set(vx, baseY + venueH / 2, vz - venueD / 2);
+  backWall.castShadow = true;
+  backWall.receiveShadow = true;
+  state.scene.add(backWall);
+
+  // Front wall (with opening for entrance)
+  const frontWallL = new THREE.Mesh(
+    new THREE.BoxGeometry(venueW / 2 - 3, venueH, 0.25),
+    wallMat
+  );
+  frontWallL.position.set(vx - venueW / 4 - 1.5, baseY + venueH / 2, vz + venueD / 2);
+  frontWallL.castShadow = true;
+  frontWallL.receiveShadow = true;
+  state.scene.add(frontWallL);
+
+  const frontWallR = new THREE.Mesh(
+    new THREE.BoxGeometry(venueW / 2 - 3, venueH, 0.25),
+    wallMat
+  );
+  frontWallR.position.set(vx + venueW / 4 + 1.5, baseY + venueH / 2, vz + venueD / 2);
+  frontWallR.castShadow = true;
+  frontWallR.receiveShadow = true;
+  state.scene.add(frontWallR);
+
+  // Lintel above entrance — spans the 6-unit gap
+  const lintel = new THREE.Mesh(
+    new THREE.BoxGeometry(6.5, 0.3, 0.3),
+    wallMat
+  );
+  lintel.position.set(vx, baseY + venueH - 0.15, vz + venueD / 2 + 0.02);
+  state.scene.add(lintel);
+
+  // Side walls
+  [-1, 1].forEach((side) => {
+    const sideWall = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, venueH, venueD),
+      wallMat
+    );
+    sideWall.position.set(vx + side * venueW / 2, baseY + venueH / 2, vz);
+    sideWall.castShadow = true;
+    sideWall.receiveShadow = true;
+    state.scene.add(sideWall);
+  });
+
+  // ── Roof ─────────────────────────────────────────────────────────────────
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(venueW + 0.5, 0.2, venueD + 0.5),
+    roofMat
+  );
+  roof.position.set(vx, baseY + venueH, vz);
+  roof.castShadow = true;
+  roof.receiveShadow = true;
+  state.scene.add(roof);
+
+  // ── Stage ────────────────────────────────────────────────────────────────
+  const stageW = 26, stageD = 8, stageH = 0.5;
+  const stage = new THREE.Mesh(
+    new THREE.BoxGeometry(stageW, stageH, stageD),
+    stageMat
+  );
+  stage.position.set(vx, baseY + stageH / 2, vz - venueD / 2 + stageD / 2 + 0.5);
+  stage.receiveShadow = true;
+  stage.castShadow = true;
+  state.scene.add(stage);
+
+  // Stage front panel
+  const stageFront = new THREE.Mesh(
+    new THREE.BoxGeometry(stageW, stageH, 0.08),
+    new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.6 })
+  );
+  stageFront.position.set(vx, baseY + stageH / 2, vz - venueD / 2 + 0.5);
+  state.scene.add(stageFront);
+
+  // ── Giant screen above the stage ─────────────────────────────────────────
+  const screenW = 22, screenH = 8;
+  const screenY = baseY + stageH + 0.5 + screenH / 2;
+  const screenZ = vz - venueD / 2 + 0.2;
+
+  // Frame
+  [-1, 1].forEach((side) => {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, screenH + 0.6, 0.3),
+      frameMat
+    );
+    post.position.set(vx + side * (screenW / 2 + 0.15), screenY, screenZ);
+    post.castShadow = true;
+    state.scene.add(post);
+  });
+
+  const topRails = new THREE.Mesh(
+    new THREE.BoxGeometry(screenW + 0.6, 0.12, 0.3),
+    frameMat
+  );
+  topRails.position.set(vx, screenY + screenH / 2 + 0.3, screenZ);
+  state.scene.add(topRails);
+
+  const bottomRails = new THREE.Mesh(
+    new THREE.BoxGeometry(screenW + 0.6, 0.12, 0.3),
+    frameMat
+  );
+  bottomRails.position.set(vx, screenY - screenH / 2 - 0.3, screenZ);
+  state.scene.add(bottomRails);
+
+  // Screen surface (clickable)
+  const screenMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(screenW, screenH),
+    screenMat.clone()
+  );
+  screenMesh.position.set(vx, screenY, screenZ);
+  screenMesh.rotation.y = 0;
+  screenMesh.userData = { roomId: 9 };
+  state.clickableScreens.push(screenMesh);
+  state.roomScreens.set(9, {
+    material: screenMesh.material,
+    baseColor: screenMesh.material.color.clone(),
+    baseEmissive: screenMesh.material.emissive.clone()
+  });
+  state.scene.add(screenMesh);
+
+  // Neon border glow on screen
+  const borderEdgeGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(screenW + 0.3, screenH + 0.3));
+  const border = new THREE.LineSegments(
+    borderEdgeGeo,
+    new THREE.LineBasicMaterial({ color: '#a855f7', transparent: true, opacity: 0.2 })
+  );
+  border.position.copy(screenMesh.position);
+  border.rotation.copy(screenMesh.rotation);
+  state.scene.add(border);
+
+  // ── Venue lighting (ambient glow) ────────────────────────────────────────
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: '#a855f7',
+    emissive: '#a855f7',
+    emissiveIntensity: 0.08,
+    transparent: true,
+    opacity: 0.12
+  });
+  const glowRing = new THREE.Mesh(
+    new THREE.RingGeometry(10, 12, 32),
+    glowMat
+  );
+  glowRing.rotation.x = -Math.PI / 2;
+  glowRing.position.set(vx, baseY + 0.04, vz);
+  state.scene.add(glowRing);
+
+  // ── Entrance step ────────────────────────────────────────────────────────
+  const stepMat = new THREE.MeshStandardMaterial({
+    color: '#64748b', roughness: 0.75
+  });
+  const step = new THREE.Mesh(
+    new THREE.BoxGeometry(venueW / 4, 0.12, 1.2),
+    stepMat
+  );
+  step.position.set(vx, baseY + 0.06, vz + venueD / 2 + 1.2);
+  step.receiveShadow = true;
+  step.castShadow = true;
+  state.scene.add(step);
+
+  // ── Collision barriers ───────────────────────────────────────────────────
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(vx - venueW / 2, baseY - 0.5, vz - venueD / 2),
+    new THREE.Vector3(vx + venueW / 2, baseY + venueH, vz + venueD / 2)
+  ));
+
+  // Register as static scenery
+  registerStaticScenery(floor, { kind: 'outdoor', distance: 200 });
+}
+
+// ── World environmental detail pass ────────────────────────────────────────
+// Adds tree clusters, ponds, wildflower meadows, and grass patches across
+// the map. All geometry is batched into InstancedMeshes for performance.
+// Nothing is placed on roads, building footprints, or venue platforms.
+export function buildWorldDetails() {
+  const _t = new THREE.Object3D();
+
+  // Returns false if the point overlaps a road, building, or venue.
+  function isSafe(x, z) {
+    if (Math.abs(x) < 33 && Math.abs(z) < 45) return false;           // main building
+    if (z > 37 && Math.abs(x) < 18) return false;                     // front plaza / fountain approach
+    if (z > 52 && z < 62 && Math.abs(x) < 6) return false;           // fountain base
+    if ((x - 65) * (x - 65) + (z - 150) * (z - 150) < 1024) return false; // amphitheater platform (r32)
+    if (Math.abs(x + 85) < 27 && Math.abs(z - 140) < 21) return false; // concert hall footprint
+    // Road corridors (same bands used in building.js exclusion zones)
+    if (z > 58 && z < 152 && x > -4 && x < 70) return false;         // road → amphitheater
+    if (z > 58 && z < 140 && x > -90 && x < 4) return false;         // road → concert hall
+    if (z > 40 && z < 59 && Math.abs(x) < 5) return false;           // road → main building
+    return true;
+  }
+
+  // ── 1. TREE CLUSTERS (InstancedMesh) ─────────────────────────────────────
+  const treePts = [];
+  function cluster(cx, cz, n, spread) {
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + (Math.random() - 0.5) * 0.7;
+      const d = (0.25 + Math.random() * 0.75) * spread;
+      const x = cx + Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (!isSafe(x, z)) continue;
+      treePts.push({ x, z, s: 0.7 + Math.random() * 0.55 });
+    }
+  }
+
+  // Northern woodland (behind main building)
+  cluster(-42, -72, 10, 14);
+  cluster(42, -72, 10, 14);
+  cluster(-85, -108, 11, 16);
+  cluster(85, -108, 11, 16);
+  cluster(0, -145, 12, 17);
+  cluster(-58, -180, 9, 14);
+  cluster(62, -180, 9, 14);
+  cluster(-135, -88, 8, 12);
+  cluster(135, -88, 8, 12);
+
+  // Flanks of the venue roads
+  cluster(112, 74, 8, 12);
+  cluster(120, 120, 8, 12);
+  cluster(-112, 74, 8, 12);
+  cluster(-124, 114, 8, 12);
+
+  // Around the venues (outside their platforms)
+  cluster(105, 155, 8, 13);
+  cluster(64, 198, 8, 12);
+  cluster(-118, 148, 8, 13);
+  cluster(-88, 194, 8, 12);
+
+  // Far open areas / corners
+  cluster(-158, 36, 7, 12);
+  cluster(158, 36, 7, 12);
+  cluster(-152, -56, 7, 12);
+  cluster(152, -56, 7, 12);
+  cluster(-200, 90, 6, 14);
+  cluster(200, 90, 6, 14);
+  cluster(0, -230, 10, 20);
+
+  if (treePts.length > 0) {
+    const n = treePts.length;
+    const iT = new THREE.InstancedMesh(state.sharedScenery.treeTrunkGeo, state.sharedScenery.treeTrunkMat, n);
+    const iC1 = new THREE.InstancedMesh(state.sharedScenery.treeCone1Geo, state.sharedScenery.treeFoliageMat, n);
+    const iC2 = new THREE.InstancedMesh(state.sharedScenery.treeCone2Geo, state.sharedScenery.treeFoliageMat, n);
+    [iT, iC1, iC2].forEach(m => { m.castShadow = true; m.receiveShadow = true; });
+
+    treePts.forEach(({ x, z, s }, i) => {
+      const gy = getTerrainHeight(x, z);
+      _t.scale.setScalar(s);
+      _t.rotation.set(0, Math.random() * Math.PI * 2, 0);
+
+      _t.position.set(x, gy + 2 * s, z); _t.updateMatrix(); iT.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 4.2 * s, z); _t.updateMatrix(); iC1.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 5.6 * s, z); _t.updateMatrix(); iC2.setMatrixAt(i, _t.matrix);
+    });
+    iT.instanceMatrix.needsUpdate = true;
+    iC1.instanceMatrix.needsUpdate = true;
+    iC2.instanceMatrix.needsUpdate = true;
+    state.scene.add(iT);
+    state.scene.add(iC1);
+    state.scene.add(iC2);
+  }
+
+  // ── 2. PONDS ──────────────��───────────────────────────────────────────────
+  const pondDefs = [
+    { x: 132, z: -32, r: 7 },
+    { x: -136, z: -26, r: 6 },
+    { x: 14, z: -122, r: 9 },
+    { x: 172, z: 55, r: 6 },
+    { x: -172, z: 50, r: 6 },
+    { x: 65, z: 204, r: 7 },
+    { x: -92, z: 198, r: 7 },
+  ];
+
+  // Batch all reeds across all ponds into one InstancedMesh
+  const REEDS_PER_POND = 16;
+  const reedGeo = new THREE.CylinderGeometry(0.035, 0.055, 1.0, 4);
+  const reedMat = new THREE.MeshStandardMaterial({ color: '#4a7a20', roughness: 0.88 });
+  const reedInst = new THREE.InstancedMesh(reedGeo, reedMat, pondDefs.length * REEDS_PER_POND);
+  reedInst.castShadow = true;
+  let ri = 0;
+
+  pondDefs.forEach(({ x: cx, z: cz, r }) => {
+    const by = getTerrainHeight(cx, cz);
+
+    // Mud/earth ring
+    const mud = new THREE.Mesh(
+      new THREE.RingGeometry(r * 0.80, r * 1.30, 48),
+      new THREE.MeshStandardMaterial({ color: '#3b2618', roughness: 0.97 })
+    );
+    mud.rotation.x = -Math.PI / 2;
+    mud.position.set(cx, by + 0.01, cz);
+    mud.receiveShadow = true;
+    state.scene.add(mud);
+
+    // Gravel / stone apron
+    const gravel = new THREE.Mesh(
+      new THREE.RingGeometry(r * 1.28, r * 1.62, 48),
+      new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.82 })
+    );
+    gravel.rotation.x = -Math.PI / 2;
+    gravel.position.set(cx, by + 0.009, cz);
+    gravel.receiveShadow = true;
+    state.scene.add(gravel);
+
+    // Water surface
+    const water = new THREE.Mesh(
+      new THREE.CircleGeometry(r * 0.82, 48),
+      new THREE.MeshStandardMaterial({
+        color: '#0c4a6e', roughness: 0.04, metalness: 0.72,
+        transparent: true, opacity: 0.84
+      })
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(cx, by + 0.03, cz);
+    water.receiveShadow = true;
+    state.scene.add(water);
+
+    // Bright shimmer overlay
+    const shimmer = new THREE.Mesh(
+      new THREE.RingGeometry(r * 0.08, r * 0.48, 32),
+      new THREE.MeshStandardMaterial({
+        color: '#38bdf8', roughness: 0.02, metalness: 0.28,
+        transparent: true, opacity: 0.25, side: THREE.DoubleSide
+      })
+    );
+    shimmer.rotation.x = -Math.PI / 2;
+    shimmer.position.set(cx, by + 0.04, cz);
+    state.scene.add(shimmer);
+
+    // Pondside rocks (small boulders)
+    for (let i = 0; i < 6; i++) {
+      const ang = (Math.PI * 2 * i) / 6 + Math.random() * 0.55;
+      const rx = cx + Math.cos(ang) * (r * 1.05 + Math.random() * 1.5);
+      const rz = cz + Math.sin(ang) * (r * 1.05 + Math.random() * 1.5);
+      const rg = new THREE.DodecahedronGeometry(0.22 + Math.random() * 0.45, 0);
+      const rock = new THREE.Mesh(rg, state.sharedScenery.boulderMat);
+      rock.position.set(rx, getTerrainHeight(rx, rz) + 0.07, rz);
+      rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      rock.castShadow = true;
+      state.scene.add(rock);
+    }
+
+    // Reeds (instanced)
+    for (let i = 0; i < REEDS_PER_POND; i++) {
+      const ang = (Math.PI * 2 * i) / REEDS_PER_POND + (Math.random() - 0.5) * 0.45;
+      const rx = cx + Math.cos(ang) * (r * 0.65 + Math.random() * r * 0.45);
+      const rz = cz + Math.sin(ang) * (r * 0.65 + Math.random() * r * 0.45);
+      const rh = 0.7 + Math.random() * 0.95;
+      _t.position.set(rx, getTerrainHeight(rx, rz) + rh * 0.5, rz);
+      _t.scale.set(1, rh, 1);
+      _t.rotation.set((Math.random() - 0.5) * 0.18, Math.random() * Math.PI * 2, 0);
+      _t.updateMatrix();
+      reedInst.setMatrixAt(ri++, _t.matrix);
+    }
+
+    // Soft collision barrier (prevents walking into pond centre)
+    addSceneryCollider(cx - r * 0.72, cx + r * 0.72, cz - r * 0.72, cz + r * 0.72, `pond-${cx}-${cz}`);
+    registerStaticScenery(water, { kind: 'outdoor', distance: 130 });
+  });
+
+  reedInst.instanceMatrix.needsUpdate = true;
+  state.scene.add(reedInst);
+
+  // ── 3. WILDFLOWER MEADOWS (InstancedMesh) ─────────────────────────────────
+  const flowerColors = ['#f43f5e', '#eab308', '#3b82f6', '#a855f7', '#22c55e', '#f97316', '#fb923c'];
+  const meadowDefs = [
+    // East and west of venue roads
+    { cx: 100, cz: 90, n: 50, r: 18 },
+    { cx: -104, cz: 86, n: 50, r: 18 },
+    // Open southern fields
+    { cx: 86, cz: 24, n: 40, r: 16 },
+    { cx: -86, cz: 24, n: 40, r: 16 },
+    // Around venues
+    { cx: 100, cz: 154, n: 38, r: 15 },
+    { cx: -122, cz: 112, n: 38, r: 15 },
+    // Northern meadows
+    { cx: -24, cz: -96, n: 45, r: 17 },
+    { cx: 24, cz: -96, n: 45, r: 17 },
+    { cx: 0, cz: -182, n: 55, r: 22 },
+    // Pond-side wildflowers (tight clusters around each pond)
+    ...pondDefs.map(({ x, z, r }) => ({ cx: x, cz: z, n: 24, r: r * 1.6 })),
+  ];
+
+  const mPts = [];
+  meadowDefs.forEach(({ cx, cz, n, r }) => {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * r; // sqrt for more even radial spread
+      const x = cx + Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (!isSafe(x, z)) continue;
+      mPts.push({ x, z, s: 0.65 + Math.random() * 0.55, c: flowerColors[Math.floor(Math.random() * flowerColors.length)] });
+    }
+  });
+
+  if (mPts.length > 0) {
+    const mStem = new THREE.InstancedMesh(state.sharedScenery.flowerStemGeo, state.sharedScenery.flowerStemMat, mPts.length);
+    const mCenter = new THREE.InstancedMesh(state.sharedScenery.flowerCenterGeo, state.sharedScenery.flowerCenterMat, mPts.length);
+    mStem.castShadow = true;
+    mCenter.castShadow = true;
+
+    mPts.forEach(({ x, z, s, c }, i) => {
+      const gy = getTerrainHeight(x, z);
+      _t.scale.setScalar(s);
+      _t.rotation.set(0, Math.random() * Math.PI * 2, 0);
+
+      _t.position.set(x, gy + 0.25 * s, z); _t.updateMatrix(); mStem.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 0.50 * s, z); _t.updateMatrix(); mCenter.setMatrixAt(i, _t.matrix);
+      mCenter.setColorAt(i, new THREE.Color(c));
+    });
+    mStem.instanceMatrix.needsUpdate = true;
+    mCenter.instanceMatrix.needsUpdate = true;
+    if (mCenter.instanceColor) mCenter.instanceColor.needsUpdate = true;
+    state.scene.add(mStem);
+    state.scene.add(mCenter);
+  }
+
+  // ── 4. EXTRA GRASS PATCHES (InstancedMesh) ────────────────────────────────
+  const grassDefs = [
+    { cx: 96, cz: 145, r: 25 },   // amphitheater surroundings
+    { cx: -100, cz: 130, r: 24 }, // concert hall surroundings
+    { cx: 44, cz: -58, r: 22 },   // northern field east
+    { cx: -44, cz: -58, r: 22 },  // northern field west
+    { cx: 0, cz: -168, r: 28 },   // deep north
+    { cx: 160, cz: 24, r: 22 },   // far east
+    { cx: -160, cz: 24, r: 22 },  // far west
+    { cx: 130, cz: -30, r: 18 },  // east mid (near pond)
+    { cx: -135, cz: -25, r: 18 }, // west mid (near pond)
+  ];
+  const BLADES_PER_SPOT = 40;
+
+  const gPts = [];
+  grassDefs.forEach(({ cx, cz, r }) => {
+    for (let b = 0; b < BLADES_PER_SPOT; b++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * r;
+      const x = cx + Math.cos(a) * d;
+      const z = cz + Math.sin(a) * d;
+      if (!isSafe(x, z)) continue;
+      // 3 blades per placement point, slightly offset
+      for (let j = 0; j < 3; j++) {
+        gPts.push({
+          x: x + (Math.random() - 0.5) * 0.4,
+          z: z + (Math.random() - 0.5) * 0.4,
+          rx: (Math.random() - 0.5) * 0.4,
+          ry: Math.random() * Math.PI * 2,
+          rz: (Math.random() - 0.5) * 0.4,
+          sy: 0.75 + Math.random() * 0.45
+        });
+      }
+    }
+  });
+
+  if (gPts.length > 0) {
+    const gInst = new THREE.InstancedMesh(state.sharedScenery.grassBladeGeo, state.sharedScenery.grassTuftMat, gPts.length);
+    gInst.castShadow = true;
+    gPts.forEach(({ x, z, rx, ry, rz, sy }, i) => {
+      _t.position.set(x, getTerrainHeight(x, z), z);
+      _t.rotation.set(rx, ry, rz);
+      _t.scale.set(1, sy, 1);
+      _t.updateMatrix();
+      gInst.setMatrixAt(i, _t.matrix);
+    });
+    gInst.instanceMatrix.needsUpdate = true;
+    state.scene.add(gInst);
+  }
+}

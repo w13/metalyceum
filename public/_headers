@@ -6,3 +6,28 @@
   X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+
+# HTML entry point — always revalidate so deploys are picked up immediately.
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+# JS modules and stylesheet — no browser-side TTL since files are not content-hashed.
+# no-cache means the browser always revalidates with a conditional GET (If-None-Match),
+# which is a fast 304 when unchanged. Cloudflare still caches at the edge so the
+# origin Worker is never hit. Swapping to immutable + hashed filenames later would
+# let us restore a long max-age safely.
+/app.js
+  Cache-Control: no-cache
+
+/js/*
+  Cache-Control: no-cache
+
+/styles.css
+  Cache-Control: no-cache
+
+# MIDI files are large and change rarely — cache for a week.
+/midi/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=2592000

@@ -1,20 +1,43 @@
 // Security and Date Utilities for Metalyceum
 import { state } from './state.js';
 
+const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
+function tryParseUrl(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    return new URL(value.startsWith('http') ? value : `https://${value}`);
+  } catch (e) {
+    return null;
+  }
+}
+
+function normalizeMeetUrl(value) {
+  const url = tryParseUrl(value);
+  if (!url) return null;
+  if (url.hostname === 'meet.google.com' || url.hostname.endsWith('.meet.google.com')) {
+    return `https://meet.google.com${url.pathname}`;
+  }
+  return null;
+}
+
+function parseDateValue(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatEventBoundary(date) {
+  return date ? formatDateTime(date.toISOString()) : 'Not scheduled';
+}
+
 export function sanitizeColor(c, fallback = '#3b82f6') {
   return (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) ? c : fallback;
 }
 
 // Accept only a meet.google.com link; return a normalized https URL or null.
 export function safeMeetUrl(v) {
-  if (typeof v !== 'string') return null;
-  try {
-    const u = new URL(v.startsWith('http') ? v : 'https://' + v);
-    if (u.hostname === 'meet.google.com' || u.hostname.endsWith('.meet.google.com')) {
-      return `https://meet.google.com${u.pathname}`;
-    }
-  } catch (e) {}
-  return null;
+  return normalizeMeetUrl(v);
 }
 
 // Strictly parse a media input into a YouTube ID or a meet.google.com URL.
@@ -23,22 +46,25 @@ export function parseVideoInput(raw) {
   if (typeof raw !== 'string') return null;
   const s = raw.trim();
   if (!s) return null;
-  const YT_ID = /^[A-Za-z0-9_-]{11}$/;
-  if (YT_ID.test(s)) return s;
-  try {
-    const u = new URL(s.startsWith('http') ? s : 'https://' + s);
-    if (u.hostname === 'meet.google.com' || u.hostname.endsWith('.meet.google.com')) {
-      return `https://meet.google.com${u.pathname}`;
-    }
-    if (u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') {
-      const id = u.searchParams.get('v');
-      return id && YT_ID.test(id) ? id : null;
-    }
-    if (u.hostname === 'youtu.be') {
-      const id = u.pathname.slice(1).split('/')[0];
-      return YT_ID.test(id) ? id : null;
-    }
-  } catch (e) {}
+
+  if (YOUTUBE_ID_PATTERN.test(s)) return s;
+
+  const meetUrl = normalizeMeetUrl(s);
+  if (meetUrl) return meetUrl;
+
+  const url = tryParseUrl(s);
+  if (!url) return null;
+
+  if (url.hostname === 'www.youtube.com' || url.hostname === 'youtube.com') {
+    const id = url.searchParams.get('v');
+    return id && YOUTUBE_ID_PATTERN.test(id) ? id : null;
+  }
+
+  if (url.hostname === 'youtu.be') {
+    const id = url.pathname.slice(1).split('/')[0];
+    return YOUTUBE_ID_PATTERN.test(id) ? id : null;
+  }
+
   return null;
 }
 
@@ -80,9 +106,8 @@ export function applyRoomData(roomId, roomData = {}) {
 }
 
 export function formatDateTime(value) {
-  if (!value) return 'Not scheduled';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not scheduled';
+  const date = parseDateValue(value);
+  if (!date) return 'Not scheduled';
   return new Intl.DateTimeFormat([], {
     month: 'short',
     day: 'numeric',
@@ -92,9 +117,8 @@ export function formatDateTime(value) {
 }
 
 export function formatDateTimeLocalValue(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = parseDateValue(value);
+  if (!date) return '';
   const pad = (num) => String(num).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -103,8 +127,8 @@ export function getRoomEventWindow(room) {
   if (!room.startTime) {
     return { startDate: null, endDate: null, durationMinutes: room.durationMinutes || 0 };
   }
-  const startDate = new Date(room.startTime);
-  if (Number.isNaN(startDate.getTime())) {
+  const startDate = parseDateValue(room.startTime);
+  if (!startDate) {
     return { startDate: null, endDate: null, durationMinutes: room.durationMinutes || 0 };
   }
   const durationMinutes = Math.max(0, room.durationMinutes || 0);
@@ -140,7 +164,7 @@ export function getRoomEventStatus(room) {
       return {
         tone: 'ready',
         label: 'Scheduled',
-        detail: `Starts ${formatDateTime(startDate.toISOString())}. Add a source before it begins.`
+        detail: `Starts ${formatEventBoundary(startDate)}. Add a source before it begins.`
       };
     }
 
@@ -155,7 +179,7 @@ export function getRoomEventStatus(room) {
     return {
       tone: 'ended',
       label: 'Ended',
-      detail: `Ended ${formatDateTime(endDate.toISOString())}`
+      detail: `Ended ${formatEventBoundary(endDate)}`
     };
   }
 
@@ -163,7 +187,7 @@ export function getRoomEventStatus(room) {
     return {
       tone: 'upcoming',
       label: 'Upcoming',
-      detail: `Starts ${formatDateTime(startDate.toISOString())}`
+      detail: `Starts ${formatEventBoundary(startDate)}`
     };
   }
 
@@ -171,14 +195,14 @@ export function getRoomEventStatus(room) {
     return {
       tone: 'live',
       label: 'Live now',
-      detail: endDate ? `Ends ${formatDateTime(endDate.toISOString())}` : 'Live with no end time set.'
+      detail: endDate ? `Ends ${formatEventBoundary(endDate)}` : 'Live with no end time set.'
     };
   }
 
   return {
     tone: 'ended',
     label: 'Ended',
-    detail: `Ended ${formatDateTime(endDate.toISOString())}`
+    detail: `Ended ${formatEventBoundary(endDate)}`
   };
 }
 
@@ -192,4 +216,19 @@ export function getRoomPlaybackStartSeconds(room) {
     return Math.min(durationMinutes * 60, clampedElapsed);
   }
   return clampedElapsed;
+}
+
+// ── World placement validation ────────────────────────────────────────────────
+// Single source of truth for the exclusion zones used by tree, flower, grass,
+// and boulder placement.  Returns true when (x, z) is a valid outdoor spot.
+export function isWorldPlacementAllowed(x, z) {
+  return !(
+    (Math.abs(x) < 32 && Math.abs(z) < 44) ||        // building footprint
+    (z > 38 && Math.abs(x) < 16) ||                   // front plaza / path
+    (z > 110 && z < 190 && x > 25 && x < 105) ||      // amphitheater (65, 150)
+    (z > 115 && z < 160 && x > -110 && x < -60) ||    // concert venue (-85, 140)
+    (z > 60 && z < 130 && x > 0 && x < 70) ||         // road to amphitheater
+    (z > 60 && z < 115 && x > -90 && x < 0) ||        // road to concert venue
+    (z > 42 && z < 60 && Math.abs(x) < 3)             // road to main building
+  );
 }

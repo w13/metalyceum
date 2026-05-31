@@ -1,7 +1,9 @@
 // World Editor and Placeable Assets for Metalyceum
 import { state } from './state.js';
-import { WORLD_ASSET_CATALOG } from './config.js';
+import { MAP_SIZE, WORLD_ASSET_CATALOG } from './config.js';
 import { getTerrainHeight, getRoomIdForPosition } from './physics.js';
+import { closeModal, openModal, registerModal } from './modals.js';
+import { closeRoomEventModal } from './room-panel.js';
 
 export function transformControlsMode(mode) {
   if (mode === 'rotate') return 'rotate';
@@ -373,10 +375,10 @@ export function setEditorEnabled(enabled) {
   updateEditorPalette();
   updateEditorStatus();
   if (enabled) {
-    const roomPanel = document.getElementById('room-panel');
-    const roomModal = document.getElementById('video-input-modal');
+    const roomPanel = state.roomPanelEl || document.getElementById('room-panel');
     if (roomPanel) roomPanel.classList.remove('room-panel-visible');
-    if (roomModal) roomModal.classList.remove('video-modal-visible');
+    closeRoomEventModal({ restoreFocus: false });
+    closeModal('editor-auth-modal', { restoreFocus: false });
     state.editor.draftAssets = state.publishedWorldAssets.map(cloneAssetDef);
     renderPlacedAssets(state.editor.draftAssets, { applyColliders: false });
   } else {
@@ -449,8 +451,9 @@ export function applyInspectorValues() {
   const rot = Number.parseFloat(document.getElementById('editor-rot-y').value);
   const scale = Number.parseFloat(document.getElementById('editor-scale').value);
   if (![x, y, z, rot, scale].every(Number.isFinite)) return;
-  entry.asset.x = THREE.MathUtils.clamp(x, -80, 80);
-  entry.asset.z = THREE.MathUtils.clamp(z, -80, 80);
+  const editorLimit = MAP_SIZE / 2 - 10;
+  entry.asset.x = THREE.MathUtils.clamp(x, -editorLimit, editorLimit);
+  entry.asset.z = THREE.MathUtils.clamp(z, -editorLimit, editorLimit);
   entry.asset.roomId = getRoomIdForPosition(entry.asset.x, entry.asset.z);
   entry.asset.y = entry.asset.roomId === -1 ? THREE.MathUtils.clamp(y, -10, 40) : 0;
   entry.asset.rotationY = THREE.MathUtils.degToRad(rot);
@@ -463,6 +466,16 @@ export function applyInspectorValues() {
 }
 
 export function initEditorUiHandlers() {
+  registerModal({
+    id: 'editor-auth-modal',
+    root: '#editor-auth-panel',
+    surface: '#editor-auth-panel',
+    openClass: 'active',
+    closeSelectors: ['#close-editor-auth-btn', '#cancel-editor-auth-btn'],
+    initialFocusSelector: '#editor-token-input',
+    ignoreElements: ['#editor-toggle-btn']
+  });
+
   const palette = document.getElementById('editor-asset-palette');
   if (palette) {
     palette.innerHTML = '';
@@ -493,8 +506,12 @@ export function initEditorUiHandlers() {
       if (state.editor.authed) {
         setEditorEnabled(!state.editor.enabled);
       } else if (authPanel) {
-        authPanel.classList.toggle('active');
-        if (authInput) authInput.focus();
+        if (authPanel.classList.contains('active')) {
+          closeModal('editor-auth-modal');
+        } else {
+          openModal('editor-auth-modal');
+          if (authInput) authInput.select();
+        }
       }
     });
   }

@@ -1,0 +1,46 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "metalyceum",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-29",
+
+  // Workers Logs: capture invocation logs / structured events for observability
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+
+  // Route to custom domain
+  "routes": [
+    { "pattern": "metalyceum.app", "custom_domain": true },
+    { "pattern": "www.metalyceum.app", "custom_domain": true }
+  ],
+
+  // Static assets served directly from the Cloudflare CDN.
+  // run_worker_first lists the only paths that invoke the Worker — everything
+  // else is served as a static file without touching the Worker at all.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/ws", "/debug", "/api/v1/*"]
+  },
+
+  // Durable Object bindings for real-time state and admin
+  "durable_objects": {
+    "bindings": [
+      { "name": "METALYCEUM_WORLD", "class_name": "MetalyceumWorld" },
+      { "name": "ADMIN_DO", "class_name": "AdminDO" }
+    ]
+  },
+
+  // Migrations: register SQLite-backed DO classes
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MetalyceumWorld"] },
+    { "tag": "v2", "new_sqlite_classes": ["AdminDO"] }
+  ],
+
+  // Local dev vars (override with `wrangler secret put ADMIN_INIT_TOKEN` in prod)
+  "vars": {
+    "ADMIN_INIT_TOKEN": "dev-init-token-change-me"
+  }
+}

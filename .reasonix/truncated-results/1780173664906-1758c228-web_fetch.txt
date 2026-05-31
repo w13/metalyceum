@@ -1,0 +1,997 @@
+GitHub - hh-hang/three-player-controller: A lightweight first-person and third-person controller for three.js. · GitHub
+https://github.com/hh-hang/three-player-controller
+
+<!DOCTYPE html>
+
+GitHub - hh-hang/three-player-controller: A lightweight first-person and third-person controller for three.js. · GitHub
+
+Skip to content
+
+Navigation Menu
+
+Toggle navigation
+
+Sign in
+
+Appearance settings
+
+Search or jump to...
+
+Search code, repositories, users, issues, pull requests...
+
+Search
+
+Clear
+
+Search syntax tips 
+
+Provide feedback
+
+We read every piece of feedback, and take your input very seriously.
+
+Include my email address so I can be contacted
+
+Cancel
+
+Submit feedback
+
+Saved searches
+
+Use saved searches to filter your results more quickly
+
+Name
+
+Query
+
+To see all available qualifiers, see our documentation.
+
+Cancel
+
+Create saved search
+
+Sign in
+
+Sign up
+
+Appearance settings
+
+Resetting focus
+
+You signed in with another tab or window. Reload to refresh your session.
+You signed out in another tab or window. Reload to refresh your session.
+You switched accounts on another tab or window. Reload to refresh your session.
+
+Dismiss alert
+
+{{ message }}
+
+hh-hang
+
+/
+
+three-player-controller
+
+Public
+
+Notifications
+You must be signed in to change notification settings
+
+Fork
+28
+
+Star
+162
+
+hh-hang/three-player-controller
+
+ master
+
+BranchesTags
+
+Go to file
+
+Code
+Open more actions menu
+
+Folders and files
+
+NameName
+Last commit message
+
+Last commit date
+
+Latest commit
+
+ 
+
+History
+183 Commits
+
+183 Commits
+
+.github/workflows
+
+.github/workflows
+
+ 
+
+ 
+
+assets/imgs
+
+assets/imgs
+
+ 
+
+ 
+
+example
+
+example
+
+ 
+
+ 
+
+src
+
+src
+
+ 
+
+ 
+
+.gitignore
+
+.gitignore
+
+ 
+
+ 
+
+.npmignore
+
+.npmignore
+
+ 
+
+ 
+
+LICENSE
+
+LICENSE
+
+ 
+
+ 
+
+README.md
+
+README.md
+
+ 
+
+ 
+
+README_En.md
+
+README_En.md
+
+ 
+
+ 
+
+package-lock.json
+
+package-lock.json
+
+ 
+
+ 
+
+package.json
+
+package.json
+
+ 
+
+ 
+
+tsconfig.json
+
+tsconfig.json
+
+ 
+
+ 
+
+tsup.config.ts
+
+tsup.config.ts
+
+ 
+
+ 
+
+vite.config.ts
+
+vite.config.ts
+
+ 
+
+ 
+
+View all files
+
+Repository files navigation
+
+中文 | English
+
+three-player-controller
+
+轻量的第三人称 / 第一人称玩家控制器，开箱即用，基于 three.js 和 three-mesh-bvh 实现人物胶囊体碰撞、BVH 碰撞检测、人物动画、第一/三人称切换与相机避障，利用 three-mesh-bvh 优化碰撞检测性能，大场景下高性能运行。
+
+示例
+
+普通控制
+
+飞行控制
+
+车辆控制
+
+移动端控制
+
+安装
+
+npm install three-player-controller three three-mesh-bvh
+
+可选依赖
+
+如果需要车辆功能，请额外安装 Rapier：
+
+npm install @dimforge/rapier3d-compat
+
+本地运行
+
+git clone https://github.com/hh-hang/three-player-controller.git
+npm install
+npm run dev
+
+浏览器访问 http://localhost:5173/three-player-controller/。
+
+使用
+
+<span class="pl-k">import</span> <span class="pl-c1">*</span> <span class="pl-k">as</span> <span class="pl-c1">THREE</span> <span class="pl-k">from</span> <span class="pl-s">"three"</span><span class="pl-kos">;</span>
+<span class="pl-k">import</span> <span class="pl-kos">{</span> <span class="pl-v">OrbitControls</span> <span class="pl-kos">}</span> <span class="pl-k">from</span> <span class="pl-s">"three/examples/jsm/controls/OrbitControls.js"</span><span class="pl-kos">;</span>
+<span class="pl-k">import</span> <span class="pl-kos">{</span> <span class="pl-s1">playerController</span> <span class="pl-kos">}</span> <span class="pl-k">from</span> <span class="pl-s">"three-player-controller"</span><span class="pl-kos">;</span>
+
+<span class="pl-k">const</span> <span class="pl-s1">scene</span> <span class="pl-c1">=</span> <span class="pl-k">new</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-c1">Scene</span><span class="pl-kos">(</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+<span class="pl-k">const</span> <span class="pl-s1">camera</span> <span class="pl-c1">=</span> <span class="pl-k">new</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-c1">PerspectiveCamera</span><span class="pl-kos">(</span><span class="pl-c1">60</span><span class="pl-kos">,</span> <span class="pl-smi">window</span><span class="pl-kos">.</span><span class="pl-c1">innerWidth</span> <span class="pl-c1">/</span> <span class="pl-smi">window</span><span class="pl-kos">.</span><span class="pl-c1">innerHeight</span><span class="pl-kos">,</span> <span class="pl-c1">0.1</span><span class="pl-kos">,</span> <span class="pl-c1">5000</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+<span class="pl-k">const</span> <span class="pl-s1">controls</span> <span class="pl-c1">=</span> <span class="pl-k">new</span> <span class="pl-v">OrbitControls</span><span class="pl-kos">(</span><span class="pl-s1">camera</span><span class="pl-kos">,</span> <span class="pl-s1">renderer</span><span class="pl-kos">.</span><span class="pl-c1">domElement</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+<span class="pl-k">const</span> <span class="pl-s1">player</span> <span class="pl-c1">=</span> <span class="pl-k">new</span> <span class="pl-s1">playerController</span><span class="pl-kos">(</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+<span class="pl-c">// 人物控制初始化</span>
+<span class="pl-k">await</span> <span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">init</span><span class="pl-kos">(</span><span class="pl-kos">{</span>
+scene<span class="pl-kos">,</span> <span class="pl-c">// three.js 场景实例</span>
+camera<span class="pl-kos">,</span> <span class="pl-c">// three.js 相机实例</span>
+controls<span class="pl-kos">,</span> <span class="pl-c">// 外部相机控制器</span>
+<span class="pl-c1">playerModelConfig</span>: <span class="pl-kos">{</span>
+<span class="pl-c1">url</span>: <span class="pl-s">"./glb/person.glb"</span><span class="pl-kos">,</span> <span class="pl-c">// 人物模型路径</span>
+<span class="pl-c1">scale</span>: <span class="pl-c1">0.001</span><span class="pl-kos">,</span> <span class="pl-c">// 人物模型缩放</span>
+<span class="pl-c1">idleAnim</span>: <span class="pl-s">"idle"</span><span class="pl-kos">,</span> <span class="pl-c">// 静止动画名，需与模型内动画名一致</span>
+<span class="pl-c1">walkAnim</span>: <span class="pl-s">"walk"</span><span class="pl-kos">,</span> <span class="pl-c">// 走路动画名，需与模型内动画名一致</span>
+<span class="pl-c1">runAnim</span>: <span class="pl-s">"run"</span><span class="pl-kos">,</span> <span class="pl-c">// 奔跑动画名，需与模型内动画名一致</span>
+<span class="pl-c1">jumpAnim</span>: <span class="pl-s">"jump"</span><span class="pl-kos">,</span> <span class="pl-c">// 跳跃动画名，需与模型内动画名一致</span>
+<span class="pl-kos">}</span><span class="pl-kos">,</span>
+<span class="pl-c1">initPos</span>: <span class="pl-k">new</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-c1">Vector3</span><span class="pl-kos">(</span><span class="pl-c1">0</span><span class="pl-kos">,</span> <span class="pl-c1">0</span><span class="pl-kos">,</span> <span class="pl-c1">0</span><span class="pl-kos">)</span><span class="pl-kos">,</span> <span class="pl-c">// 人物初始坐标</span>
+<span class="pl-kos">}</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+<span class="pl-c">// 车辆控制初始化（可选）</span>
+<span class="pl-k">await</span> <span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">loadVehicleModel</span><span class="pl-kos">(</span><span class="pl-kos">{</span>
+<span class="pl-c1">url</span>: <span class="pl-s">"./glb/bugatti.glb"</span><span class="pl-kos">,</span> <span class="pl-c">// 车辆模型路径</span>
+<span class="pl-c1">position</span>: <span class="pl-k">new</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-c1">Vector3</span><span class="pl-kos">(</span><span class="pl-c1">22</span><span class="pl-kos">,</span> <span class="pl-c1">3.69</span><span class="pl-kos">,</span> <span class="pl-c1">14.5</span><span class="pl-kos">)</span><span class="pl-kos">,</span> <span class="pl-c">// 车辆初始坐标</span>
+<span class="pl-c1">wheelsNames</span>: <span class="pl-kos">[</span><span class="pl-s">"Wheel_LF"</span><span class="pl-kos">,</span> <span class="pl-s">"Wheel_RF"</span><span class="pl-kos">,</span> <span class="pl-s">"Wheel_LR"</span><span class="pl-kos">,</span> <span class="pl-s">"Wheel_RR"</span><span class="pl-kos">]</span><span class="pl-kos">,</span> <span class="pl-c">// 车轮节点名数组，顺序为左前、右前、左后、右后</span>
+<span class="pl-c1">scale</span>: <span class="pl-c1">0.1</span><span class="pl-kos">,</span> <span class="pl-c">// 车辆模型缩放</span>
+<span class="pl-c1">animations</span>: <span class="pl-kos">{</span>
+<span class="pl-c1">openDoorAnim</span>: <span class="pl-s">"openDoorLF"</span><span class="pl-kos">,</span> <span class="pl-c">// 车门开关动画名</span>
+<span class="pl-kos">}</span><span class="pl-kos">,</span>
+<span class="pl-c1">boardingPoint</span>: <span class="pl-k">new</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-c1">Vector3</span><span class="pl-kos">(</span><span class="pl-c1">0.5</span><span class="pl-kos">,</span> <span class="pl-c1">0</span><span class="pl-kos">,</span> <span class="pl-c1">1.8</span><span class="pl-kos">)</span><span class="pl-kos">,</span> <span class="pl-c">// 上车点，局部坐标</span>
+<span class="pl-c1">seatOffset</span>: <span class="pl-k">new</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-c1">Vector3</span><span class="pl-kos">(</span><span class="pl-c1">0</span><span class="pl-kos">,</span> <span class="pl-c1">0.6</span><span class="pl-kos">,</span> <span class="pl-c1">0</span><span class="pl-kos">)</span><span class="pl-kos">,</span> <span class="pl-c">// 角色上车后座位偏移</span>
+<span class="pl-c1">chassisRatio</span>: <span class="pl-c1">0.15</span><span class="pl-kos">,</span> <span class="pl-c">// 底盘高度比例</span>
+<span class="pl-c1">suspensionRestLengthRatio</span>: <span class="pl-c1">0.2</span><span class="pl-kos">,</span> <span class="pl-c">// 悬挂静止长度比例</span>
+<span class="pl-kos">}</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+<span class="pl-k">function</span> <span class="pl-en">animate</span><span class="pl-kos">(</span><span class="pl-kos">)</span> <span class="pl-kos">{</span>
+<span class="pl-en">requestAnimationFrame</span><span class="pl-kos">(</span><span class="pl-s1">animate</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">update</span><span class="pl-kos">(</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+<span class="pl-s1">renderer</span><span class="pl-kos">.</span><span class="pl-en">render</span><span class="pl-kos">(</span><span class="pl-s1">scene</span><span class="pl-kos">,</span> <span class="pl-s1">camera</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+<span class="pl-kos">}</span>
+
+<span class="pl-en">animate</span><span class="pl-kos">(</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+API
+
+生命周期
+
+方法
+说明
+
+init(opts, callback?)
+初始化控制器，资源加载完成后执行 callback。
+
+update(dt?)
+每帧更新移动、碰撞和动画。
+
+destroy()
+销毁控制器并移除事件监听。
+
+reset(pos?)
+将角色重置到指定位置或初始位置。
+
+switchPlayerModel(model)
+运行时切换角色模型，并保留当前位置和朝向。
+
+loadVehicleModel(opts)
+加载车辆，可重复调用加载多辆车。
+
+changeView()
+切换第一 / 第三人称视角。
+
+setFirstPersonCamera(vertAngle?)
+直接进入第一人称，可指定初始垂直角度。
+
+buildStaticCollider(sources?)
+构建静态碰撞体；不传则遍历整个场景。
+
+addDynamicCollider(source)
+注册动态碰撞体（如可移动平台）。
+
+removeDynamicCollider(source)
+移除已注册的动态碰撞体。
+
+clearDynamicColliders()
+移除所有动态碰撞体。
+
+状态获取
+
+方法
+返回内容
+
+getPosition()
+当前角色位置。
+
+getVelocity()
+当前角色速度，类型为 THREE.Vector3。
+
+getIsFirstPerson()
+当前是否为第一人称。
+
+getIsFlying()
+当前是否处于飞行模式。
+
+getIsOnGround()
+当前是否在地面上。
+
+getControllerMode()
+控制模式，0 为人物，1 为车辆。
+
+getPlayerModel()
+当前加载的人物模型对象。
+
+getPlayerCapsule()
+角色胶囊体网格。
+
+getActiveVehicle()
+当前正在使用的车辆实例。
+
+getAllVehicles()
+所有已加载车辆实例。
+
+getCollider()
+用于 BVH 检测的合并碰撞网格。
+
+getCurrentPlayerAnimationName()
+当前播放的动画片段名，没有则返回 null。
+
+getCenterScreenRaycastHit()
+屏幕中心射线检测结果，适合做瞄准或交互。
+
+getActiveDynamicCollider()
+当前玩家站立的动态碰撞体，不在动态碰撞体上时返回 null。
+
+getCurrentLocomotionSet()
+当前移动动作组名。
+
+输入与运行时控制
+
+方法
+说明
+
+setInput(input)
+注入外部输入状态，适合手柄或自定义按键系统。
+
+setMouseSensitivity(v)
+设置鼠标灵敏度。
+
+setPlayerScale(v)
+动态修改角色缩放，并同步碰撞相关参数。
+
+setPlayerSpeed(v)
+设置移动速度。
+
+setPlayerFlySpeed(v)
+设置飞行速度。
+
+setJumpHeight(v)
+设置跳跃高度。
+
+setGravity(v)
+设置重力。
+
+setMinCamDistance(v)
+设置第三人称最小镜头距离。
+
+setMaxCamDistance(v)
+设置第三人称最大镜头距离。
+
+setCamLookAtHeightRatio(v)
+设置第三人称相机看向点高度比例（0=底部，1=顶部）。
+
+setThirdMouseMode(v)
+设置第三人称鼠标模式：[0
+
+setEnableZoom(v)
+设置是否允许镜头缩放。
+
+setOverShoulderView(v)
+开关过肩视角偏移。
+
+setDebug(v)
+开关碰撞体调试显示。
+
+setEnableToward(v)
+开关鼠标驱动的朝向 / 视角更新。
+
+动画
+
+方法
+说明
+
+playPlayerAnimationByName(name, fade?)
+按动画片段名直接播放角色动画。
+
+registerAnimation(key, clipName, opts?)
+注册自定义动画片段。
+
+playAnimation(key, opts?)
+播放已注册的自定义动画。
+
+registerLocomotionSet(setName, map)
+注册一套移动动画集合，用于替换内置移动动画。
+
+switchLocomotionSet(setName, fade?)
+切换到指定的移动动画集合。
+
+registerAnimation
+
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">registerAnimation</span><span class="pl-kos">(</span><span class="pl-s1">key</span><span class="pl-kos">,</span> <span class="pl-s1">clipName</span><span class="pl-kos">,</span> <span class="pl-kos">{</span>
+<span class="pl-c1">loop</span>?: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-c1">timeScale</span>?: <span class="pl-s1">number</span><span class="pl-kos">,</span>
+<span class="pl-c1">duration</span>?: <span class="pl-s1">number</span><span class="pl-kos">,</span>
+<span class="pl-c1">clampWhenFinished</span>?: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-en">onFinished</span>?: <span class="pl-kos">(</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-k">void</span><span class="pl-s1"></span><span class="pl-kos">,</span>
+<span class="pl-kos">}</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+当前实现支持 duration，并且会优先于 timeScale 生效。
+
+playAnimation
+
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">playAnimation</span><span class="pl-kos">(</span><span class="pl-s1">key</span><span class="pl-kos">,</span> <span class="pl-kos">{</span>
+<span class="pl-c1">fade</span>?: <span class="pl-s1">number</span><span class="pl-kos">,</span>
+<span class="pl-c1">force</span>?: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-kos">}</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+registerLocomotionSet
+
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">registerLocomotionSet</span><span class="pl-kos">(</span><span class="pl-s">"combat"</span><span class="pl-kos">,</span> <span class="pl-kos">{</span>
+<span class="pl-c1">idle</span>: <span class="pl-s">"CombatIdle"</span><span class="pl-kos">,</span>
+<span class="pl-c1">walking</span>: <span class="pl-s">"CombatWalk"</span><span class="pl-kos">,</span>
+<span class="pl-c1">walking_backward</span>: <span class="pl-s">"CombatBack"</span><span class="pl-kos">,</span>
+<span class="pl-c1">running</span>: <span class="pl-s">"CombatRun"</span><span class="pl-kos">,</span>
+<span class="pl-c1">jumping</span>: <span class="pl-s">"CombatJump"</span><span class="pl-kos">,</span>
+<span class="pl-c1">flyidle</span>: <span class="pl-s">"CombatFlyIdle"</span><span class="pl-kos">,</span>
+<span class="pl-c1">flying</span>: <span class="pl-s">"CombatFly"</span><span class="pl-kos">,</span>
+<span class="pl-kos">}</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+事件
+
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onAnimationChange</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">name</span><span class="pl-kos">,</span> <span class="pl-s1">action</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onBeforeViewChange</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">isFirstPerson</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onViewChange</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">isFirstPerson</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onGroundChange</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">onGround</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onVehicleEnter</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">vehicle</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onVehicleExit</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">vehicle</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onTowardChange</span> <span class="pl-c1">=</span> <span class="pl-kos">(</span><span class="pl-s1">dx</span><span class="pl-kos">,</span> <span class="pl-s1">dy</span><span class="pl-kos">,</span> <span class="pl-s1">speed</span><span class="pl-kos">)</span> <span class="pl-c1">=></span> <span class="pl-kos">{</span><span class="pl-kos">}</span><span class="pl-kos">;</span>
+
+事件
+说明
+
+onAnimationChange
+角色当前动画切换时触发。
+
+onBeforeViewChange
+第一 / 第三人称切换前触发。
+
+onViewChange
+第一 / 第三人称切换后触发。
+
+onGroundChange
+落地状态变化时触发。
+
+onVehicleEnter
+上车完成后触发。
+
+onVehicleExit
+下车完成后触发。
+
+onTowardChange
+朝向 / 视角输入更新时触发。
+
+输入监听
+
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">onAllEvent</span><span class="pl-kos">(</span><span class="pl-kos">)</span><span class="pl-kos">;</span> <span class="pl-c">// 开启键盘和鼠标输入监听</span>
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">offAllEvent</span><span class="pl-kos">(</span><span class="pl-kos">)</span><span class="pl-kos">;</span> <span class="pl-c">// 关闭键盘和鼠标输入监听</span>
+
+默认键位
+
+按键
+功能
+
+W / ArrowUp
+前进
+
+S / ArrowDown
+后退
+
+A / ArrowLeft
+左移
+
+D / ArrowRight
+右移
+
+Shift
+冲刺
+
+Space
+跳跃
+
+V
+切换视角
+
+F
+切换飞行模式
+
+E
+上车 / 下车
+
+鼠标移动
+控制视角
+
+setInput
+
+<span class="pl-s1">player</span><span class="pl-kos">.</span><span class="pl-en">setInput</span><span class="pl-kos">(</span><span class="pl-kos">{</span>
+<span class="pl-c1">moveX</span>: <span class="pl-c1">1</span> <span class="pl-c1">|</span> <span class="pl-c1">0</span> <span class="pl-c1">|</span> <span class="pl-c1">-</span><span class="pl-c1">1</span><span class="pl-kos">,</span>
+<span class="pl-c1">moveY</span>: <span class="pl-c1">1</span> <span class="pl-c1">|</span> <span class="pl-c1">0</span> <span class="pl-c1">|</span> <span class="pl-c1">-</span><span class="pl-c1">1</span><span class="pl-kos">,</span>
+<span class="pl-c1">lookDeltaX</span>: <span class="pl-s1">number</span><span class="pl-kos">,</span>
+<span class="pl-c1">lookDeltaY</span>: <span class="pl-s1">number</span><span class="pl-kos">,</span>
+<span class="pl-c1">jump</span>: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-c1">shift</span>: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-c1">toggleView</span>: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-c1">toggleFly</span>: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-c1">toggleVehicle</span>: <span class="pl-s1">boolean</span><span class="pl-kos">,</span>
+<span class="pl-kos">}</span><span class="pl-kos">)</span><span class="pl-kos">;</span>
+
+类型定义
+
+PlayerControllerOptions
+
+<span class="pl-k">type</span> <span class="pl-smi">PlayerControllerOptions</span> <span class="pl-c1">=</span> <span class="pl-kos">{</span>
+<span class="pl-c1">scene</span>: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Scene</span><span class="pl-kos">;</span>
+<span class="pl-c1">camera</span>: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">PerspectiveCamera</span><span class="pl-kos">;</span>
+<span class="pl-c1">controls</span>: <span class="pl-smi">any</span><span class="pl-kos">;</span>
+<span class="pl-c1">playerModelConfig</span>: <span class="pl-smi">PlayerModelOptions</span><span class="pl-kos">;</span>
+<span class="pl-c1">initPos</span>?: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Vector3</span><span class="pl-kos">;</span>
+<span class="pl-c1">mouseSensitivity</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">minCamDistance</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">maxCamDistance</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">staticCollider</span>?: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Object3D</span> <span class="pl-c1">|</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Object3D</span><span class="pl-kos">[</span><span class="pl-kos">]</span><span class="pl-kos">;</span>
+<span class="pl-c1">dynamicCollider</span>?: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Object3D</span> <span class="pl-c1">|</span> <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Object3D</span><span class="pl-kos">[</span><span class="pl-kos">]</span><span class="pl-kos">;</span>
+<span class="pl-c1">isShowMobileControls</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">mobileControls</span>?: <span class="pl-smi">MobileControlsOptions</span><span class="pl-kos">;</span>
+<span class="pl-c1">thirdMouseMode</span>?: <span class="pl-c1">0</span> <span class="pl-c1">|</span> <span class="pl-c1">1</span> <span class="pl-c1">|</span> <span class="pl-c1">2</span> <span class="pl-c1">|</span> <span class="pl-c1">3</span> <span class="pl-c1">|</span> <span class="pl-c1">4</span> <span class="pl-c1">|</span> <span class="pl-c1">5</span><span class="pl-kos">;</span>
+<span class="pl-c1">enableZoom</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">enableOverShoulderView</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">isFirstPerson</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">camLookAtHeightRatio</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">timeScale</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-kos">}</span><span class="pl-kos">;</span>
+
+PlayerModelOptions
+
+<span class="pl-k">type</span> <span class="pl-smi">PlayerModelOptions</span> <span class="pl-c1">=</span> <span class="pl-kos">{</span>
+<span class="pl-c1">url</span>: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">scale</span>: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">idleAnim</span>: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">walkAnim</span>: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">runAnim</span>: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">jumpAnim</span>: <span class="pl-smi">string</span> <span class="pl-c1">|</span> <span class="pl-kos">[</span><span class="pl-s1">startAnim</span>: <span class="pl-smi">string</span><span class="pl-kos">,</span> <span class="pl-s1">loopAnim</span>: <span class="pl-smi">string</span><span class="pl-kos">,</span> <span class="pl-s1">endAnim</span>: <span class="pl-smi">string</span><span class="pl-kos">]</span><span class="pl-kos">;</span>
+<span class="pl-c1">leftWalkAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">rightWalkAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">backwardAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyIdleAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyHoverForwardAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyHoverBackAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyHoverLeftAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyHoverRightAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyHoverUpAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyHoverDownAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">enterCarAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">exitCarAnim</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">gravity</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">jumpHeight</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">speed</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">flySpeed</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">rotateY</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">headBoneName</span>?: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">firstPersonCameraOffset</span>?: <span class="pl-kos">[</span><span class="pl-smi">number</span><span class="pl-kos">,</span> <span class="pl-smi">number</span><span class="pl-kos">,</span> <span class="pl-smi">number</span><span class="pl-kos">]</span><span class="pl-kos">;</span>
+<span class="pl-c1">flyEnabled</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">capsuleRadiusRatio</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-kos">}</span><span class="pl-kos">;</span>
+
+MobileControlsOptions
+
+<span class="pl-k">type</span> <span class="pl-smi">MobileControlsOptions</span> <span class="pl-c1">=</span> <span class="pl-kos">{</span>
+<span class="pl-c1">joystick</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">jump</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">fly</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">view</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">vehicle</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-kos">}</span><span class="pl-kos">;</span>
+
+VehicleOptions
+
+<span class="pl-k">type</span> <span class="pl-smi">VehicleOptions</span> <span class="pl-c1">=</span> <span class="pl-kos">{</span>
+<span class="pl-c1">url</span>: <span class="pl-smi">string</span><span class="pl-kos">;</span>
+<span class="pl-c1">position</span>: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Vector3</span><span class="pl-kos">;</span>
+<span class="pl-c1">wheelsNames</span>: <span class="pl-smi">string</span><span class="pl-kos">[</span><span class="pl-kos">]</span><span class="pl-kos">;</span>
+<span class="pl-c1">scale</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">animations</span>: <span class="pl-kos">{</span> <span class="pl-c1">openDoorAnim</span>?: <span class="pl-smi">string</span> <span class="pl-kos">}</span><span class="pl-kos">;</span>
+<span class="pl-c1">boardingPoint</span>: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Vector3</span><span class="pl-kos">;</span>
+<span class="pl-c1">seatOffset</span>?: <span class="pl-c1">THREE</span><span class="pl-kos">.</span><span class="pl-smi">Vector3</span><span class="pl-kos">;</span>
+<span class="pl-c1">chassisRatio</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">suspensionRestLengthRatio</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-c1">followVehicleDirection</span>?: <span class="pl-smi">boolean</span><span class="pl-kos">;</span>
+<span class="pl-c1">speedMultiplier</span>?: <span class="pl-smi">number</span><span class="pl-kos">;</span>
+<span class="pl-kos">}</span><span class="pl-kos">;</span>
+
+字段说明
+
+PlayerControllerOptions
+
+字段
+类型
+必填
+默认值
+说明
+
+scene
+THREE.Scene
+是
+—
+three.js 场景实例。
+
+camera
+THREE.PerspectiveCamera
+是
+—
+three.js 相机实例。
+
+controls
+any
+是
+—
+外部相机控制器，实际通常传入 OrbitControls。
+
+playerModelConfig
+PlayerModelOptions
+是
+—
+角色模型与角色参数配置。
+
+initPos
+THREE.Vector3
+否
+(0, 0, 0)
+初始出生点。
+
+mouseSensitivity
+number
+否
+5
+鼠标灵敏度。
+
+minCamDistance
+number
+否
+100
+第三人称最小镜头距离。
+
+maxCamDistance
+number
+否
+440
+第三人称最大镜头距离。
+
+staticCollider
+THREE.Object3D | THREE.Object3D[]
+否
+—
+指定用于生成静态碰撞体的对象；不传则遍历整个场景。
+
+dynamicCollider
+THREE.Object3D | THREE.Object3D[]
+否
+—
+初始化时注册的动态碰撞体（如可移动平台）。
+
+isShowMobileControls
+boolean
+否
+true
+是否在移动端显示虚拟控制 UI。
+
+mobileControls
+MobileControlsOptions
+否
+全部显示
+移动端按钮显隐配置。
+
+thirdMouseMode
+0 | 1 | 2 | 3 | 4 | 5
+否
+1
+第三人称视角下的鼠标控制模式（0:隐藏鼠标，控制朝向及视角；1:隐藏鼠标，仅控制视角；2:显示鼠标，拖拽控制朝向及视角；3:显示鼠标，拖拽仅控制视角；4:显示鼠标，拖拽控制视角且人物朝向跟随相机水平方向；5:隐藏鼠标，控制视角且人物朝向跟随相机水平方向）
+
+enableZoom
+boolean
+否
+false
+是否允许滚轮缩放。
+
+enableOverShoulderView
+boolean
+否
+false
+是否启用过肩视角。
+
+isFirstPerson
+boolean
+否
+false
+初始化时是否直接进入第一人称。
+
+camLookAtHeightRatio
+number
+否
+0.8
+第三人称相机看向点高度比例（0=胶囊底部，1=顶部）。
+
+timeScale
+number
+否
+1
+时间缩放系数，乘以每帧 delta，可用于慢动作或快进效果。
+
+PlayerModelOptions
+
+字段
+类型
+必填
+默认值
+说明
+
+url
+string
+是
+—
+人物模型路径（GLB/GLTF）。
+
+scale
+number
+是
+—
+人物模型缩放。
+
+idleAnim
+string
+是
+—
+Idle 动画名，需与模型内动画名一致。
+
+walkAnim
+string
+是
+—
+Walk 动画名，需与模型内动画名一致。
+
+runAnim
+string
+是
+—
+Run 动画名，需与模型内动画名一致。
+
+jumpAnim
+string | [string, string, string]
+是
+—
+跳跃动画名。传字符串播放单一动画；传三元素数组 [起跳, 循环, 落地] 分三阶段播放，落地后自动衔接移动动画。
+
+leftWalkAnim
+string
+否
+walkAnim
+左移动画名，不填则复用 walkAnim。
+
+rightWalkAnim
+string
+否
+walkAnim
+右移动画名，不填则复用 walkAnim。
+
+backwardAnim
+string
+否
+walkAnim
+后退动画名，不填则复用 walkAnim。
+
+flyAnim
+string
+否
+idleAnim
+飞行动画名，不填则复用 idleAnim。
+
+flyIdleAnim
+string
+否
+idleAnim
+飞行待机动画名，不填则复用 idleAnim。
+
+flyHoverForwardAnim
+string
+否
+flyAnim
+飞行前进时的悬停动画名，不填则复用 flyAnim。
+
+flyHoverBackAnim
+string
+否
+flyIdleAnim
+飞行后退时的悬停动画名，不填则复用 flyIdleAnim。
+
+flyHoverLeftAnim
+string
+否
+flyIdleAnim
+飞行左移时的悬停动画名，不填则复用 flyIdleAnim。
+
+flyHoverRightAnim
+string
+否
+flyIdleAnim
+飞行右移时的悬停动画名，不填则复用 flyIdleAnim。
+
+flyHoverUpAnim
+string
+否
+flyIdleAnim
+飞行上升时的悬停动画名，不填则复用 flyIdleAnim。
+
+flyHoverDownAnim
+string
+否
+flyIdleAnim
+飞行下降时的悬停动画名，不填则复用 flyIdleAnim。
+
+enterCarAnim
+string
+否
+—
+上车动画名；使用车辆功能时建议配置。
+
+exitCarAnim
+string
+否
+—
+下车动画名；使用车辆功能时建议配置。
+
+gravity
+number
+否
+-2400
+重力基准值，会按角色 scale 缩放。
+
+jumpHeight
+number
+否
+600
+跳跃高度基准值，会按角色 scale 缩放。
+
+speed
+number
+否
+300
+角色移动速度基准值，会按角色 scale 缩放。
+
+flySpeed
+number
+否
+2100
+飞行速度基准值，会按角色 scale 缩放。
+
+rotateY
+number
+否
+0
+模型绕 Y 轴的额外旋转偏移。
+
+headBoneName
+string
+否
+—
+头部骨骼或节点名称，用于第一人称相机挂载。
+
+firstPersonCameraOffset
+[number, number, number]
+否
+有内置默认值
+第一人称相机局部偏移。若找到 headBoneName，偏移相对头骨骼；否则相对胶囊体。
+
+flyEnabled
+boolean
+否
+true
+是否允许飞行模式。
+
+capsuleRadiusRatio
+number
+否
+1
+胶囊体半径倍率，用于微调碰撞宽度。
+
+MobileControlsOptions
+
+字段
+类型
+必填
+默认值
+说明
+
+joystick
+boolean
+否
+true
+是否显示摇杆。
+
+jump
+boolean
+否
+true
+是否显示跳跃按钮。
+
+fly
+boolean
+否
+
+[… truncated 1444 chars …]

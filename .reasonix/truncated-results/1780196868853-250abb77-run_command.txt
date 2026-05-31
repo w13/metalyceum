@@ -1,0 +1,868 @@
+$ git diff -- src/durable_object.ts
+[exit 0]
+diff --git a/src/durable_object.ts b/src/durable_object.ts
+index efa4af0..0f5822a 100644
+--- a/src/durable_object.ts
++++ b/src/durable_object.ts
+@@ -13,10 +13,12 @@ import {
+ import {
+   type Bindings,
+   ROOM_COUNT,
++  ROOMS_CONFIG_VERSION,
+   type RoomEvent,
+   DEFAULT_ROOMS,
+   type Player,
+   type Session,
++  type SessionSource,
+   MAX_PLAYERS,
+   MAX_USERNAME_LEN,
+   MAX_CHAT_LEN,
+@@ -31,10 +33,23 @@ import {
+   MAX_WORLD_ASSETS,
+   MOVEMENT_BATCH_INTERVAL_MS
+ } from "./constants";
+-import { arePlayersRelevant, shouldDeliverChat } from "./realtime";
++import { arePlayersRelevant, normalizeChatScope, shouldDeliverChat } from "./realtime";
++
++// Ring buffer of recent server-side events (shared across this isolate)
++const MAX_SERVER_EVENTS = 100;
++const serverEventLog: Array<{ event: string; ts: number; fields: Record<string, unknown> }> = [];
++const STALE_SESSION_MS = 45_000;
++const SITE_HOSTS = new Set(["metalyceum.app", "www.metalyceum.app"]);
+ 
+ export function logEvent(event: string, fields: Record<string, unknown> = {}): void {
+-  console.log(JSON.stringify({ event, ts: Date.now(), ...fields }));
++  const entry = { event, ts: Date.now(), fields };
++  serverEventLog.push(entry);
++  if (serverEventLog.length > MAX_SERVER_EVENTS) serverEventLog.shift();
++  console.log(JSON.stringify(entry));
++}
++
++export function getRecentEvents(count = 30): typeof serverEventLog {
++  return serverEventLog.slice(-count);
+ }
+ 
+ type PersistedAssetRow = {
+@@ -48,6 +63,49 @@ type PersistedAssetRow = {
+   room_id: number;
+ };
+ 
++function trimHeaderValue(value: string | null, maxLength = 160): string {
++  const trimmed = (value || "").trim().replace(/\s+/g, " ");
++  if (trimmed.length <= maxLength) return trimmed;
++  return `${trimmed.slice(0, maxLength - 1)}…`;
++}
++
++function getHeaderHost(value: string | null): string | null {
++  const candidate = trimHeaderValue(value, 240);
++  if (!candidate) return null;
++  try {
++    return new URL(candidate).host || null;
++  } catch {
++    return null;
++  }
++}
++
++function classifySessionSource(originHost: string | null, refererHost: string | null, userAgent: string): SessionSource["clientType"] {
++  const normalizedUserAgent = userAgent.toLowerCase();
++  const hasSiteOrigin = Boolean(
++    (originHost && SITE_HOSTS.has(originHost)) ||
++    (refererHost && SITE_HOSTS.has(refererHost))
++  );
++  const isBrowser = /mozilla|chrome|safari|firefox|edg\//i.test(normalizedUserAgent);
++  const isScript = /curl|wget|python|aiohttp|node|undici|go-http-client|java|okhttp|postman|insomnia/i.test(normalizedUserAgent);
++
++  if (hasSiteOrigin && isBrowser) return "site-browser";
++  if (isBrowser) return "external-browser";
++  if (isScript) return "script";
++  return "unknown";
++}
++
++function getSessionSource(request: Request): SessionSource {
++  const userAgent = trimHeaderValue(request.headers.get("User-Agent"));
++  const originHost = getHeaderHost(request.headers.get("Origin"));
++  const refererHost = getHeaderHost(request.headers.get("Referer"));
++  return {
++    clientType: classifySessionSource(originHost, refererHost, userAgent),
++    originHost,
++    refererHost,
++    userAgent
++  };
++}
++
+ export class MetalyceumWorld extends DurableObject {
+   sessions: Map<WebSocket, Session> = new Map();
+   rooms: RoomEvent[] = [];
+@@ -55,115 +113,27 @@ export class MetalyceumWorld extends DurableObject {
+   private readonly dirtyPlayerIds = new Set<string>();
+   private flushTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+ 
++  private pruneStaleSessions(now = Date.now()): void {
++    for (const [ws, session] of this.sessions.entries()) {
++      if (now - session.lastSeenAt <= STALE_SESSION_MS) continue;
++      try {
++        ws.close(1001, "Session timed out");
++      } catch {
++        // Ignore close failures and still remove the session.
++      }
++      this.closeHandler(ws);
++      logEvent("player_timed_out", { id: session.id, username: session.username });
++    }
++  }
++
+   constructor(ctx: DurableObjectState, env: Bindings) {
+     super(ctx, env);
+ 
+     this.ctx.blockConcurrencyWhile(async () => {
+       try {
+-        this.ctx.storage.sql.exec(
+-          `CREATE TABLE IF NOT EXISTS room_events (
+-            room_id INTEGER PRIMARY KEY,
+-            name TEXT NOT NULL,
+-            source_value TEXT NOT NULL,
+-            start_time TEXT,
+-            duration_minutes INTEGER NOT NULL DEFAULT 0
+-          )`
+-        );
+-
+-        this.ctx.storage.sql.exec(
+-          `CREATE TABLE IF NOT EXISTS world_assets (
+-            id TEXT PRIMARY KEY,
+-            asset_type TEXT NOT NULL,
+-            x REAL NOT NULL,
+-            y REAL NOT NULL,
+-            z REAL NOT NULL,
+-            rotation_y REAL NOT NULL,
+-            scale REAL NOT NULL,
+-            room_id INTEGER NOT NULL
+-          )`
+-        );
+-
+-        const countCursor = this.ctx.storage.sql.exec("SELECT COUNT(*) as cnt FROM room_events");
+-        const count = Number((countCursor.one() as { cnt: number } | null)?.cnt ?? 0);
+-        if (count === 0) {
+-          const migratedSources = new Map<number, string>();
+-          if (this.tableExists("room_videos")) {
+-            const oldRows = this.ctx.storage.sql.exec(
+-              "SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC"
+-            ).toArray() as { room_id: number; video_id: string }[];
+-            for (const row of oldRows) {
+-              if (row.room_id >= 0 && row.room_id < ROOM_COUNT) {
+-                migratedSources.set(row.room_id, row.video_id);
+-              }
+-            }
+-          }
+-
+-          for (const defaults of DEFAULT_ROOMS) {
+-            this.persistRoom({
+-              ...defaults,
+-              sourceValue: migratedSources.get(defaults.roomId) ?? defaults.sourceValue
+-            });
+-          }
+-        }
+-
+-        const roomRows = this.ctx.storage.sql.exec(
+-          `SELECT room_id, name, source_value, start_time, duration_minutes
+-           FROM room_events
+-           ORDER BY room_id ASC`
+-        ).toArray() as {
+-          room_id: number;
+-          name: string;
+-          source_value: string;
+-          start_time: string | null;
+-          duration_minutes: number;
+-        }[];
+-
+-        const roomMap = new Map<number, RoomEvent>();
+-        for (const row of roomRows) {
+-          if (row.room_id < 0 || row.room_id >= ROOM_COUNT) continue;
+-          const defaults = DEFAULT_ROOMS[row.room_id];
+-          roomMap.set(row.room_id, {
+-            roomId: row.room_id,
+-            name: row.name,
+-            sourceType: deriveSourceType(row.source_value),
+-            sourceValue: row.source_value,
+-            startTime: row.start_time ?? defaults.startTime,
+-            durationMinutes: clampNum(
+-              Number(row.duration_minutes) || defaults.durationMinutes,
+-              1,
+-              24 * 60,
+-              defaults.durationMinutes
+-            ),
+-            updatedAt: defaults.updatedAt
+-          });
+-        }
+-
+-        this.rooms = DEFAULT_ROOMS.map((defaults) => roomMap.get(defaults.roomId) ?? defaults);
+-
+-        const assetRows = this.ctx.storage.sql.exec(
+-          `SELECT id, asset_type, x, y, z, rotation_y, scale, room_id
+-           FROM world_assets
+-           ORDER BY rowid ASC`
+-        ).toArray() as PersistedAssetRow[];
+-
+-        const parsedAssets = parseWorldAssets(
+-          assetRows.map((row) => ({
+-            id: row.id,
+-            type: row.asset_type,
+-            x: row.x,
+-            y: row.y,
+-            z: row.z,
+-            rotationY: row.rotation_y,
+-            scale: row.scale,
+-            roomId: row.room_id
+-          })),
+-          this.worldAssetValidation()
+-        );
+-
+-        this.worldAssets = parsedAssets ?? [];
+-        if (!parsedAssets && assetRows.length > 0) {
+-          logEvent("world_assets_load_repaired", { originalCount: assetRows.length });
+-        }
++        this.initTables();
++        await this.loadRooms();
++        await this.loadWorldAssets();
+       } catch (error) {
+         logEvent("storage_init_error", {
+           error: error instanceof Error ? error.message : String(error)
+@@ -174,7 +144,48 @@ export class MetalyceumWorld extends DurableObject {
+     });
+   }
+ 
+-  tableExists(tableName: string): boolean {
++  // --- Database initialization & loading ---
++
++  private initTables(): void {
++    this.ctx.storage.sql.exec(
++      `CREATE TABLE IF NOT EXISTS room_events (
++        room_id INTEGER PRIMARY KEY,
++        name TEXT NOT NULL,
++        source_value TEXT NOT NULL,
++        start_time TEXT,
++        duration_minutes INTEGER NOT NULL DEFAULT 0
++      )`
++    );
++    this.ctx.storage.sql.exec(
++      `CREATE TABLE IF NOT EXISTS world_assets (
++        id TEXT PRIMARY KEY,
++        asset_type TEXT NOT NULL,
++        x REAL NOT NULL,
++        y REAL NOT NULL,
++        z REAL NOT NULL,
++        rotation_y REAL NOT NULL,
++        scale REAL NOT NULL,
++        room_id INTEGER NOT NULL
++      )`
++    );
++    this.ctx.storage.sql.exec(
++      `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`
++    );
++  }
++
++  private getMeta(key: string): string | null {
++    const cursor = this.ctx.storage.sql.exec("SELECT value FROM meta WHERE key=?", key);
++    const row = cursor.one() as { value: string } | null;
++    return row?.value ?? null;
++  }
++
++  private setMeta(key: string, value: string): void {
++    this.ctx.storage.sql.exec(
++      "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", key, value
++    );
++  }
++
++  private tableExists(tableName: string): boolean {
+     const cursor = this.ctx.storage.sql.exec(
+       "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+       tableName
+@@ -182,6 +193,104 @@ export class MetalyceumWorld extends DurableObject {
+     return cursor.one() !== null;
+   }
+ 
++  private migrateLegacyRooms(): Map<number, string> {
++    const migratedSources = new Map<number, string>();
++    if (this.tableExists("room_videos")) {
++      const oldRows = this.ctx.storage.sql.exec(
++        "SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC"
++      ).toArray() as { room_id: number; video_id: string }[];
++      for (const row of oldRows) {
++        if (row.room_id >= 0 && row.room_id < ROOM_COUNT) {
++          migratedSources.set(row.room_id, row.video_id);
++        }
++      }
++    }
++    return migratedSources;
++  }
++
++  private seedDefaultRooms(migratedSources: Map<number, string>): void {
++    for (const defaults of DEFAULT_ROOMS) {
++      this.persistRoom({
++        ...defaults,
++        sourceValue: migratedSources.get(defaults.roomId) ?? defaults.sourceValue
++      });
++    }
++  }
++
++  private async loadRooms(): Promise<void> {
++    const storedVersion = Number(this.getMeta("rooms_version") || "0");
++    const needsReseed = storedVersion < ROOMS_CONFIG_VERSION;
++
++    const countCursor = this.ctx.storage.sql.exec("SELECT COUNT(*) as cnt FROM room_events");
++    const count = Number((countCursor.one() as { cnt: number } | null)?.cnt ?? 0);
++
++    if (count === 0 || needsReseed) {
++      if (needsReseed && count > 0) {
++        // Migration: wipe old room data and re-seed with new defaults
++        this.ctx.storage.sql.exec("DELETE FROM room_events");
++        logEvent("rooms_migrated", { fromVersion: storedVersion, toVersion: ROOMS_CONFIG_VERSION });
++      }
++      const migratedSources = this.migrateLegacyRooms();
++      this.seedDefaultRooms(migratedSources);
++      this.setMeta("rooms_version", String(ROOMS_CONFIG_VERSION));
++    }
++
++    const roomRows = this.ctx.storage.sql.exec(
++      `SELECT room_id, name, source_value, start_time, duration_minutes
++       FROM room_events ORDER BY room_id ASC`
++    ).toArray() as {
++      room_id: number;
++      name: string;
++      source_value: string;
++      start_time: string | null;
++      duration_minutes: number;
++    }[];
++
++    const roomMap = new Map<number, RoomEvent>();
++    for (const row of roomRows) {
++      if (row.room_id < 0 || row.room_id >= ROOM_COUNT) continue;
++      const defaults = DEFAULT_ROOMS[row.room_id];
++      roomMap.set(row.room_id, {
++        roomId: row.room_id,
++        name: row.name,
++        sourceType: deriveSourceType(row.source_value),
++        sourceValue: row.source_value,
++        startTime: row.start_time ?? defaults.startTime,
++        durationMinutes: clampNum(
++          Number(row.duration_minutes) || defaults.durationMinutes,
++          1, 24 * 60, defaults.durationMinutes
++        ),
++        updatedAt: defaults.updatedAt
++      });
++    }
++
++    this.rooms = DEFAULT_ROOMS.map((defaults) => roomMap.get(defaults.roomId) ?? defaults);
++  }
++
++  private async loadWorldAssets(): Promise<void> {
++    const assetRows = this.ctx.storage.sql.exec(
++      `SELECT id, asset_type, x, y, z, rotation_y, scale, room_id
++       FROM world_assets ORDER BY rowid ASC`
++    ).toArray() as PersistedAssetRow[];
++
++    const parsedAssets = parseWorldAssets(
++      assetRows.map((row) => ({
++        id: row.id,
++        type: row.asset_type,
++        x: row.x, y: row.y, z: row.z,
++        rotationY: row.rotation_y,
++        scale: row.scale,
++        roomId: row.room_id
++      })),
++      this.worldAssetValidation()
++    );
++
++    this.worldAssets = parsedAssets ?? [];
++    if (!parsedAssets && assetRows.length > 0) {
++      logEvent("world_assets_load_repaired", { originalCount: assetRows.length });
++    }
++  }
++
+   private worldAssetValidation() {
+     return {
+       worldLimit: WORLD_LIMIT,
+@@ -192,6 +301,8 @@ export class MetalyceumWorld extends DurableObject {
+     };
+   }
+ 
++  // --- Message dispatch ---
++
+   private send(ws: WebSocket, msg: object): void {
+     try {
+       ws.send(JSON.stringify(msg));
+@@ -208,19 +319,130 @@ export class MetalyceumWorld extends DurableObject {
+     }
+   }
+ 
++  // --- Admin proxy handlers (called from AdminDO via internal routes) ---
++
++  private async handleAdminBroadcast(request: Request): Promise<Response> {
++    try {
++      const body = await request.json() as Record<string, unknown>;
++      const message = body.message;
++      if (!message || typeof message !== "string") {
++        return new Response(JSON.stringify({ ok: false, error: "Missing message" }), {
++          status: 400, headers: { "Content-Type": "application/json" }
++        });
++      }
++      const author = body.author || "System";
++      this.broadcast({
++        type: "chat",
++        id: "admin",
++        username: author,
++        message: message.slice(0, 500),
++        color: "#f43f5e",
++        scope: "global",
++        timestamp: Date.now()
++      });
++      return new Response(JSON.stringify({ ok: true }), {
++        status: 200, headers: { "Content-Type": "application/json" }
++      });
++    } catch {
++      return new Response(JSON.stringify({ ok: false, error: "Invalid request" }), {
++        status: 400, headers: { "Content-Type": "application/json" }
++      });
++    }
++  }
++
++  private async handleAdminSyncRoom(request: Request): Promise<Response> {
++    try {
++      const body = await request.json() as Record<string, unknown>;
++      const roomId = typeof body.roomId === "number" ? body.roomId : -1;
++      if (roomId < 0 || roomId >= ROOM_COUNT) {
++        return new Response(JSON.stringify({ ok: false, error: "Invalid room ID" }), {
++          status: 400, headers: { "Content-Type": "application/json" }
++        });
++      }
++      const current = this.rooms[roomId] ?? DEFAULT_ROOMS[roomId];
++      const nextRoom: RoomEvent = {
++        roomId,
++        name: typeof body.name === "string" ? body.name.trim().slice(0, 48) : current.name,
++        sourceType: body.sourceType === "meet" ? "meet" : body.sourceType === "youtube" ? "youtube" : current.sourceType,
++        sourceValue: typeof body.sourceValue === "string" ? body.sourceValue : current.sourceValue,
++        startTime: typeof body.startTime === "string" ? body.startTime : current.startTime,
++        durationMinutes: typeof body.durationMinutes === "number" ? Math.max(0, Math.min(1440, body.durationMinutes)) : current.durationMinutes,
++        updatedAt: Date.now(),
++      };
++      this.rooms[roomId] = nextRoom;
++      this.persistRoom(nextRoom);
++      this.broadcast({ type: "rooms_state", rooms: this.rooms });
++      return new Response(JSON.stringify({ ok: true, room: nextRoom }), {
++        status: 200, headers: { "Content-Type": "application/json" }
++      });
++    } catch {
++      return new Response(JSON.stringify({ ok: false, error: "Invalid request" }), {
++        status: 400, headers: { "Content-Type": "application/json" }
++      });
++    }
++  }
++
++  private handleAdminWorldAssets(): Response {
++    const assets = this.worldAssets.map((a) => ({
++      id: a.id,
++      type: a.type,
++      x: Number(a.x.toFixed(1)),
++      z: Number(a.z.toFixed(1)),
++      room: a.roomId,
++    }));
++    return new Response(JSON.stringify({ ok: true, data: { count: assets.length, assets } }), {
++      status: 200, headers: { "Content-Type": "application/json" }
++    });
++  }
++
++  private handleAdminWorldState(): Response {
++    const players: any[] = [];
++    for (const session of this.sessions.values()) {
++      if (!session.player) continue;
++      players.push({
++        id: session.id,
++        username: session.username,
++        color: session.color,
++        x: session.player.x,
++        y: session.player.y,
++        z: session.player.z,
++        room: session.player.room,
++        isMoving: session.player.isMoving,
++        source: session.source
++      });
++    }
++    const worldState = {
++      ok: true,
++      data: {
++        connectedSessions: this.sessions.size,
++        activePlayers: players.length,
++        players,
++        rooms: this.rooms.map((r) => ({
++          id: r.roomId,
++          name: r.name,
++          sourceType: r.sourceType,
++          sourceValue: r.sourceValue ? r.sourceValue.slice(0, 30) + (r.sourceValue.length > 30 ? "..." : "") : null,
++          hasEvent: !!r.sourceValue,
++        })),
++        worldAssetCount: this.worldAssets.length,
++      }
++    };
++    return new Response(JSON.stringify(worldState), {
++      status: 200, headers: { "Content-Type": "application/json" }
++    });
++  }
++
+   persistRoom(room: RoomEvent): void {
+     const storedStartTime = parseStartTime(room.startTime);
+     this.ctx.storage.sql.exec(
+       `INSERT OR REPLACE INTO room_events (room_id, name, source_value, start_time, duration_minutes)
+        VALUES (?, ?, ?, ?, ?)`,
+-      room.roomId,
+-      room.name,
+-      room.sourceValue,
+-      storedStartTime,
+-      room.durationMinutes
++      room.roomId, room.name, room.sourceValue, storedStartTime, room.durationMinutes
+     );
+   }
+ 
++  // --- Player relevance & movement batching ---
++
+   private getRelevantPlayersFor(recipient: Player): Player[] {
+     const players: Player[] = [];
+     for (const session of this.sessions.values()) {
+@@ -251,8 +473,7 @@ export class MetalyceumWorld extends DurableObject {
+ 
+       const nextVisiblePlayerIds = new Set<string>();
+       const joiningPlayers: Player[] = [];
+-      const updatedPlayers: Array<Pick<Player, "id" | "x" | "y" | "z" | "ry" | "isMoving" | "room">> =
+-        [];
++      const updatedPlayers: Array<Pick<Player, "id" | "x" | "y" | "z" | "ry" | "isMoving" | "room">> = [];
+ 
+       for (const otherSession of this.sessions.values()) {
+         const other = otherSession.player;
+@@ -264,16 +485,10 @@ export class MetalyceumWorld extends DurableObject {
+           joiningPlayers.push({ ...other });
+           continue;
+         }
+-
+         if (this.dirtyPlayerIds.has(other.id)) {
+           updatedPlayers.push({
+-            id: other.id,
+-            x: other.x,
+-            y: other.y,
+-            z: other.z,
+-            ry: other.ry,
+-            isMoving: other.isMoving,
+-            room: other.room
++            id: other.id, x: other.x, y: other.y, z: other.z,
++            ry: other.ry, isMoving: other.isMoving, room: other.room
+           });
+         }
+       }
+@@ -283,23 +498,80 @@ export class MetalyceumWorld extends DurableObject {
+           this.send(ws, { type: "leave", id: playerId });
+         }
+       }
+-
+-      for (const player of joiningPlayers) {
+-        this.send(ws, { type: "join", player });
+-      }
+-
++      for (const player of joiningPlayers) this.send(ws, { type: "join", player });
+       if (updatedPlayers.length > 0) {
+         this.send(ws, { type: "state_batch", players: updatedPlayers });
+       }
+-
+       session.visiblePlayerIds = nextVisiblePlayerIds;
+     }
+-
+     this.dirtyPlayerIds.clear();
+   }
+ 
+-  fetch(request: Request): Response {
++  // --- WebSocket handler ---
++
++  async fetch(request: Request): Promise<Response> {
+     const url = new URL(request.url);
++    this.pruneStaleSessions();
++
++      // --- Internal admin proxy endpoints (called from AdminDO) ---
++    if (url.pathname === "/internal/admin/broadcast" && request.method === "POST") {
++      return this.handleAdminBroadcast(request);
++    }
++    if (url.pathname === "/internal/admin/world-state" && request.method === "GET") {
++      return this.handleAdminWorldState();
++    }
++    if (url.pathname === "/internal/admin/sync-room" && request.method === "POST") {
++      return this.handleAdminSyncRoom(request);
++    }
++    if (url.pathname === "/internal/admin/world-assets" && request.method === "GET") {
++      return this.handleAdminWorldAssets();
++    }
++
++    // --- Debug / health-check endpoint ---
++    if (url.pathname === "/debug") {
++      const players = Array.from(this.sessions.values()).map((s) => ({
++        id: s.id,
++        username: s.username,
++        color: s.color,
++        hasPlayer: !!s.player,
++        position: s.player ? { x: s.player.x, y: s.player.y, z: s.player.z, room: s.player.room } : null,
++        bucket: s.bucket ? { tokens: s.bucket.tokens, last: s.bucket.last } : null,
++        visibleCount: s.visiblePlayerIds.size,
++        source: s.source
++      }));
++
++      const rooms = this.rooms.map((r) => ({
++        id: r.roomId,
++        name: r.name,
++        sourceType: r.sourceType,
++        sourceValue: r.sourceValue?.substring(0, 20) + (r.sourceValue?.length > 20 ? "..." : ""),
++        startTime: r.startTime,
++        durationMinutes: r.durationMinutes
++      }));
++
++      const recentEvents = getRecentEvents(20);
++      const body = JSON.stringify({
++        ok: true,
++        version: 1,
++        ts: Date.now(),
++        diagnostics: {
++          sessionCount: this.sessions.size,
++          playerCount: players.filter((p) => p.hasPlayer).length,
++          worldAssetCount: this.worldAssets.length,
++          flushTimerPending: this.flushTimer !== null,
++          dirtyPlayerCount: this.dirtyPlayerIds.size
++        },
++        rooms,
++        players,
++        recentEvents
++      }, null, 2);
++
++      return new Response(body, {
++        status: 200,
++        headers: { "Content-Type": "application/json" }
++      });
++    }
++
+     const isWebSocket = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
+     if (url.pathname === "/ws" && isWebSocket) {
+       if (this.sessions.size >= MAX_PLAYERS) {
+@@ -314,18 +586,26 @@ export class MetalyceumWorld extends DurableObject {
+       const id = crypto.randomUUID();
+       const username = sanitizeText(url.searchParams.get("username"), MAX_USERNAME_LEN) || "Guest";
+       const color = sanitizeColor(url.searchParams.get("color"));
++      const source = getSessionSource(request);
+       const session: Session = {
+-        id,
+-        username,
+-        color,
++        id, username, color,
+         player: null,
+         bucket: { tokens: BUCKET_CAPACITY, last: Date.now() },
+         lastChatAt: 0,
+-        visiblePlayerIds: new Set()
++        lastSeenAt: Date.now(),
++        visiblePlayerIds: new Set(),
++        source
+       };
+       this.sessions.set(server, session);
+ 
+-      logEvent("player_connected", { id, username });
++      logEvent("player_connected", {
++        id,
++        username,
++        clientType: source.clientType,
++        originHost: source.originHost,
++        refererHost: source.refererHost,
++        userAgent: source.userAgent
++      });
+       server.addEventListener("message", (event: Event) => {
+         const messageEvent = event as MessageEvent;
+         this.handleMessage(server, messageEvent.data);
+@@ -338,52 +618,38 @@ export class MetalyceumWorld extends DurableObject {
+     return new Response("Not found", { status: 404 });
+   }
+ 
+-  handleMessage(ws: WebSocket, raw: unknown): void {
+-    const session = this.sessions.get(ws);
+-    if (!session) return;
++  // --- Message dispatch table ---
+ 
+-    let msg: Record<string, unknown>;
+-    try {
+-      msg = JSON.parse(String(raw)) as Record<string, unknown>;
+-    } catch {
+-      return;
+-    }
++  private readonly messageHandlers: Record<
++    string,
++    (ws: WebSocket, msg: Record<string, unknown>, session: Session) => void
++  > = {
++    heartbeat: (ws) => { this.send(ws, { type: "heartbeat_ack" }); },
+ 
+-    if (msg.type === "heartbeat") return;
+-
+-    if (msg.type === "world_assets") {
++    world_assets: (ws, msg) => {
+       try {
+         const parsed = parseWorldAssets(msg.assets, this.worldAssetValidation());
+         if (!parsed) {
+           this.send(ws, { type: "error", message: "Invalid world assets." });
+           return;
+         }
+-
+         this.worldAssets = parsed;
+         this.ctx.storage.sql.exec("DELETE FROM world_assets");
+         for (const asset of parsed) {
+           this.ctx.storage.sql.exec(
+             `INSERT INTO world_assets (id, asset_type, x, y, z, rotation_y, scale, room_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+-            asset.id,
+-            asset.type,
+-            asset.x,
+-            asset.y,
+-            asset.z,
+-            asset.rotationY,
+-            asset.scale,
+-            asset.roomId
++            asset.id, asset.type, asset.x, asset.y, asset.z,
++            asset.rotationY, asset.scale, asset.roomId
+           );
+         }
+-
+         this.broadcast({ type: "world_assets", assets: this.worldAssets });
+       } catch {
+         this.send(ws, { type: "error", message: "Invalid world assets." });
+       }
+-      return;
+-    }
++    },
+ 
+-    if (msg.type === "set_room_event") {
++    set_room_event: (ws, msg) => {
+       const roomId = clampNum(Number(msg.roomId), 0, ROOM_COUNT - 1, 0);
+       const currentRoom = this.rooms[roomId] ?? DEFAULT_ROOMS[roomId];
+       const rawVideoInput = String(msg.videoId ?? "").trim();
+@@ -401,10 +667,9 @@ export class MetalyceumWorld extends DurableObject {
+       this.rooms[roomId] = nextRoom;
+       this.persistRoom(nextRoom);
+       this.broadcast({ type: "rooms_state", rooms: this.rooms });
+-      return;
+-    }
++    },
+ 
+-    if (msg.type === "join") {
++    join: (ws, msg, session) => {
+       const x = clampNum(Number(msg.x), -WORLD_LIMIT, WORLD_LIMIT, 0);
+       const y = clampNum(Number(msg.y), Y_MIN, Y_MAX, 0);
+       const z = clampNum(Number(msg.z), -WORLD_LIMIT, WORLD_LIMIT, 0);
+@@ -412,9 +677,7 @@ export class MetalyceumWorld extends DurableObject {
+         id: session.id,
+         username: session.username,
+         color: session.color,
+-        x,
+-        y,
+-        z,
++        x, y, z,
+         ry: Number(msg.ry) || 0,
+         isMoving: false,
+         room: -1
+@@ -422,7 +685,7 @@ export class MetalyceumWorld extends DurableObject {
+ 
+       session.player = player;
+       const visiblePlayers = this.getRelevantPlayersFor(player);
+-      session.visiblePlayerIds = new Set(visiblePlayers.map((visiblePlayer) => visiblePlayer.id));
++      session.visiblePlayerIds = new Set(visiblePlayers.map((p) => p.id));
+       this.send(ws, {
+         type: "init",
+         id: session.id,
+@@ -436,12 +699,11 @@ export class MetalyceumWorld extends DurableObject {
+         (otherSession) =>
+           Boolean(otherSession.player && arePlayersRelevant(otherSession.player, player))
+       );
+-
+       logEvent("player_joined", { id: session.id, username: session.username });
+-      return;
+-    }
++    },
+ 
+-    if (msg.type === "move" && session.player) {
++    move: (ws, msg, session) => {
++      if (!session.player) return;
+       const now = Date.now();
+       const bucket = session.bucket;
+       bucket.tokens = Math.min(
+@@ -460,8 +722,7 @@ export class MetalyceumWorld extends DurableObject {
+       const dx = x - session.player.x;
+       const dy = y - session.player.y;
+       const dz = z - session.player.z;
+-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+-      if (dist > MAX_MOVE_STEP) return;
++      if (Math.sqrt(dx * dx + dy * dy + dz * dz) > MAX_MOVE_STEP) return;
+ 
+       session.player.x = x;
+       session.player.y = y;
+@@ -470,18 +731,19 @@ export class MetalyceumWorld extends DurableObject {
+       session.player.isMoving = isMoving;
+       this.markPlayerDirty(session.id);
+       this.scheduleMovementFlush();
+-      return;
+-    }
++    },
+ 
+-    if (msg.type === "room_change" && session.player) {
++    room_change: (ws, msg, session) => {
++      if (!session.player) return;
+       const room = clampNum(Number(msg.room), -1, ROOM_COUNT - 1, session.player.room);
+       session.player.room = room;
+       this.markPlayerDirty(session.id);
+       this.flushMovementBatch();
+-      return;
+-    }
++    },
+ 
+-    if (msg.type === "chat" && session.player) {
++    chat: (ws, msg, session) => {
++      if (!session.player) return;
++      const scope = normalizeChatScope(msg.scope, session.player);
+       const now = Date.now();
+       if (now - session.lastChatAt < CHAT_MIN_INTERVAL) return;
+       session.lastChatAt = now;
+@@ -489,12 +751,39 @@ export class MetalyceumWorld extends DurableObject {
+       if (!message) return;
+ 
+       this.broadcast(
+-        { type: "chat", id: session.id, username: session.username, color: session.color, message },
++        {
++          type: "chat",
++          id: session.id,
++          username: session.username,
++          color: session.color,
++          message,
++          scope,
++          roomId: scope === "room" ? session.player.room : null
++        },
+         session.id,
+         (otherSession) =>
+-          Boolean(otherSession.player && shouldDeliverChat(session.player!, otherSession.player))
++          Boolean(otherSession.player && shouldDeliverChat(session.player!, otherSession.player, scope))
+       );
+     }
++  };
++
++  handleMessage(ws: WebSocket, raw: unknown): void {
++    this.pruneStaleSessions();
++    const session = this.sessions.get(ws);
++    if (!session) return;
++    session.lastSeenAt = Date.now();
++
++    let msg: Record<string, unknown>;
++    try {
++      msg = JSON.parse(String(raw)) as Record<string, unknown>;
++    } catch {
++      return;
++    }
++
++    const handler = this.messageHandlers[msg.type as string];
++    if (handler) {
++      handler.call(this, ws, msg, session);
++    }
+   }
+ 
+   closeHandler(ws: WebSocket): void {

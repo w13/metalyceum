@@ -2,21 +2,41 @@
 import { state } from './state.js';
 import { applyRoomData } from './utils.js';
 import {
-  renderEventBoard,
-  refreshRoomPlayersList,
-  addChatLog,
-  displayChatBubble,
+  scheduleEventBoardRender,
+  scheduleRoomPlayersListRefresh,
+  syncActiveRoomMediaState,
   updateRoomPanelDetails,
   setupRoomVideo,
   scheduleRoomVisualRefresh
-} from './ui.js';
+} from './room-panel.js';
+import {
+  addChatLog,
+  displayChatBubble,
+  syncChatScopeWithLocation
+} from './chat.js';
 import { createPlayerAvatar } from './scenery.js';
 import { applyPublishedWorldAssets, setEditorEnabled, updateEditorStatus } from './editor.js';
+import { closeModal } from './modals.js';
 import { resumeAudioContext } from './audio.js';
 
 let reconnectAttempts = 0;
 let reconnectTimer = null;
+let heartbeatTimer = null;
+let _reconnectOnVisible = false;
+let _tabReturnPending = false; // reconnect was triggered by returning to tab
 const MAX_RECONNECT_DELAY = 30000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+let reconnectFailureShown = false;
+
+function setReconnectOverlay(visible, label = 'Reconnecting…') {
+  const el = document.getElementById('reconnect-overlay');
+  if (el) el.style.display = visible ? 'flex' : 'none';
+  const labelEl = el?.querySelector('.reconnect-label');
+  if (labelEl) labelEl.textContent = label;
+}
+
+const HEARTBEAT_INTERVAL_MS = 15000;
+const MISSED_HEARTBEAT_LIMIT = 2; // trigger reconnect after ~30s without ack
 
 // Network performance profiles: how often the local player's position is sent.
 // Remote players are always interpolated, so lower rates stay smooth while
@@ -58,6 +78,135 @@ const ACTIVE_NETWORK_PROFILE = NETWORK_PROFILES[NETWORK_PROFILE] || NETWORK_PROF
 const SEND_INTERVAL_MS = 1000 / ACTIVE_NETWORK_PROFILE.sendHz;
 let lastSentTime = 0;
 
+function setConnectionStatus(connected) {
+  document.getElementById('connection-status').classList.toggle('connected', connected);
+}
+
+function sendSocketMessage(socket, payload) {
+  socket.send(JSON.stringify(payload));
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer !== null) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function startHeartbeat(socket) {
+  stopHeartbeat();
+  state.lastHeartbeatAck = Date.now();
+  const tick = () => {
+    if (socket !== state.socket || socket.readyState !== WebSocket.OPEN) {
+      stopHeartbeat();
+      return;
+    }
+    sendSocketMessage(socket, { type: 'heartbeat' });
+    // If no ack within missed-heartbeat window, assume connection is dead
+    if (Date.now() - state.lastHeartbeatAck > HEARTBEAT_INTERVAL_MS * MISSED_HEARTBEAT_LIMIT) {
+      socket.close(3001, 'Heartbeat timeout');
+      return;
+    }
+  };
+  tick();
+  heartbeatTimer = setInterval(tick, HEARTBEAT_INTERVAL_MS);
+}
+
+function refreshRoomsUi(activeRoomId = state.localPlayer.currentRoom) {
+  scheduleEventBoardRender();
+  scheduleRoomVisualRefresh();
+  if (activeRoomId !== -1) {
+    updateRoomPanelDetails();
+    syncActiveRoomMediaState({ roomId: activeRoomId });
+  }
+}
+
+function applyRoomCollection(rooms) {
+  if (!Array.isArray(rooms)) return;
+  rooms.forEach((roomData, index) => {
+    applyRoomData(roomData.roomId ?? index, roomData);
+  });
+}
+
+function applySingleRoomUpdate(roomId, roomData) {
+  applyRoomData(roomId, roomData);
+  refreshRoomsUi(state.localPlayer.currentRoom === roomId ? roomId : -1);
+}
+
+function renderChatHistory(history) {
+  if (!Array.isArray(history)) return;
+  history.forEach((entry) => {
+    addChatLog(
+      entry.username,
+      entry.message,
+      '',
+      entry.scope === 'room' ? 'room' : 'global',
+      Number.isInteger(entry.roomId) ? entry.roomId : null,
+      entry.messageId
+    );
+  });
+}
+
+function getSystemMessage(data) {
+  if (typeof data.message === 'string') return data.message;
+  if (typeof data.reason === 'string') return data.reason;
+  return '';
+}
+
+function showSystemMessage(message) {
+  if (!message) return;
+  addChatLog('System', message, 'system-msg');
+  if (state.editor.enabled) updateEditorStatus(message);
+}
+
+function reconcileRemotePlayers(players) {
+  const liveIds = new Set(
+    (Array.isArray(players) ? players : [])
+      .map((player) => player?.id)
+      .filter(Boolean)
+  );
+
+  for (const id of Array.from(state.remotePlayers.keys())) {
+    if (!liveIds.has(id)) {
+      state.disconnectedPlayerIds.delete(id);
+      removeRemotePlayer(id);
+    }
+  }
+
+  (Array.isArray(players) ? players : []).forEach((player) => {
+    const existing = state.remotePlayers.get(player.id);
+    if (existing) {
+      // Update existing — smoother than destroy+rebuild
+      existing.targetX = player.x;
+      existing.targetY = player.y;
+      existing.targetZ = player.z;
+      existing.targetRy = player.ry || 0;
+      existing.isMoving = Boolean(player.isMoving);
+      if (typeof player.room === 'number') existing.room = player.room;
+    } else {
+      spawnRemotePlayer(player);
+    }
+  });
+}
+
+function handleInitMessage(data) {
+  state.localPlayer.id = data.id || data.playerId;
+  syncChatScopeWithLocation();
+
+  if (Array.isArray(data.rooms)) {
+    applyRoomCollection(data.rooms);
+  } else if (data.videos) {
+    for (let i = 0; i < 8; i += 1) {
+      applyRoomData(i, { sourceValue: data.videos[i] || '' });
+    }
+  }
+
+  renderChatHistory(data.chatHistory);
+  refreshRoomsUi();
+  applyPublishedWorldAssets(data.worldAssets || []);
+  reconcileRemotePlayers(data.players || []);
+}
+
 function applyRemoteState(snapshot) {
   if (!snapshot || snapshot.id === state.localPlayer.id) return;
   const remotePlayer = state.remotePlayers.get(snapshot.id);
@@ -86,6 +235,7 @@ export function connectMultiplayer() {
       }
     } catch (e) {}
   }
+  stopHeartbeat();
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl =
@@ -97,23 +247,45 @@ export function connectMultiplayer() {
   ws.addEventListener('open', () => {
     if (ws !== state.socket) return;
     reconnectAttempts = 0;
-    document.getElementById('connection-status').classList.add('connected');
+    reconnectFailureShown = false;
+    setConnectionStatus(true);
+    startHeartbeat(ws);
 
-    clearRemotePlayers();
+    // Clear disconnected state — existing remote players are still visible
+    state.disconnectedPlayerIds.clear();
+    if (_tabReturnPending) {
+      _tabReturnPending = false;
+      setReconnectOverlay(false);
+    } else {
+      addChatLog('System', '✅ Reconnected.', 'system-msg');
+    }
 
-    ws.send(JSON.stringify({
+    sendSocketMessage(ws, {
       type: "join",
       x: state.localPlayer.x,
       y: state.localPlayer.y,
       z: state.localPlayer.z,
-      ry: state.localPlayer.ry
-    }));
+      ry: state.localPlayer.ry,
+      room: state.localPlayer.currentRoom
+    });
+
+    syncChatScopeWithLocation();
   });
 
-  ws.addEventListener('close', () => {
+  ws.addEventListener('close', (event) => {
     if (ws !== state.socket) return;
-    document.getElementById('connection-status').classList.remove('connected');
+    stopHeartbeat();
+    // Don't clear remote players — keep them visible but mark as disconnected
+    for (const id of state.remotePlayers.keys()) {
+      state.disconnectedPlayerIds.add(id);
+    }
+    setConnectionStatus(false);
     scheduleReconnect();
+  });
+
+  ws.addEventListener('error', () => {
+    if (ws !== state.socket) return;
+    console.error('Realtime connection error.');
   });
 
   ws.addEventListener('message', (event) => {
@@ -123,32 +295,18 @@ export function connectMultiplayer() {
 
       switch (data.type) {
         case "init":
-        state.localPlayer.id = data.id || data.playerId;
-          
-          if (Array.isArray(data.rooms)) {
-            data.rooms.forEach((roomData, index) => {
-              const roomId = Number.isInteger(roomData.roomId) ? roomData.roomId : index;
-              applyRoomData(roomId, roomData);
-            });
-          } else if (data.videos) {
-            for (let i = 0; i < 8; i++) {
-              applyRoomData(i, { sourceValue: data.videos[i] || "" });
-            }
-          }
-          renderEventBoard();
-          scheduleRoomVisualRefresh();
-          applyPublishedWorldAssets(data.worldAssets || []);
-
-          (data.players || []).forEach((p) => {
-            spawnRemotePlayer(p);
-          });
+          handleInitMessage(data);
           break;
 
         case "join":
           if (data.player.id === state.localPlayer.id) return;
-          spawnRemotePlayer(data.player);
-          addChatLog("System", `${data.player.username} entered Metalyceum!`, "system-msg");
-          if (state.localPlayer.currentRoom !== -1) refreshRoomPlayersList();
+          // On reconnect, server sends join for all players — reconcile instead of respawn
+          state.disconnectedPlayerIds.delete(data.player.id);
+          if (!state.remotePlayers.has(data.player.id)) {
+            spawnRemotePlayer(data.player);
+            addChatLog("System", `${data.player.username} entered Metalyceum!`, "system-msg");
+          }
+          if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
           break;
 
         case "move":
@@ -166,24 +324,30 @@ export function connectMultiplayer() {
           const rPlayer = state.remotePlayers.get(data.id);
           if (rPlayer) {
             rPlayer.room = data.room;
-            if (state.localPlayer.currentRoom !== -1) refreshRoomPlayersList();
+            if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
           }
           break;
 
         case "chat":
           displayChatBubble(data.id, data.message);
-          addChatLog(data.username, data.message);
+          addChatLog(
+            data.username,
+            data.message,
+            '',
+            data.scope === 'room' ? 'room' : 'global',
+            Number.isInteger(data.roomId) ? data.roomId : null,
+            data.messageId
+          );
           break;
 
         case "editor_auth": {
           state.editor.authed = Boolean(data.ok);
-          const authPanel = document.getElementById('editor-auth-panel');
           const authStatus = document.getElementById('editor-auth-status');
           if (authStatus) {
             authStatus.textContent = state.editor.authed ? 'Editor unlocked.' : 'Invalid editor token.';
           }
           if (state.editor.authed) {
-            if (authPanel) authPanel.classList.remove('active');
+            closeModal('editor-auth-modal', { restoreFocus: false });
             setEditorEnabled(true);
           }
           break;
@@ -198,42 +362,34 @@ export function connectMultiplayer() {
           break;
 
         case "error":
-          if (typeof data.message === 'string') {
-            addChatLog('System', data.message, 'system-msg');
-            if (state.editor.enabled) updateEditorStatus(data.message);
-          } else if (typeof data.reason === 'string') {
-            addChatLog('System', data.reason, 'system-msg');
-            if (state.editor.enabled) updateEditorStatus(data.reason);
-          }
+          showSystemMessage(getSystemMessage(data));
+          break;
+
+        case "rooms_state":
+          applyRoomCollection(data.rooms);
+          refreshRoomsUi();
           break;
 
         case "room_update": {
           const rIdx = Number.isInteger(data.room?.roomId) ? data.room.roomId : data.roomId;
-          applyRoomData(rIdx, data.room || data);
-          renderEventBoard();
-          scheduleRoomVisualRefresh();
-          if (state.localPlayer.currentRoom === rIdx) {
-            updateRoomPanelDetails();
-            setupRoomVideo(rIdx);
-          }
+          applySingleRoomUpdate(rIdx, data.room || data);
           break;
         }
 
         case "video_change": {
           const rIdx = data.room;
-          applyRoomData(rIdx, { sourceValue: data.videoId });
-          renderEventBoard();
-          scheduleRoomVisualRefresh();
-          if (state.localPlayer.currentRoom === rIdx) {
-            updateRoomPanelDetails();
-            setupRoomVideo(rIdx);
-          }
+          applySingleRoomUpdate(rIdx, { sourceValue: data.videoId });
           break;
         }
 
+        case "heartbeat_ack":
+          state.lastHeartbeatAck = Date.now();
+          break;
+
         case "leave":
+          state.disconnectedPlayerIds.delete(data.id);
           removeRemotePlayer(data.id);
-          if (state.localPlayer.currentRoom !== -1) refreshRoomPlayersList();
+          if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
           break;
       }
     } catch (err) {
@@ -242,23 +398,53 @@ export function connectMultiplayer() {
   });
 }
 
-export function clearRemotePlayers() {
-  for (const id of Array.from(state.remotePlayers.keys())) {
-    removeRemotePlayer(id);
-  }
-}
+// clearRemotePlayers removed — preserved players on disconnect; use removeRemotePlayer directly if needed
 
 export function scheduleReconnect() {
   if (reconnectTimer !== null) return;
+
+  // If tab is hidden, defer reconnect until the user comes back
+  if (document.hidden) {
+    _reconnectOnVisible = true;
+    return;
+  }
+
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    setReconnectOverlay(true, 'Unable to reconnect. Refresh the page and add ?diag if this keeps happening.');
+    if (!reconnectFailureShown) {
+      reconnectFailureShown = true;
+      showSystemMessage('Unable to reconnect to the realtime server. Refresh the page and add ?diag if this keeps happening.');
+    }
+    return;
+  }
+
   reconnectAttempts++;
+
+  // Tab-return reconnects use the overlay; only log for genuine in-tab disconnects
+  if (!_tabReturnPending && reconnectAttempts === 1) {
+    addChatLog("System", "❌ Connection lost. Reconnecting…", "system-msg");
+  }
+
   const base = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts - 1));
   const delay = Math.round(base / 2 + Math.random() * (base / 2));
-  addChatLog("System", `Disconnected from server. Reconnecting in ${Math.round(delay / 1000)}s...`, "system-msg");
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connectMultiplayer();
   }, delay);
 }
+
+// Listen for tab visibility changes to trigger deferred reconnects
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && _reconnectOnVisible) {
+    _reconnectOnVisible = false;
+    if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+      _tabReturnPending = true;
+      setReconnectOverlay(true);
+      scheduleReconnect();
+    }
+    // If socket is still alive, nothing to do — no overlay needed
+  }
+});
 
 export function spawnRemotePlayer(pData) {
   if (state.remotePlayers.has(pData.id)) {
@@ -279,6 +465,7 @@ export function spawnRemotePlayer(pData) {
     ry: pData.ry,
     targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRy: pData.ry,
     isMoving: pData.isMoving,
+    isGrounded: true,
     group: avatar.group,
     mesh: avatar.group,
     leftLeg: avatar.leftLeg,
@@ -337,14 +524,14 @@ export function syncPosition() {
   if (!dMoving && (now - lastSentTime) < SEND_INTERVAL_MS) return;
   lastSentTime = now;
 
-  state.socket.send(JSON.stringify({
+  sendSocketMessage(state.socket, {
     type: "move",
     x: parseFloat(state.localPlayer.x.toFixed(2)),
     y: parseFloat(state.localPlayer.y.toFixed(2)),
     z: parseFloat(state.localPlayer.z.toFixed(2)),
     ry: parseFloat(state.localPlayer.ry.toFixed(3)),
     isMoving: state.localPlayer.isMoving
-  }));
+  });
 
   state.lastSentPosition = {
     x: state.localPlayer.x,

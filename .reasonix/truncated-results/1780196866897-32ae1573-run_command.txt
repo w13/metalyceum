@@ -1,0 +1,877 @@
+$ git diff -- public/js/multiplayer.js public/js/engine.js public/js/state.js src/durable_object.ts
+[exit 0]
+diff --git a/public/js/engine.js b/public/js/engine.js
+index 2b50960..dc911c1 100644
+--- a/public/js/engine.js
++++ b/public/js/engine.js
+@@ -1,43 +1,50 @@
+ // Game Engine, Camera, Rendering Loop, and Physics Update Scheduler for Metalyceum
+ import { state } from './state.js';
+ import {
+-  ROOM_HEIGHT,
+-  MAP_SIZE,
++  CAMERA_AUTO_ALIGN_DECAY,
++  CAMERA_AUTO_ALIGN_DELAY_MS,
++  CAMERA_AUTO_ALIGN_START_DELAY_MS,
++  CAMERA_DEFAULT_DISTANCE,
++  CAMERA_DEFAULT_POLAR_ANGLE,
++  CAMERA_EXIT_WATCH_DISTANCE,
++  CAMERA_EXIT_WATCH_DURATION_MS,
++  CAMERA_EXIT_WATCH_POLAR_ANGLE,
++  CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
++  CAMERA_EXIT_WATCH_YAW,
+   CAMERA_FOLLOW_LERP,
++  CAMERA_HEADING_DECAY,
++  CAMERA_TARGET_DECAY,
++  CAMERA_TARGET_LOOK_AHEAD,
++  CAMERA_TARGET_LOOK_HEIGHT,
+   REMOTE_PLAYER_SMOOTHING,
+-  WORLD_CONFIG,
+-  ROOM_LAYOUTS
++  WORLD_CONFIG
+ } from './config.js';
+ import { getTerrainHeight, checkCollision, isLocalPlayerUnderRoof } from './physics.js';
+ import {
+-  initSceneryAssets,
+-  createBoulder,
+-  createPlayerAvatar,
+   spawnNpcs,
+   updateNpcs,
+-  createRoomIndicator,
+-  buildExteriorPlaza,
+-  buildRoomInteriorSet,
+-  registerStaticScenery,
+-  refreshStaticSceneryVisibility,
+-  createGrassTexture,
+-  createBrickTexture,
+-  createStoneTexture,
+-  createWoodTexture,
+-  createSignBoardTexture
++  refreshStaticSceneryVisibility
+ } from './scenery.js';
++
+ import { syncPosition } from './multiplayer.js';
+ import {
+   initDebugPanel,
+   initSoundtrackUi,
+-  updateDebugPanel,
+-  setupRoomVideo,
+-  updateClassroomBoard,
++  updateDebugPanel
++} from './ui.js';
++import {
++  closeRoomEventModal,
+   refreshRoomPlayersList,
++  scheduleActiveRoomMediaState,
++  syncActiveRoomMediaState,
+   updateRoomPanelDetails,
+   updateRoomIndicatorAnimations
+-} from './ui.js';
++} from './room-panel.js';
++import { updateClassroomBoard } from './theater.js';
++import { syncChatScopeWithLocation } from './chat.js';
+ import { transformControlsMode } from './editor.js';
++import { buildMap, syncSelectedAssetFromObject } from './building.js';
++import { renderMinimap } from './minimap.js';
+ 
+ // Reusable scratch variables to cut allocations down to 0 per frame
+ const _oldPos = new THREE.Vector3();
+@@ -47,6 +54,7 @@ const _camRight = new THREE.Vector3();
+ const _targetDir = new THREE.Vector3();
+ const _delta = new THREE.Vector3();
+ const _desiredCameraPos = new THREE.Vector3();
++const _desiredCameraTarget = new THREE.Vector3();
+ const _orbitOffset = new THREE.Vector3();
+ const _orbitSpherical = new THREE.Spherical();
+ 
+@@ -55,7 +63,85 @@ export function frameIndependentLerp(current, target, dt, decay = 0.001) {
+   return THREE.MathUtils.lerp(current, target, factor);
+ }
+ 
++function normalizeAngle(angle) {
++  while (angle <= -Math.PI) angle += Math.PI * 2;
++  while (angle > Math.PI) angle -= Math.PI * 2;
++  return angle;
++}
++
++function frameIndependentAngleLerp(current, target, dt, decay = 0.001) {
++  const factor = 1 - Math.pow(decay, dt);
++  return current + normalizeAngle(target - current) * factor;
++}
++
++function getCameraYaw() {
++  _orbitOffset.copy(state.camera.position).sub(state.controls.target);
++  _orbitOffset.y = 0;
++  if (_orbitOffset.lengthSq() < 0.0001) {
++    return state.cameraRig.followYaw;
++  }
++  return Math.atan2(_orbitOffset.x, _orbitOffset.z);
++}
++
++function shouldAutoAlignCamera(now = performance.now()) {
++  return state.localPlayer.isMoving &&
++    !state.cameraRig.manualControlActive &&
++    now - state.cameraRig.lastManualInputAt >= CAMERA_AUTO_ALIGN_DELAY_MS &&
++    now - state.cameraRig.movementStartedAt >= CAMERA_AUTO_ALIGN_START_DELAY_MS;
++}
++
++function isExitCameraWatchActive(now = performance.now()) {
++  return state.cameraRig.exitWatchUntil > now;
++}
++
++function startExitCameraWatch(now = performance.now()) {
++  state.cameraRig.exitWatchUntil = now + CAMERA_EXIT_WATCH_DURATION_MS;
++  state.cameraRig.manualControlActive = false;
++  state.cameraRig.lastManualInputAt = 0;
++}
++
++export function noteManualCameraInput() {
++  if (!state.camera || !state.controls) return;
++  state.cameraRig.lastManualInputAt = performance.now();
++  state.cameraRig.followYaw = getCameraYaw();
++  state.cameraRig.desiredYaw = state.cameraRig.followYaw;
++}
++
++export function resetCameraFollow() {
++  if (!state.camera || !state.controls) return;
++
++  const playerY = state.localPlayer.mesh
++    ? state.localPlayer.mesh.position.y
++    : state.localPlayer.y;
++  const target = _desiredCameraTarget.set(
++    state.localPlayer.x,
++    playerY + CAMERA_TARGET_LOOK_HEIGHT,
++    state.localPlayer.z
++  );
++
++  state.controls.target.copy(target);
++  state.cameraRig.followYaw = state.localPlayer.ry + Math.PI;
++  state.cameraRig.desiredYaw = state.cameraRig.followYaw;
++  state.cameraRig.lastManualInputAt = 0;
++  state.cameraRig.manualControlActive = false;
++  state.cameraRig.lastPlayerMoving = false;
++  state.cameraRig.movementStartedAt = 0;
++  state.cameraRig.wasUnderRoof = isLocalPlayerUnderRoof();
++  state.cameraRig.exitWatchUntil = 0;
++
++  _orbitSpherical.radius = CAMERA_DEFAULT_DISTANCE;
++  _orbitSpherical.phi = CAMERA_DEFAULT_POLAR_ANGLE;
++  _orbitSpherical.theta = state.cameraRig.followYaw;
++  _orbitSpherical.makeSafe();
++
++  _orbitOffset.setFromSpherical(_orbitSpherical);
++  state.camera.position.copy(target).add(_orbitOffset);
++  state.camera.lookAt(target);
++  state.controls.update();
++}
++
+ export function orbitCamera(deltaTheta, deltaPhi) {
++  noteManualCameraInput();
+   _orbitOffset.copy(state.camera.position).sub(state.controls.target);
+   _orbitSpherical.setFromVector3(_orbitOffset);
+   _orbitSpherical.theta += deltaTheta;
+@@ -70,6 +156,40 @@ export function orbitCamera(deltaTheta, deltaPhi) {
+   state.camera.lookAt(state.controls.target);
+ }
+ 
++function updateCameraFollow(dt, now = performance.now()) {
++  const exitCameraWatchActive = isExitCameraWatchActive(now);
++  if (!state.localPlayer.mesh || (!exitCameraWatchActive && !shouldAutoAlignCamera(now))) return;
++
++  _orbitOffset.copy(state.camera.position).sub(state.controls.target);
++  _orbitSpherical.setFromVector3(_orbitOffset);
++  _orbitSpherical.theta = frameIndependentAngleLerp(
++    _orbitSpherical.theta,
++    exitCameraWatchActive ? CAMERA_EXIT_WATCH_YAW : state.cameraRig.desiredYaw,
++    dt,
++    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY
++  );
++  _orbitSpherical.radius = frameIndependentLerp(
++    _orbitSpherical.radius,
++    exitCameraWatchActive ? CAMERA_EXIT_WATCH_DISTANCE : CAMERA_DEFAULT_DISTANCE,
++    dt,
++    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY
++  );
++  _orbitSpherical.phi = frameIndependentLerp(
++    _orbitSpherical.phi,
++    exitCameraWatchActive ? CAMERA_EXIT_WATCH_POLAR_ANGLE : CAMERA_DEFAULT_POLAR_ANGLE,
++    dt,
++    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY
++  );
++  _orbitSpherical.phi = Math.max(
++    state.controls.minPolarAngle,
++    Math.min(state.controls.maxPolarAngle, _orbitSpherical.phi)
++  );
++  _orbitSpherical.makeSafe();
++  _orbitOffset.setFromSpherical(_orbitSpherical);
++  state.camera.position.copy(state.controls.target).add(_orbitOffset);
++  state.camera.lookAt(state.controls.target);
++}
++
+ export function animateAvatarWalk(playerObj, dt) {
+   const isMoving = playerObj.isMoving;
+   const leftLeg = playerObj.leftLeg;
+@@ -111,6 +231,27 @@ export function animateAvatarWalk(playerObj, dt) {
+ }
+ 
+ export function detectRoomEntry() {
++  // Early exit: skip room-loop when far outside the building cluster.
++  // All rooms are within x:[-17,17], z:[-30,30].
++  if (Math.abs(state.localPlayer.x) > 25 || Math.abs(state.localPlayer.z) > 38) {
++    const prevRoom = state.localPlayer.currentRoom;
++    if (prevRoom !== -1) {
++      state.localPlayer.currentRoom = -1;
++      syncChatScopeWithLocation();
++      if (state.socket && state.socket.readyState === WebSocket.OPEN) {
++        state.socket.send(JSON.stringify({ type: "room_change", room: -1 }));
++      }
++      const panel = state.roomPanelEl;
++      if (panel) {
++        panel.classList.remove('room-panel-visible');
++        panel.setAttribute('aria-hidden', 'true');
++      }
++      closeRoomEventModal({ restoreFocus: false });
++      syncActiveRoomMediaState({ roomId: -1, stopOtherMedia: true, closeTheater: true });
++    }
++    return;
++  }
++
+   let activeRoomId = -1;
+ 
+   for (const room of state.ROOMS) {
+@@ -130,6 +271,7 @@ export function detectRoomEntry() {
+ 
+   if (activeRoomId !== state.localPlayer.currentRoom) {
+     state.localPlayer.currentRoom = activeRoomId;
++    syncChatScopeWithLocation();
+     
+     if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+       state.socket.send(JSON.stringify({
+@@ -138,30 +280,25 @@ export function detectRoomEntry() {
+       }));
+     }
+ 
+-    const locTag = document.getElementById('hud-location');
+-    const panel = document.getElementById('room-panel');
+-    
++    const panel = state.roomPanelEl;
++
+     if (activeRoomId === -1) {
+-      if (locTag) locTag.innerText = "Exploring Outdoors";
+       if (panel) {
+         panel.classList.remove('room-panel-visible');
+         panel.setAttribute('aria-hidden', 'true');
+       }
+-      if (state.ytPlayer && state.ytPlayer.pauseVideo) {
+-        try { state.ytPlayer.pauseVideo(); } catch (e) {}
+-      }
+-      state.activeRoomVideoId = "";
++      closeRoomEventModal({ restoreFocus: false });
++      syncActiveRoomMediaState({ roomId: -1, stopOtherMedia: true, closeTheater: true });
+     } else {
+       const room = state.ROOMS[activeRoomId];
+       if (locTag) locTag.innerText = `In Room: ${room.name}`;
+-      
++
+       updateRoomPanelDetails();
+       if (panel) {
+         panel.classList.add('room-panel-visible');
+         panel.setAttribute('aria-hidden', 'false');
+       }
+-      
+-      setupRoomVideo(activeRoomId);
++      scheduleActiveRoomMediaState({ roomId: activeRoomId, stopOtherMedia: true, closeTheater: true });
+       refreshRoomPlayersList();
+     }
+   }
+@@ -291,9 +428,52 @@ export function updateLocalPlayer(dt) {
+   const delta = _delta.subVectors(state.localPlayer.mesh.position, oldPos);
+   _desiredCameraPos.copy(state.camera.position).add(delta);
+   state.camera.position.lerp(_desiredCameraPos, CAMERA_FOLLOW_LERP);
+-  state.controls.target.x = frameIndependentLerp(state.controls.target.x, state.localPlayer.mesh.position.x, dt, 0.0009);
+-  state.controls.target.y = frameIndependentLerp(state.controls.target.y, state.localPlayer.mesh.position.y + 1.2, dt, 0.0009);
+-  state.controls.target.z = frameIndependentLerp(state.controls.target.z, state.localPlayer.mesh.position.z, dt, 0.0009);
++
++  const now = performance.now();
++  const cameraYaw = getCameraYaw();
++  if (isExitCameraWatchActive(now)) {
++    state.cameraRig.followYaw = cameraYaw;
++    state.cameraRig.desiredYaw = CAMERA_EXIT_WATCH_YAW;
++  } else if (state.localPlayer.isMoving && !state.cameraRig.lastPlayerMoving) {
++    state.cameraRig.movementStartedAt = now;
++    state.cameraRig.followYaw = cameraYaw;
++    state.cameraRig.desiredYaw = cameraYaw;
++  } else if (!state.localPlayer.isMoving) {
++    state.cameraRig.movementStartedAt = 0;
++    state.cameraRig.followYaw = cameraYaw;
++    state.cameraRig.desiredYaw = cameraYaw;
++  } else if (shouldAutoAlignCamera(now)) {
++    state.cameraRig.followYaw = cameraYaw;
++    state.cameraRig.desiredYaw = frameIndependentAngleLerp(
++      state.cameraRig.desiredYaw,
++      state.localPlayer.ry + Math.PI,
++      dt,
++      CAMERA_HEADING_DECAY
++    );
++  } else {
++    state.cameraRig.followYaw = cameraYaw;
++    state.cameraRig.desiredYaw = cameraYaw;
++  }
++  state.cameraRig.lastPlayerMoving = state.localPlayer.isMoving;
++
++  if (speedXZ > 0.18) {
++    _targetDir.set(state.localPlayer.velocity.x, 0, state.localPlayer.velocity.z).normalize();
++  } else {
++    _targetDir.set(Math.sin(state.localPlayer.ry), 0, Math.cos(state.localPlayer.ry));
++  }
++
++  _desiredCameraTarget.set(
++    state.localPlayer.mesh.position.x,
++    state.localPlayer.mesh.position.y + CAMERA_TARGET_LOOK_HEIGHT,
++    state.localPlayer.mesh.position.z
++  );
++
++  if (state.localPlayer.isMoving) {
++    _desiredCameraTarget.addScaledVector(_targetDir, CAMERA_TARGET_LOOK_AHEAD);
++  }
++
++  const camLerpFactor = 1 - Math.pow(CAMERA_TARGET_DECAY, dt);
++  state.controls.target.lerp(_desiredCameraTarget, camLerpFactor);
+ 
+   animateAvatarWalk(state.localPlayer, dt);
+   detectRoomEntry();
+@@ -304,6 +484,7 @@ export function animate() {
+   const now = performance.now();
+   const dt = Math.min((now - state.lastTime) / 1000, 0.1);
+   state.lastTime = now;
++  state.frameCount = (state.frameCount || 0) + 1;
+   
+   const rotateSpeed = 1.8 * dt;
+   let deltaTheta = 0;
+@@ -317,7 +498,11 @@ export function animate() {
+   }
+   
+   const time = now * 0.005;
++  _delta.set(0, 0, 0);
+   state.torches.forEach((t) => {
++    // Skip torches too far from camera
++    t.flame.getWorldPosition(_delta);
++    if (_delta.distanceToSquared(state.camera.position) > 3600) return; // 60 units
+     const flicker = Math.sin(time * 3 + t.seed) * Math.cos(time * 7 + t.seed) * 0.15;
+     if (t.light) t.light.intensity = t.baseIntensity + flicker;
+     t.flame.scale.set(
+@@ -329,28 +514,40 @@ export function animate() {
+   
+   updateLocalPlayer(dt);
+   updateNpcs(dt);
+-  
++  const remoteLerpSpeed = 1 - Math.pow(REMOTE_PLAYER_SMOOTHING, dt);
+   state.remotePlayers.forEach((p) => {
+-    const lerpSpeed = 1 - Math.pow(REMOTE_PLAYER_SMOOTHING, dt);
+-    
+-    p.x = THREE.MathUtils.lerp(p.x, p.targetX, lerpSpeed);
+-    p.y = THREE.MathUtils.lerp(p.y, p.targetY, lerpSpeed);
+-    p.z = THREE.MathUtils.lerp(p.z, p.targetZ, lerpSpeed);
+-    
++    const disconnected = state.disconnectedPlayerIds.has(p.id);
++
++    p.x = THREE.MathUtils.lerp(p.x, p.targetX, remoteLerpSpeed);
++    p.y = THREE.MathUtils.lerp(p.y, p.targetY, remoteLerpSpeed);
++    p.z = THREE.MathUtils.lerp(p.z, p.targetZ, remoteLerpSpeed);
++
+     let diff = p.targetRy - p.ry;
+     while (diff < -Math.PI) diff += Math.PI * 2;
+     while (diff > Math.PI) diff -= Math.PI * 2;
+-    p.ry += diff * lerpSpeed;
+-    
++    p.ry += diff * remoteLerpSpeed;
++
+     p.mesh.position.set(p.x, p.y, p.z);
+     p.mesh.rotation.y = p.ry;
+-    
+-    animateAvatarWalk(p, dt);
++
++    if (!disconnected) {
++      animateAvatarWalk(p, dt);
++      p.mesh.scale.setScalar(1);
++    } else {
++      // Disconnected: freeze in place, scale down, gray name tag
++      p.mesh.scale.setScalar(0.85);
++    }
+ 
+     const horizontalDistance = state.camera.position.distanceTo(p.mesh.position);
+     p.mesh.visible = horizontalDistance < 95;
+     if (p.nameTag) {
+       p.nameTag.visible = horizontalDistance < 42;
++      // Gray out name tag for disconnected players
++      if (disconnected && p.nameTag.material && p.nameTag.material.map) {
++        p.nameTag.material.color.setHex(0x666666);
++      } else if (p.nameTag.material) {
++        p.nameTag.material.color.setHex(0xffffff);
++      }
+     }
+   });
+ 
+@@ -358,6 +555,22 @@ export function animate() {
+   refreshStaticSceneryVisibility();
+   
+   const isInside = isLocalPlayerUnderRoof();
++  if (state.cameraRig.wasUnderRoof && !isInside) {
++    startExitCameraWatch(now);
++  } else if (isInside) {
++    state.cameraRig.exitWatchUntil = 0;
++  }
++  state.cameraRig.wasUnderRoof = isInside;
++
++  if (isExitCameraWatchActive(now) && state.localPlayer.mesh) {
++    _desiredCameraTarget.set(
++      state.localPlayer.mesh.position.x,
++      state.localPlayer.mesh.position.y + CAMERA_TARGET_LOOK_HEIGHT,
++      state.localPlayer.mesh.position.z - CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET
++    );
++    const exitTargetLerp = 1 - Math.pow(CAMERA_TARGET_DECAY, dt);
++    state.controls.target.lerp(_desiredCameraTarget, exitTargetLerp);
++  }
+   const targetOpacity = isInside ? 0.0 : 1.0;
+   
+   if (state.ceilingMat) {
+@@ -376,6 +589,10 @@ export function animate() {
+     });
+   }
+ 
++  state.roofMeshes.forEach((roof) => {
++    roof.visible = !isInside;
++  });
++
+   updateClassroomBoard();
+ 
+   if (state.sceneSunLight) {
+@@ -386,9 +603,38 @@ export function animate() {
+   }
+ 
+   state.controls.update();
++  updateCameraFollow(dt, now);
+   updateDebugPanel(now);
+ 
+-  state.renderer.render(state.scene, state.camera);
++  try {
++    state.renderer.render(state.scene, state.camera);
++  } catch (err) {
++    console.error("[Metalyceum] Render error:", err);
++  }
++
++  // Throttle minimap to ~10 fps (every 6th frame at 60fps)
++  if (state.frameCount % 6 === 0) renderMinimap();
++}
++
++// Log startup diagnostics
++export function getEngineDiagnostics() {
++  return {
++    renderer: !!state.renderer,
++    scene: !!state.scene,
++    camera: !!state.camera,
++    controls: !!state.controls,
++    animRunning: state.animationLoopRunning,
++    isJoined: state.isJoined,
++    remoteCount: state.remotePlayers?.size ?? 0,
++    torchCount: state.torches?.length ?? 0,
++    sceneryCount: state.STATIC_SCENERY?.length ?? 0,
++    roomIndicators: state.ROOM_INDICATORS?.size ?? 0,
++    playerPos: state.localPlayer ? { x: state.localPlayer.x, y: state.localPlayer.y, z: state.localPlayer.z } : null,
++    hasMesh: !!state.localPlayer?.mesh,
++    velocityInit: !!state.localPlayer?.velocity,
++    roofMeshesCount: state.roofMeshes?.length ?? 0,
++    upperWallsCount: state.upperWalls?.length ?? 0
++  };
+ }
+ 
+ export function startAnimationLoop() {
+@@ -434,7 +680,7 @@ export function initEngine() {
+   });
+   state.renderer.setSize(window.innerWidth, window.innerHeight);
+   state.renderer.shadowMap.enabled = true;
+-  state.renderer.shadowMap.type = THREE.PCFShadowMap;
++  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+   state.renderer.outputEncoding = THREE.sRGBEncoding;
+   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+   state.renderer.toneMappingExposure = 1.05;
+@@ -446,7 +692,16 @@ export function initEngine() {
+   state.controls.dampingFactor = 0.08;
+   state.controls.minDistance = 3;
+   state.controls.maxDistance = 35;
++  state.controls.minPolarAngle = 0.65;
+   state.controls.maxPolarAngle = Math.PI / 2.1;
++  state.controls.addEventListener('start', () => {
++    state.cameraRig.manualControlActive = true;
++    noteManualCameraInput();
++  });
++  state.controls.addEventListener('end', () => {
++    state.cameraRig.manualControlActive = false;
++    noteManualCameraInput();
++  });
+ 
+   if (window.THREE && THREE.TransformControls) {
+     state.editor.transformControls = new THREE.TransformControls(state.camera, state.renderer.domElement);
+@@ -527,699 +782,14 @@ export function initEngine() {
+   window.dispatchEvent(event);
+   
+   spawnNpcs();
+-  
++
+   window.addEventListener('resize', onWindowResize);
+   const loading = document.getElementById('loading-screen');
+   if (loading) loading.classList.remove('active');
+-}
+-
+-export function buildMap() {
+-  const grassTex = createGrassTexture();
+-  const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 60, 60);
+-  
+-  const positions = groundGeo.attributes.position;
+-  for (let i = 0; i < positions.count; i++) {
+-    const vx = positions.getX(i);
+-    const vy = positions.getY(i);
+-    const height = getTerrainHeight(vx, -vy);
+-    positions.setZ(i, height);
+-  }
+-  groundGeo.computeVertexNormals();
+ 
+-  const groundMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.8 });
+-  const ground = new THREE.Mesh(groundGeo, groundMat);
+-  ground.rotation.x = -Math.PI / 2;
+-  ground.receiveShadow = true;
+-  state.scene.add(ground);
+-  
+-  const fenceMat = new THREE.MeshStandardMaterial({ color: '#372d20', roughness: 0.9 });
+-  const fenceGeo = new THREE.BoxGeometry(0.3, 1.2, 0.3);
+-  const railGeo = new THREE.BoxGeometry(0.15, 0.2, 5.2);
+-  
+-  let postCount = 0;
+-  let railCount = 0;
+-  const limit = MAP_SIZE / 2 - 1.5;
+-  for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) {
+-    for (let offset = -limit; offset <= limit; offset += 5) {
+-      postCount++;
+-      if (offset < limit) {
+-        railCount += 2;
+-      }
+-    }
+-  }
+-  
+-  const postInstances = new THREE.InstancedMesh(fenceGeo, fenceMat, postCount);
+-  const railInstances = new THREE.InstancedMesh(railGeo, fenceMat, railCount);
+-  postInstances.castShadow = false;
+-  railInstances.castShadow = false;
+-  
+-  const tempObj = new THREE.Object3D();
+-  let postIdx = 0;
+-  let railIdx = 0;
+-  
+-  for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) {
+-    const isHorizontal = angle === 0 || angle === Math.PI;
+-    
+-    for (let offset = -limit; offset <= limit; offset += 5) {
+-      const x = isHorizontal ? (angle === 0 ? limit : -limit) : offset;
+-      const z = isHorizontal ? offset : (angle === Math.PI / 2 ? limit : -limit);
+-      const groundY = getTerrainHeight(x, z);
+-
+-      tempObj.position.set(x, groundY + 0.6, z);
+-      tempObj.rotation.set(0, 0, 0);
+-      tempObj.scale.set(1, 1, 1);
+-      tempObj.updateMatrix();
+-      postInstances.setMatrixAt(postIdx++, tempObj.matrix);
+-      
+-      if (offset < limit) {
+-        const railX = isHorizontal ? x : offset + 2.5;
+-        const railZ = isHorizontal ? offset + 2.5 : z;
+-        const railY = getTerrainHeight(railX, railZ);
+-
+-        tempObj.position.set(railX, railY + 0.9, railZ);
+-        tempObj.rotation.set(0, isHorizontal ? Math.PI / 2 : 0, 0);
+-        tempObj.scale.set(1, 1, 1);
+-        tempObj.updateMatrix();
+-        railInstances.setMatrixAt(railIdx++, tempObj.matrix);
+-        
+-        tempObj.position.set(railX, railY + 0.4, railZ);
+-        tempObj.rotation.set(0, isHorizontal ? Math.PI / 2 : 0, 0);
+-        tempObj.scale.set(1, 1, 1);
+-        tempObj.updateMatrix();
+-        railInstances.setMatrixAt(railIdx++, tempObj.matrix);
+-      }
+-    }
+-  }
+-  state.scene.add(postInstances);
+-  state.scene.add(railInstances);
+-
+-  initSceneryAssets();
+-
+-  const trunkInstances = new THREE.InstancedMesh(state.sharedScenery.treeTrunkGeo, state.sharedScenery.treeTrunkMat, 35);
+-  const cone1Instances = new THREE.InstancedMesh(state.sharedScenery.treeCone1Geo, state.sharedScenery.treeFoliageMat, 35);
+-  const cone2Instances = new THREE.InstancedMesh(state.sharedScenery.treeCone2Geo, state.sharedScenery.treeFoliageMat, 35);
+-  
+-  trunkInstances.castShadow = true;
+-  trunkInstances.receiveShadow = true;
+-  cone1Instances.castShadow = true;
+-  cone2Instances.castShadow = true;
+-
+-  for (let i = 0; i < 35; i++) {
+-    let x, z;
+-    do {
+-      x = (Math.random() - 0.5) * (MAP_SIZE - 15);
+-      z = (Math.random() - 0.5) * (MAP_SIZE - 15);
+-    } while (Math.abs(x) < 32 && Math.abs(z) < 44);
+-    
+-    const groundY = getTerrainHeight(x, z);
+-    const scale = 0.85 + Math.random() * 0.45;
+-    
+-    tempObj.position.set(x, groundY + 2 * scale, z);
+-    tempObj.scale.set(scale, scale, scale);
+-    tempObj.rotation.set(0, 0, 0);
+-    tempObj.updateMatrix();
+-    trunkInstances.setMatrixAt(i, tempObj.matrix);
+-    
+-    tempObj.position.set(x, groundY + 4.2 * scale, z);
+-    tempObj.scale.set(scale, scale, scale);
+-    tempObj.rotation.set(0, 0, 0);
+-    tempObj.updateMatrix();
+-    cone1Instances.setMatrixAt(i, tempObj.matrix);
+-    
+-    tempObj.position.set(x, groundY + 5.6 * scale, z);
+-    tempObj.scale.set(scale, scale, scale);
+-    tempObj.rotation.set(0, 0, 0);
+-    tempObj.updateMatrix();
+-    cone2Instances.setMatrixAt(i, tempObj.matrix);
+-  }
+-  state.scene.add(trunkInstances);
+-  state.scene.add(cone1Instances);
+-  state.scene.add(cone2Instances);
+-
+-  for (let i = 0; i < 15; i++) {
+-    createBoulder();
+-  }
+-
+-  const flowerColors = ['#f43f5e', '#eab308', '#3b82f6', '#a855f7'];
+-  const stemInstances = new THREE.InstancedMesh(state.sharedScenery.flowerStemGeo, state.sharedScenery.flowerStemMat, 40);
+-  const leafInstances = new THREE.InstancedMesh(state.sharedScenery.flowerLeafGeo, state.sharedScenery.flowerStemMat, 40);
+-  const centerInstances = new THREE.InstancedMesh(state.sharedScenery.flowerCenterGeo, state.sharedScenery.flowerCenterMat, 40);
+-  
+-  stemInstances.castShadow = true;
+-  leafInstances.castShadow = true;
+-  centerInstances.castShadow = true;
+-
+-  for (let i = 0; i < 40; i++) {
+-    let x, z;
+-    do {
+-      x = (Math.random() - 0.5) * (MAP_SIZE - 20);
+-      z = (Math.random() - 0.5) * (MAP_SIZE - 20);
+-    } while (Math.abs(x) < 32 && Math.abs(z) < 44);
+-    
+-    const groundY = getTerrainHeight(x, z);
+-    const scale = 0.8 + Math.random() * 0.4;
+-    
+-    tempObj.position.set(x, groundY + 0.25 * scale, z);
+-    tempObj.scale.set(scale, scale, scale);
+-    tempObj.rotation.set(0, 0, 0);
+-    tempObj.updateMatrix();
+-    stemInstances.setMatrixAt(i, tempObj.matrix);
+-    
+-    tempObj.position.set(x, groundY + 0.15 * scale, z + 0.08 * scale);
+-    tempObj.scale.set(scale, scale, scale);
+-    tempObj.rotation.set(0, 0, 0);
+-    tempObj.updateMatrix();
+-    leafInstances.setMatrixAt(i, tempObj.matrix);
+-    
+-    tempObj.position.set(x, groundY + 0.5 * scale, z);
+-    tempObj.scale.set(scale, scale, scale);
+-    tempObj.rotation.set(0, 0, 0);
+-    tempObj.updateMatrix();
+-    centerInstances.setMatrixAt(i, tempObj.matrix);
+-    
+-    const randomColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+-    centerInstances.setColorAt(i, new THREE.Color(randomColor));
+-  }
+-  state.scene.add(stemInstances);
+-  state.scene.add(leafInstances);
+-  state.scene.add(centerInstances);
+-
+-  const grassInstances = new THREE.InstancedMesh(state.sharedScenery.grassBladeGeo, state.sharedScenery.grassTuftMat, 180);
+-  grassInstances.castShadow = true;
+-  let bladeIdx = 0;
+-  for (let i = 0; i < 60; i++) {
+-    let x, z;
+-    do {
+-      x = (Math.random() - 0.5) * (MAP_SIZE - 20);
+-      z = (Math.random() - 0.5) * (MAP_SIZE - 20);
+-    } while (Math.abs(x) < 32 && Math.abs(z) < 44);
+-    
+-    const groundY = getTerrainHeight(x, z);
+-    
+-    for (let j = 0; j < 3; j++) {
+-      const rotZ = (Math.random() - 0.5) * 0.4;
+-      const rotX = (Math.random() - 0.5) * 0.4;
+-      const rotY = Math.random() * Math.PI * 2;
+-      const scaleY = 0.8 + Math.random() * 0.4;
+-      
+-      tempObj.position.set(x, groundY, z);
+-      tempObj.rotation.set(rotX, rotY, rotZ);
+-      tempObj.scale.set(1, scaleY, 1);
+-      tempObj.updateMatrix();
+-      grassInstances.setMatrixAt(bladeIdx++, tempObj.matrix);
+-    }
+-  }
+-  state.scene.add(grassInstances);
+-
+-  buildExteriorPlaza();
+-  buildBuilding();
+-}
+-
+-function syncSelectedAssetFromObject() {
+-  const customEvent = new CustomEvent('sync-selected-asset-object');
+-  window.dispatchEvent(customEvent);
++  // Expose diagnostics globally for debugging
++  window.__metalyceumDiagnostics = getEngineDiagnostics;
+ }
+ 
+-export function buildBuilding() {
+-  const stoneTex = createStoneTexture();
+-  const brickTex = createBrickTexture();
+-  const woodTex = createWoodTexture();
+-  
+-  const wallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 });
+-  state.upperWallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85, transparent: true, opacity: 1.0 });
+-  
+-  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.75 });
+-  const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
+-  const frameMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 });
+-  const screenMat = new THREE.MeshStandardMaterial({ color: '#090d16', roughness: 0.2, emissive: '#020617', emissiveIntensity: 0.2 });
+-
+-  state.ROOMS.forEach((room) => {
+-    const isWood = room.id % 2 === 0;
+-    const mat = isWood ? woodFloorMat : stoneFloorMat;
+-    const roomFloorGeo = new THREE.PlaneGeometry(room.width, room.depth);
+-    const roomFloor = new THREE.Mesh(roomFloorGeo, mat);
+-    roomFloor.rotation.x = -Math.PI / 2;
+-    roomFloor.position.set(room.x, 0.01, room.z);
+-    roomFloor.receiveShadow = true;
+-    state.scene.add(roomFloor);
+-
+-    buildRoomInteriorSet(room);
+-  });
+-
+-  const lobbyFloorGeo = new THREE.PlaneGeometry(10, 80);
+-  const lobbyFloor = new THREE.Mesh(lobbyFloorGeo, stoneFloorMat);
+-  lobbyFloor.rotation.x = -Math.PI / 2;
+-  lobbyFloor.position.set(0, 0.015, 0);
+-  lobbyFloor.receiveShadow = true;
+-  state.scene.add(lobbyFloor);
+-
+-  function addWallSegment(xStart, zStart, xEnd, zEnd, height = ROOM_HEIGHT) {
+-    const dx = xEnd - xStart;
+-    const dz = zEnd - zStart;
+-    const len = Math.sqrt(dx * dx + dz * dz);
+-    if (len < 0.01) return;
+-    const angle = Math.atan2(dz, dx);
+-    
+-    const thickness = 0.5;
+-    const lowerHeight = 3.5;
+-    const upperHeight = height - lowerHeight;
+-    
+-    const lowerGeo = new THREE.BoxGeometry(len, lowerHeight, thickness);
+-    const lowerWall = new THREE.Mesh(lowerGeo, wallMat);
+-    lowerWall.position.set((xStart + xEnd) / 2, lowerHeight / 2, (zStart + zEnd) / 2);
+-    lowerWall.rotation.y = -angle;
+-    lowerWall.castShadow = true;
+-    lowerWall.receiveShadow = true;
+-    state.scene.add(lowerWall);
+-    
+-    if (upperHeight > 0.05) {
+-      const upperGeo = new THREE.BoxGeometry(len, upperHeight, thickness);
+-      const upperWall = new THREE.Mesh(upperGeo, state.upperWallMat);
+-      upperWall.position.set((xStart + xEnd) / 2, lowerHeight + upperHeight / 2, (zStart + zEnd) / 2);
+-      upperWall.rotation.y = -angle;
+-      upperWall.castShadow = true;
+-      upperWall.receiveShadow = true;
+-      state.scene.add(upperWall);
+-      state.upperWalls.push(upperWall);
+-    }
+-    
+-    const baseboardHeight = 0.35;
+-    const baseboardThickness = 0.08;
+-    const baseboardGeo = new THREE.BoxGeometry(len, baseboardHeight, baseboardThickness);
+-    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
+-    
+-    const baseboard1 = new THREE.Mesh(baseboardGeo, baseboardMat);
+-    baseboard1.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, thickness / 2 + baseboardThickness / 2);
+-    baseboard1.castShadow = true;
+-    baseboard1.receiveShadow = true;
+-    lowerWall.add(baseboard1);
+-    
+-    const baseboard2 = new THREE.Mesh(baseboardGeo, baseboardMat);
+-    baseboard2.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, -thickness / 2 - baseboardThickness / 2);
+-    baseboard2.castShadow = true;
+-    baseboard2.receiveShadow = true;
+-    lowerWall.add(baseboard2);
+-
+-    const pad = 0.35;
+-    state.WALLS.push({
+-      minX: Math.min(xStart, xEnd) - (dz === 0 ? 0 : pad) - (dx === 0 ? thickness/2 + pad : 0),
+-      maxX: Math.max(xStart, xEnd) + (dz === 0 ? 0 : pad) + (dx === 0 ? thickness/2 + pad : 0),
+-      minZ: Math.min(zStart, zEnd) - (dx === 0 ? 0 : pad) - (dz === 0 ? thickness/2 + pad : 0),
+-      maxZ: Math.max(zStart, zEnd) + (dx === 0 ? 0 : pad) + (dz === 0 ? thickness/2 + pad : 0),
+-    });
+-  }
+-
+-  state.ROOMS.forEach((room) => {
+-    const xMin = room.x - room.width / 2;
+-    const xMax = room.x + room.width / 2;
+-    const zMin = room.z - room.depth / 2;
+-    const zMax = room.z + room.depth / 2;
+-
+-    if (room.x < 0) {
+-      addWallSegment(xMin, zMin, xMin, zMax);
+-    } else {
+-      addWallSegment(xMax, zMin, xMax, zMax);
+-    }
+-
+-    addWallSegment(xMin, zMin, xMax, zMin);
+-    addWallSegment(xMin, zMax, xMax, zMax);
+-
+-    const corridorX = room.x < 0 ? -5 : 5;
+-    addWallSegment(corridorX, zMin, corridorX, room.z - 2);
+-    addWallSegment(corridorX, room.z + 2, corridorX, zMax);
+-  });
+-
+-  addWallSegment(-5, -20, -5, -18);
+-  addWallSegment(-5, -2, -5, 2);
+-  addWallSegment(-5, 14, -5, 18);
+-  addWallSegment(-5, 34, -5, 40);
+-
+-  addWallSegment(5, -40, 5, -38);
+-  addWallSegment(5, -22, 5, -18);
+-  addWallSegment(5, -6, 5, -2);
+-  addWallSegment(5, 18, 5, 20);
+-  addWallSegment(5, 36, 5, 40);
+-
+-  addWallSegment(-5, -40, 5, -40);
+-  addWallSegment(-5, 40, -2, 40);
+-  addWallSegment(2, 40, 5, 40);
+-
+-  state.ROOMS.forEach((room) => {
+-    const corridorX = room.x < 0 ? -5 : 5;
+-    createDoorFrame(corridorX, room.z, 'V', 4);
+-  });
+-
+-  createDoorFrame(0, 40, 'H', 4);
+-
+-  const colsZ = [-35, -25, -15, -5, 5, 15, 25, 35];
+-  const columnColor = '#f1f5f9';
+-  const columnMat = new THREE.MeshStandardMaterial({
+-    color: columnColor,
+-    roughness: 0.6,
+-    metalness: 0.1
+-  });
+-
+-  const columnHeight = ROOM_HEIGHT;
+- 
+
+[… truncated 59778 chars …]

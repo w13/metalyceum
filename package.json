@@ -5,11 +5,15 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "tsc --noEmit && wrangler deploy --minify",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:trace": "playwright test --trace on",
+    "test:e2e:report": "playwright show-report"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.1",
     "@cloudflare/workers-types": "^4.20240405.0",
     "typescript": "^5.4.5",
     "vitest": "^4.1.7",
