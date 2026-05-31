@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Wrangler / Cloudflare
 .wrangler/
@@ -15,6 +14,16 @@ Thumbs.db
 
 # Test/automation artifacts
 .playwright-mcp/
+playwright-report/
+test-results/
+blob-report/
+coverage/
+
+# Local agent/runtime state
+.reasonix/
+
+# Local screenshots and scratch diagnostics
+metalyceum-*.png
 
 # Generated Worker types (run `wrangler types` locally)
 worker-configuration.d.ts

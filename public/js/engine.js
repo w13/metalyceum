@@ -273,7 +273,6 @@ export function onWindowResize() {
 }
 
 export function initEngine() {
-  state.localPlayer.velocity = new THREE.Vector3(0, 0, 0);
   state.scene = new THREE.Scene();
   state.scene.background = new THREE.Color('#030712');
   state.scene.fog = new THREE.FogExp2('#030712', 0.0075);

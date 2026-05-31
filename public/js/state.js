@@ -2,9 +2,13 @@
 
 export const state = {
   // --- Three.js & Engine Variables ---
+  /** @type {any} */
   scene: null,
+  /** @type {any} */
   camera: null,
+  /** @type {any} */
   renderer: null,
+  /** @type {any} */
   controls: null,
   placedAssetGroup: null,
   ceilingMesh: null,
@@ -14,6 +18,7 @@ export const state = {
   upperWallMat: null,
   signFrontMat: null,
   signSideMat: null,
+  /** @type {any} */
   skyDome: null,
   sceneAmbientLight: null,
   sceneHemisphereLight: null,
@@ -30,7 +35,9 @@ export const state = {
   ROOM_INDICATORS: new Map(),
   ROOM_SIGN_SPRITES: new Map(),
   STATIC_SCENERY: [],
+  /** @type {any[]} */
   WALLS: [],
+  /** @type {any[]} */
   PLACED_ASSET_COLLIDERS: [],
   clickableScreens: [],
   clickableRoomMarkers: [],
