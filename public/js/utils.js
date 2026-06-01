@@ -56,12 +56,16 @@ export function parseVideoInput(raw) {
   if (!url) return null;
 
   if (url.hostname === 'www.youtube.com' || url.hostname === 'youtube.com') {
-    const id = url.searchParams.get('v');
-    return id && YOUTUBE_ID_PATTERN.test(id) ? id : null;
+    const idFromV = url.searchParams.get('v');
+    if (idFromV && YOUTUBE_ID_PATTERN.test(idFromV)) return idFromV;
+    // /live/ID, /embed/ID, /shorts/ID, /v/ID
+    const m = url.pathname.match(/\/(?:live|embed|shorts|v)\/([A-Za-z0-9_-]{11})/);
+    if (m && YOUTUBE_ID_PATTERN.test(m[1])) return m[1];
+    return null;
   }
 
   if (url.hostname === 'youtu.be') {
-    const id = url.pathname.slice(1).split('/')[0];
+    const id = url.pathname.slice(1).split(/[?#]/)[0];
     return YOUTUBE_ID_PATTERN.test(id) ? id : null;
   }
 
@@ -225,7 +229,7 @@ export function isWorldPlacementAllowed(x, z) {
   return !(
     (Math.abs(x) < 32 && Math.abs(z) < 44) ||        // building footprint
     (z > 38 && Math.abs(x) < 16) ||                   // front plaza / path
-    (z > 110 && z < 190 && x > 25 && x < 105) ||      // amphitheater (65, 150)
+    (Math.abs(x - 65) < 40 && Math.abs(z - 150) < 40) || // amphitheater (65, 150)
     (z > 115 && z < 160 && x > -110 && x < -60) ||    // concert venue (-85, 140)
     (z > 60 && z < 130 && x > 0 && x < 70) ||         // road to amphitheater
     (z > 60 && z < 115 && x > -90 && x < 0) ||        // road to concert venue

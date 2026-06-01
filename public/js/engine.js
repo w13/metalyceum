@@ -48,40 +48,49 @@ import { updateTorches } from './lighting.js';
 
 const _desiredCameraTarget = new THREE.Vector3();
 
+// Arrow-key camera angular velocity (RuneScape-style smooth orbit)
+let _camVelTheta = 0;
+let _camVelPhi = 0;
+const _CAM_ACCEL = 5.5;  // rad/s² while key held
+const _CAM_MAX   = 1.6;  // rad/s peak speed
+const _CAM_DECAY = 7.0;  // exponential decay rate per second after key release
+
 export function detectRoomEntry() {
   const activeRoomId = getRoomIdForPosition(state.localPlayer.x, state.localPlayer.z);
 
   if (activeRoomId !== state.localPlayer.currentRoom) {
     state.localPlayer.currentRoom = activeRoomId;
-    syncChatScopeWithLocation();
-    
+
+    // WebSocket message is just a buffer write — keep it synchronous
     if (state.socket && state.socket.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({
-        type: "room_change",
-        room: activeRoomId
-      }));
+      state.socket.send(JSON.stringify({ type: "room_change", room: activeRoomId }));
     }
 
-    const panel = state.roomPanelEl;
+    // Defer all DOM/media work off the render frame to avoid lag spikes on crossing
+    const capturedRoomId = activeRoomId;
+    setTimeout(() => {
+      if (capturedRoomId !== state.localPlayer.currentRoom) return;
 
-    if (activeRoomId === -1) {
-      if (panel) {
-        panel.classList.remove('room-panel-visible');
-        panel.setAttribute('aria-hidden', 'true');
-      }
-      closeRoomEventModal({ restoreFocus: false });
-      syncActiveRoomMediaState({ roomId: -1, stopOtherMedia: true, closeTheater: true });
-    } else {
-      const room = state.ROOMS[activeRoomId];
+      syncChatScopeWithLocation();
 
-      updateRoomPanelDetails();
-      if (panel) {
-        panel.classList.add('room-panel-visible');
-        panel.setAttribute('aria-hidden', 'false');
+      const panel = state.roomPanelEl;
+      if (capturedRoomId === -1) {
+        if (panel) {
+          panel.classList.remove('room-panel-visible');
+          panel.setAttribute('aria-hidden', 'true');
+        }
+        closeRoomEventModal({ restoreFocus: false });
+        syncActiveRoomMediaState({ roomId: -1, stopOtherMedia: true, closeTheater: true });
+      } else {
+        updateRoomPanelDetails();
+        if (panel) {
+          panel.classList.add('room-panel-visible');
+          panel.setAttribute('aria-hidden', 'false');
+        }
+        scheduleActiveRoomMediaState({ roomId: capturedRoomId, stopOtherMedia: true, closeTheater: true });
+        scheduleRoomPlayersListRefresh();
       }
-      scheduleActiveRoomMediaState({ roomId: activeRoomId, stopOtherMedia: true, closeTheater: true });
-      scheduleRoomPlayersListRefresh();
-    }
+    }, 0);
   }
 }
 
@@ -149,15 +158,22 @@ export function animate() {
   state.lastTime = _now;
   state.frameCount = (state.frameCount || 0) + 1;
   
-  const rotateSpeed = 1.8 * dt;
-  let deltaTheta = 0;
-  let deltaPhi = 0;
-  if (state.cameraKeys.ArrowLeft) deltaTheta -= rotateSpeed;
-  if (state.cameraKeys.ArrowRight) deltaTheta += rotateSpeed;
-  if (state.cameraKeys.ArrowUp) deltaPhi -= rotateSpeed;
-  if (state.cameraKeys.ArrowDown) deltaPhi += rotateSpeed;
-  if (deltaTheta !== 0 || deltaPhi !== 0) {
-    orbitCamera(deltaTheta, deltaPhi);
+  const camInputX = (state.cameraKeys.ArrowRight ? 1 : 0) - (state.cameraKeys.ArrowLeft ? 1 : 0);
+  const camInputY = (state.cameraKeys.ArrowDown  ? 1 : 0) - (state.cameraKeys.ArrowUp   ? 1 : 0);
+  if (camInputX !== 0) {
+    _camVelTheta = Math.max(-_CAM_MAX, Math.min(_CAM_MAX, _camVelTheta + camInputX * _CAM_ACCEL * dt));
+  } else {
+    _camVelTheta *= (1 - Math.min(1, _CAM_DECAY * dt));
+    if (Math.abs(_camVelTheta) < 0.001) _camVelTheta = 0;
+  }
+  if (camInputY !== 0) {
+    _camVelPhi = Math.max(-_CAM_MAX, Math.min(_CAM_MAX, _camVelPhi + camInputY * _CAM_ACCEL * dt));
+  } else {
+    _camVelPhi *= (1 - Math.min(1, _CAM_DECAY * dt));
+    if (Math.abs(_camVelPhi) < 0.001) _camVelPhi = 0;
+  }
+  if (_camVelTheta !== 0 || _camVelPhi !== 0) {
+    orbitCamera(_camVelTheta * dt, _camVelPhi * dt);
   }
   
   updateTorches(_now);
@@ -300,7 +316,7 @@ export function initEngine() {
 
   state.controls = new OrbitControls(state.camera, state.renderer.domElement);
   state.controls.enableDamping = true;
-  state.controls.dampingFactor = 0.05;
+  state.controls.dampingFactor = 0.025;
   state.controls.screenSpacePanning = false;
   state.controls.minDistance = 2;
   state.controls.maxDistance = 64;
@@ -317,18 +333,23 @@ export function initEngine() {
   state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 0.92);
   state.sceneSunLight.position.set(24, 48, 12);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 1024;
-  state.sceneSunLight.shadow.mapSize.height = 1024;
+  state.sceneSunLight.shadow.mapSize.width = 2048;
+  state.sceneSunLight.shadow.mapSize.height = 2048;
   state.sceneSunLight.shadow.camera.near = 0.5;
-  state.sceneSunLight.shadow.camera.far = 160;
-  
-  const d = 52;
+  state.sceneSunLight.shadow.camera.far = 180;
+  const d = 38;
   state.sceneSunLight.shadow.camera.left = -d;
   state.sceneSunLight.shadow.camera.right = d;
   state.sceneSunLight.shadow.camera.top = d;
   state.sceneSunLight.shadow.camera.bottom = -d;
-  state.sceneSunLight.shadow.bias = -0.0005;
+  state.sceneSunLight.shadow.bias = -0.0003;
+  state.sceneSunLight.shadow.normalBias = 0.02;
   state.scene.add(state.sceneSunLight);
+
+  // Cool fill light from the opposite side — prevents pure-black shadows
+  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.18);
+  fillLight.position.set(-28, 22, -14);
+  state.scene.add(fillLight);
 
   state.skyDome = new THREE.Mesh(
     new THREE.SphereGeometry(450, 16, 16),

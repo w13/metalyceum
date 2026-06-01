@@ -1,7 +1,7 @@
 // YouTube Live and Google Meet media synchronization for Metalyceum room screens
 import * as THREE from 'three';
 import { state } from '../state.js';
-import { getRoomPlaybackStartSeconds, safeMeetUrl } from '../utils.js';
+import { getRoomPlaybackStartSeconds, safeMeetUrl, parseVideoInput } from '../utils.js';
 import { closeModal, isModalRegistered, isModalOpen } from '../modals.js';
 import { restoreSoundtrackAfterRoomMedia, suppressSoundtrackForRoomMedia } from '../audio.js';
 
@@ -122,6 +122,8 @@ function renderYoutubeEmbed({ containerId, videoId, playbackStart = 0, sourceKey
     return;
   }
 
+  // Resolve full URLs (e.g. youtube.com/live/ID) to bare video IDs
+  const resolvedId = parseVideoInput(videoId) || videoId;
   const iframe = document.createElement('iframe');
   const params = new URLSearchParams({
     autoplay: '1',
@@ -130,7 +132,7 @@ function renderYoutubeEmbed({ containerId, videoId, playbackStart = 0, sourceKey
     rel: '0',
     start: String(Math.max(0, Math.floor(playbackStart)))
   });
-  iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`;
+  iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(resolvedId)}?${params.toString()}`;
   iframe.title = 'Room video';
   iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
   iframe.referrerPolicy = 'strict-origin-when-cross-origin';
@@ -141,7 +143,7 @@ function renderYoutubeEmbed({ containerId, videoId, playbackStart = 0, sourceKey
   iframe.style.height = '100%';
   iframe.style.border = '0';
   iframe.dataset.sourceKey = sourceKey;
-  iframe.dataset.videoId = videoId;
+  iframe.dataset.videoId = resolvedId;
 
   target.style.position = 'absolute';
   target.style.inset = '0';
@@ -327,7 +329,8 @@ export function syncRoomScreenMedia(room) {
   const screenEntry = state.roomScreens.get(room.id);
   if (!screenEntry) return;
 
-  const videoId = room.sourceType === 'youtube' ? getRoomMediaSource(room) : '';
+  const rawId = room.sourceType === 'youtube' ? getRoomMediaSource(room) : '';
+  const videoId = rawId ? (parseVideoInput(rawId) || rawId) : '';
   if (!videoId) {
     applyRoomScreenFallback(room.id);
     return;

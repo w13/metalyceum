@@ -164,6 +164,23 @@ export function buildAmphitheater() {
   const arcAngle = Math.PI * 0.85; // ~153° arc
   const outerRadius = rowStartRadius + (rowCount - 1) * rowSpacing + 0.5; // 31.5
 
+  // ── Terrain sampler for seating rows ───────────────────────────────────
+  // Blends from flat (inner rows near orchestra) to terrain-following (outer rows).
+  function rowTerrainOffset(radius) {
+    const flatRadius = 10;
+    if (radius <= flatRadius) return 0;
+    const blend = Math.min((radius - flatRadius) / (outerRadius - flatRadius), 1);
+    const angles = [-arcAngle / 2, 0, arcAngle / 2];
+    let sum = 0;
+    for (const theta of angles) {
+      const worldAngle = -(theta + Math.PI * 0.25);
+      const sx = ax + Math.cos(worldAngle) * radius;
+      const sz = az - Math.sin(worldAngle) * radius;
+      sum += getTerrainHeight(sx, sz) - baseY;
+    }
+    return sum / angles.length * blend;
+  }
+
   // ── Ground platform ─────────────────────────────────────────────────────
   const platform = new THREE.Mesh(
     new THREE.CircleGeometry(34, 48),
@@ -205,22 +222,27 @@ export function buildAmphitheater() {
       -arcAngle / 2,
       arcAngle
     );
+    const tOff = rowTerrainOffset(radius);
     const step = new THREE.Mesh(stepGeo, seatMat);
     step.rotation.x = -Math.PI / 2;
-    step.position.set(ax, baseY + 0.03 + row * rowHeightStep, az);
+    step.position.set(ax, baseY + 0.03 + row * rowHeightStep + tOff, az);
     step.rotation.z = Math.PI * 0.25;
     step.receiveShadow = true;
     state.scene.add(step);
 
     // Vertical riser
     if (row > 0) {
-      const riser = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius + 0.5, radius + 0.5, rowHeightStep - 0.03, segments, 1, true, -arcAngle / 2, arcAngle),
-        stoneMat
-      );
-      riser.position.set(ax, baseY + (row - 0.5) * rowHeightStep, az);
-      riser.rotation.y = Math.PI * 0.25;
-      state.scene.add(riser);
+      const prevTOff = rowTerrainOffset(radius - rowSpacing);
+      const riserH = tOff - prevTOff + rowHeightStep;
+      if (riserH > 0.01) {
+        const riser = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius + 0.5, radius + 0.5, riserH - 0.03, segments, 1, true, -arcAngle / 2, arcAngle),
+          stoneMat
+        );
+        riser.position.set(ax, baseY + (row - 0.5) * rowHeightStep + (tOff + prevTOff) / 2, az);
+        riser.rotation.y = Math.PI * 0.25;
+        state.scene.add(riser);
+      }
     }
   }
 
@@ -235,7 +257,8 @@ export function buildAmphitheater() {
 
     for (let row = 0; row < rowCount; row++) {
       const r = rowStartRadius + row * rowSpacing;
-      const y = baseY + 0.03 + row * rowHeightStep;
+      const tOff = rowTerrainOffset(r);
+      const y = baseY + 0.03 + row * rowHeightStep + tOff;
 
       const stairW = 1.0;
       const stair = new THREE.Mesh(
@@ -252,7 +275,8 @@ export function buildAmphitheater() {
   }
 
   // ── Retaining wall (analemma) around the outer seating ─────────────────
-  const wallHeight = rowCount * rowHeightStep + 0.5;
+  const outerTOff = rowTerrainOffset(outerRadius);
+  const wallHeight = rowCount * rowHeightStep + 0.5 + outerTOff;
   const outerWall = new THREE.Mesh(
     new THREE.CylinderGeometry(outerRadius + 0.3, outerRadius + 0.3, wallHeight, 48, 1, true, -arcAngle / 2, arcAngle),
     stoneMat
@@ -541,10 +565,42 @@ export function buildAmphitheater() {
     state.scene.add(topper);
   });
 
-  // ── Collision barrier ──────────────────────────────────────────────────
+  // ── Collision barriers ─────────────────────────────────────────────────
+  // Use a segmented barrier with gaps at each vomitorium so players can
+  // enter/exit through the radial staircases from multiple sides.
+  const barrierR = 32;
+  const gapAngle = 0.12; // ~7° gap at each vomitorium
+  for (let s = 0; s < stairCount; s++) {
+    const theta = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (s + 1);
+    const gapStart = theta - gapAngle;
+    const gapEnd = theta + gapAngle;
+    // Build arc segments between the gaps using box colliders
+    for (let seg = 0; seg < 12; seg++) {
+      const a0 = -arcAngle / 2 + (arcAngle / 12) * seg;
+      const a1 = -arcAngle / 2 + (arcAngle / 12) * (seg + 1);
+      // Skip if this segment overlaps a gap
+      let overlaps = false;
+      for (let g = 0; g < stairCount; g++) {
+        const gt = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (g + 1);
+        if (a0 < gt + gapAngle * 1.5 && a1 > gt - gapAngle * 1.5) { overlaps = true; break; }
+      }
+      if (overlaps) continue;
+
+      const midAngle = (a0 + a1) / 2;
+      const worldAngle = -(midAngle + Math.PI * 0.25);
+      const cx = ax + Math.cos(worldAngle) * (barrierR - 2);
+      const cz = az - Math.sin(worldAngle) * (barrierR - 2);
+      state.PLACED_ASSET_COLLIDERS.push({
+        minX: cx - 3, maxX: cx + 3,
+        minZ: cz - 3, maxZ: cz + 3,
+        assetId: 'amphitheater'
+      });
+    }
+  }
+  // Also block the area behind the stage (scaenae frons side)
   state.PLACED_ASSET_COLLIDERS.push({
-    minX: ax - 36, maxX: ax + 36,
-    minZ: az - 36, maxZ: az + 36,
+    minX: ax + 25, maxX: ax + 40,
+    minZ: az + 18, maxZ: az + 40,
     assetId: 'amphitheater'
   });
 
@@ -669,16 +725,6 @@ export function buildConcertVenue() {
   lintel.castShadow = true;
   state.scene.add(lintel);
 
-  // Classical pediment block
-  const pediment = new THREE.Mesh(
-    new THREE.ConeGeometry(3.6, 1.5, 4),
-    stoneTrimMat
-  );
-  pediment.rotation.y = Math.PI / 4;
-  pediment.scale.set(1.5, 1, 0.2);
-  pediment.position.set(vx + venueW / 2 + 0.12, baseY + venueH + 0.75, vz);
-  state.scene.add(pediment);
-
   // Arched Windows
   const windowCount = 4;
   const windowWidth = 3.2;
@@ -717,33 +763,106 @@ export function buildConcertVenue() {
     state.scene.add(glassS);
   }
 
-  // Classical Entrance Columns (East Portico)
-  const columnHeight = venueH - lintelHeight;
-  const columnPositions = [vz - 2.5, vz - 1.2, vz + 1.2, vz + 2.5];
-  columnPositions.forEach((colZ) => {
-    const col = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.3, 0.38, columnHeight, 12),
-      stoneTrimMat
-    );
-    col.position.set(vx + venueW / 2 + 1.2, baseY + columnHeight / 2, colZ);
-    col.castShadow = true;
-    col.receiveShadow = true;
-    state.scene.add(col);
+  // ── Greek Revival Portico (East Entrance) ──────────────────────────────
+  // Projects 1.6 units east of the building face so it reads clearly from the road.
+  // 4 Doric columns: outer pair flanks the opening, inner pair marks the threshold.
+  // The 6-unit doorway gap (z: 137–143) remains passable between the columns.
+  const porticoX  = vx + venueW / 2 + 1.6;   // column centerline: x ≈ -60.4
+  const porticoColH = venueH - 0.4;             // 9.6 u — taller than the lintel
+  const porticoColPositions = [vz - 4.6, vz - 1.6, vz + 1.6, vz + 4.6];
 
-    const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(0.85, 0.2, 0.85),
-      stoneTrimMat
-    );
-    cap.position.set(vx + venueW / 2 + 1.2, baseY + columnHeight - 0.1, colZ);
-    state.scene.add(cap);
+  porticoColPositions.forEach((cz) => {
+    // Plinth (square base)
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.28, 0.88), stoneTrimMat);
+    plinth.position.set(porticoX, baseY + 0.14, cz);
+    plinth.castShadow = true;
+    plinth.receiveShadow = true;
+    state.scene.add(plinth);
 
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(0.95, 0.25, 0.95),
+    // Shaft — Doric taper (bottom radius 0.36, top 0.27)
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.27, 0.36, porticoColH - 0.55, 10),
       stoneTrimMat
     );
-    base.position.set(vx + venueW / 2 + 1.2, baseY + 0.125, colZ);
-    state.scene.add(base);
+    shaft.position.set(porticoX, baseY + 0.28 + (porticoColH - 0.55) / 2, cz);
+    shaft.castShadow = true;
+    shaft.receiveShadow = true;
+    state.scene.add(shaft);
+
+    // Echinus (curved capital transition)
+    const echinus = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.44, 0.28, 0.24, 10),
+      stoneTrimMat
+    );
+    echinus.position.set(porticoX, baseY + porticoColH - 0.32, cz);
+    echinus.castShadow = true;
+    state.scene.add(echinus);
+
+    // Abacus (flat capital slab)
+    const abacus = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.2, 0.9), stoneTrimMat);
+    abacus.position.set(porticoX, baseY + porticoColH - 0.1, cz);
+    abacus.castShadow = true;
+    state.scene.add(abacus);
   });
+
+  // Entablature spanning all 4 columns (architrave + frieze + geison)
+  const entabSpan = (vz + 4.6) - (vz - 4.6) + 1.0; // 10.2 u with overhang
+
+  const architrave = new THREE.Mesh(
+    new THREE.BoxGeometry(0.68, 0.42, entabSpan), stoneTrimMat
+  );
+  architrave.position.set(porticoX, baseY + porticoColH + 0.21, vz);
+  architrave.castShadow = true;
+  architrave.receiveShadow = true;
+  state.scene.add(architrave);
+
+  const frieze = new THREE.Mesh(
+    new THREE.BoxGeometry(0.62, 0.52, entabSpan - 0.1),
+    new THREE.MeshStandardMaterial({ color: '#d4cfc6', roughness: 0.5 })
+  );
+  frieze.position.set(porticoX, baseY + porticoColH + 0.64, vz);
+  frieze.castShadow = true;
+  state.scene.add(frieze);
+
+  const geison = new THREE.Mesh(
+    new THREE.BoxGeometry(0.88, 0.22, entabSpan + 0.4), stoneTrimMat
+  );
+  geison.position.set(porticoX, baseY + porticoColH + 1.01, vz);
+  geison.castShadow = true;
+  state.scene.add(geison);
+
+  // Triangular pediment — proper Greek gable facing east (toward road)
+  // rotation.y = PI/2 → local +X maps to world -Z (spans north-south), local +Z → world +X (projects east)
+  const pedHalfSpan = entabSpan / 2 + 0.1;
+  const pedShape = new THREE.Shape();
+  pedShape.moveTo(-pedHalfSpan, 0);
+  pedShape.lineTo(pedHalfSpan, 0);
+  pedShape.lineTo(0, 2.1);
+  pedShape.closePath();
+
+  const pedGeo = new THREE.ExtrudeGeometry(pedShape, { depth: 0.58, bevelEnabled: false });
+  const pedimentMesh = new THREE.Mesh(pedGeo, stoneTrimMat);
+  pedimentMesh.rotation.y = Math.PI / 2;
+  pedimentMesh.position.set(porticoX, baseY + porticoColH + 1.12, vz);
+  pedimentMesh.castShadow = true;
+  state.scene.add(pedimentMesh);
+
+  // Portico roof slab (ties portico to building wall)
+  const porticoRoofSlab = new THREE.Mesh(
+    new THREE.BoxGeometry(1.8, 0.18, entabSpan + 0.6),
+    new THREE.MeshStandardMaterial({ color: '#bab6ae', roughness: 0.55 })
+  );
+  porticoRoofSlab.position.set(vx + venueW / 2 + 0.9, baseY + porticoColH + 1.14, vz);
+  state.scene.add(porticoRoofSlab);
+  state.roofMeshes.push(porticoRoofSlab);
+
+  // Portico floor extension (marble apron in front of entrance)
+  const porticoFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(1.8, 0.14, entabSpan + 0.8), stoneTrimMat
+  );
+  porticoFloor.position.set(vx + venueW / 2 + 0.9, baseY + 0.07, vz);
+  porticoFloor.receiveShadow = true;
+  state.scene.add(porticoFloor);
 
   // Stone Trim / Cornice
   const cornice = new THREE.Mesh(
@@ -919,5 +1038,9 @@ export function buildConcertVenue() {
     new THREE.Vector3(vx + venueW / 2 + 0.25, baseY + venueH, vz + venueD / 2 + 0.25)
   ));
 
-  registerStaticScenery(floor, { kind: 'outdoor', distance: 200 });
+  registerStaticScenery(floor,     { kind: 'outdoor', distance: 200 });
+  registerStaticScenery(dome,      { kind: 'outdoor', distance: 220 });
+  registerStaticScenery(backWall,  { kind: 'outdoor', distance: 200 });
+  registerStaticScenery(northWall, { kind: 'outdoor', distance: 200 });
+  registerStaticScenery(southWall, { kind: 'outdoor', distance: 200 });
 }

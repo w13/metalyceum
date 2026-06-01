@@ -1,6 +1,6 @@
 // Event Board, Room Panel, and Video Setup for Metalyceum
 import { state } from './state.js';
-import { getRoomEventStatus } from './utils.js';
+import { getRoomEventStatus, parseVideoInput } from './utils.js';
 import { addChatLog } from './chat.js';
 import { closeModal, isModalRegistered, openModal, registerModal } from './modals.js';
 
@@ -86,11 +86,13 @@ export function initRoomEventModal() {
       const startInput = document.getElementById('room-start-input');
       const durationInput = document.getElementById('room-duration-input');
 
+      const rawSource = sourceInput?.value.trim() || '';
+      const parsedSource = rawSource ? (parseVideoInput(rawSource) ?? rawSource) : (room.sourceValue || '');
       state.socket.send(JSON.stringify({
         type: 'set_room_event',
         roomId,
         name: nameInput?.value.trim() || room.name,
-        videoId: sourceInput?.value.trim() || room.sourceValue || '',
+        videoId: parsedSource,
         startTime: startInput?.value ? new Date(startInput.value).toISOString() : room.startTime,
         durationMinutes: durationInput?.value.trim()
           ? Math.max(0, Math.min(1440, Number.parseInt(durationInput.value, 10) || 0))
