@@ -101,14 +101,16 @@ export function createOrnamentalTree(x, z, {
 
 export function createFlowerCluster(centerX, centerZ, {
   radius = 0.9,
-  count = 10
+  count = 10,
+  soilYOffset = 0.014,
+  edgeYOffset = 0.04
 } = {}) {
   const soil = createGroundedPatch(
     new THREE.CircleGeometry(radius * 1.02, 14),
     new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.95 }),
     centerX,
     centerZ,
-    { yOffset: 0.014 }
+    { yOffset: soilYOffset }
   );
   state.scene.add(soil);
 
@@ -119,7 +121,7 @@ export function createFlowerCluster(centerX, centerZ, {
     new THREE.MeshStandardMaterial({ color: '#7c8a96', roughness: 0.76 }),
     centerX,
     centerZ,
-    { yOffset: 0.04 }
+    { yOffset: edgeYOffset }
   );
   state.scene.add(edging);
 
@@ -146,91 +148,45 @@ export function createFlowerCluster(centerX, centerZ, {
 }
 
 export function buildFrontApproachLandscaping() {
-  const stoneMat = new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.72 });
-  const bedSpecs = [
-    { x: -7.4, z: 44.4, width: 3.8, depth: 4.4 },
-    { x: 7.4, z: 44.4, width: 3.8, depth: 4.4 },
-    { x: -9.1, z: 52.6, width: 4.4, depth: 5.2 },
-    { x: 9.1, z: 52.6, width: 4.4, depth: 5.2 }
+  const gardenPods = [
+    { x: -12.5, z: 47.0, bushScale: 0.98, id: 'entry-garden-west' },
+    { x: 12.5, z: 47.0, bushScale: 0.98, id: 'entry-garden-east' },
+    { x: -16.4, z: 58.8, bushScale: 1.1, id: 'fountain-garden-west' },
+    { x: 16.4, z: 58.8, bushScale: 1.1, id: 'fountain-garden-east' },
+    { x: -9.8, z: 65.8, bushScale: 0.82, id: 'front-garden-west' },
+    { x: 9.8, z: 65.8, bushScale: 0.82, id: 'front-garden-east' }
   ];
 
-  bedSpecs.forEach((bed, index) => {
-    const soil = createGroundedPatch(
-      new THREE.CircleGeometry(1.45, 18),
-      new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.96 }),
-      bed.x,
-      bed.z,
-      {
-        yOffset: 0.014,
-        scaleX: bed.width / 2.9,
-        scaleY: bed.depth / 2.9
-      }
-    );
-    state.scene.add(soil);
-
-    const edging = createGroundedRing(
-      1.38,
-      1.56,
-      24,
-      stoneMat,
-      bed.x,
-      bed.z,
-      {
-        yOffset: 0.05,
-        scaleX: bed.width / 3.04,
-        scaleY: bed.depth / 3.04
-      }
-    );
-    state.scene.add(edging);
-
-    createTrimmedBush(bed.x, bed.z - 1.15, {
-      scale: 1.08,
-      assetId: `plaza-bush-${index}-a`
+  gardenPods.forEach((pod, index) => {
+    const side = Math.sign(pod.x);
+    createTrimmedBush(pod.x, pod.z - 0.35, {
+      scale: pod.bushScale,
+      assetId: `${pod.id}-center`
     });
-    createTrimmedBush(bed.x - 0.9, bed.z + 0.42, {
-      scale: 0.8,
-      assetId: `plaza-bush-${index}-b`
-    });
-    createTrimmedBush(bed.x + 0.9, bed.z + 0.42, {
-      scale: 0.8,
-      assetId: `plaza-bush-${index}-c`
+    createTrimmedBush(pod.x + side * 1.2, pod.z + 0.5, {
+      scale: pod.bushScale * 0.74,
+      assetId: `${pod.id}-outer`
     });
 
-    createFlowerCluster(bed.x, bed.z + 1.08, { radius: 0.78, count: 8 });
-    createFlowerCluster(bed.x + (bed.x < 0 ? 1.05 : -1.05), bed.z + 1.55, { radius: 0.56, count: 6 });
-  });
-
-  [
-    { x: -4.75, z: 46.7 },
-    { x: 4.75, z: 46.7 },
-    { x: -4.9, z: 52.15 },
-    { x: 4.9, z: 52.15 }
-  ].forEach((planter, index) => {
-    const planterBaseY = getTerrainCeiling(planter.x, planter.z, 0.95, 0.65);
-    const planterBox = new THREE.Mesh(
-      new THREE.BoxGeometry(1.9, 0.42, 1.3),
-      stoneMat
-    );
-    planterBox.position.set(planter.x, planterBaseY + 0.21, planter.z);
-    planterBox.castShadow = true;
-    planterBox.receiveShadow = true;
-    state.scene.add(planterBox);
-
-    createTrimmedBush(planter.x, planter.z, {
-      scale: 0.76,
-      assetId: `path-planter-${index}`
+    createFlowerCluster(pod.x - side * 1.15, pod.z + 1.55, {
+      radius: index < 4 ? 0.78 : 0.62,
+      count: index < 4 ? 8 : 6,
+      soilYOffset: 0.09,
+      edgeYOffset: 0.115
     });
-    createFlowerCluster(planter.x + (planter.x < 0 ? 0.22 : -0.22), planter.z + 0.18, {
-      radius: 0.34,
-      count: 5
+    createFlowerCluster(pod.x + side * 1.55, pod.z - 1.2, {
+      radius: index < 2 ? 0.56 : 0.48,
+      count: 6,
+      soilYOffset: 0.09,
+      edgeYOffset: 0.115
     });
   });
 
   [
-    { x: -13.4, z: 46.8, scale: 0.78, id: 'plaza-tree-west-entry' },
-    { x: 13.4, z: 46.8, scale: 0.78, id: 'plaza-tree-east-entry' },
-    { x: -14.2, z: 58.2, scale: 0.92, id: 'plaza-tree-west-fountain' },
-    { x: 14.2, z: 58.2, scale: 0.92, id: 'plaza-tree-east-fountain' }
+    { x: -22.5, z: 45.2, scale: 0.78, id: 'plaza-tree-west-entry' },
+    { x: 22.5, z: 45.2, scale: 0.78, id: 'plaza-tree-east-entry' },
+    { x: -24.5, z: 61.5, scale: 0.94, id: 'plaza-tree-west-fountain' },
+    { x: 24.5, z: 61.5, scale: 0.94, id: 'plaza-tree-east-fountain' }
   ].forEach((tree) => {
     createOrnamentalTree(tree.x, tree.z, { scale: tree.scale, assetId: tree.id });
   });

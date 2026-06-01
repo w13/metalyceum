@@ -234,6 +234,11 @@ export function connectMultiplayer() {
         state.socket.close();
       }
     } catch (e) {}
+    // Clear old listeners so they don't pile up across reconnects
+    state.socket.onopen = null;
+    state.socket.onclose = null;
+    state.socket.onerror = null;
+    state.socket.onmessage = null;
   }
   stopHeartbeat();
 
@@ -251,14 +256,11 @@ export function connectMultiplayer() {
     setConnectionStatus(true);
     startHeartbeat(ws);
 
+    // Undim the screen — no chat spam
+    _tabReturnPending = false;
+    setReconnectOverlay(false);
     // Clear disconnected state — existing remote players are still visible
     state.disconnectedPlayerIds.clear();
-    if (_tabReturnPending) {
-      _tabReturnPending = false;
-      setReconnectOverlay(false);
-    } else {
-      addChatLog('System', '✅ Reconnected.', 'system-msg');
-    }
 
     sendSocketMessage(ws, {
       type: "join",
@@ -275,6 +277,8 @@ export function connectMultiplayer() {
   ws.addEventListener('close', (event) => {
     if (ws !== state.socket) return;
     stopHeartbeat();
+    // Dim the screen — no chat spam
+    setReconnectOverlay(true, 'Connection lost — reconnecting…');
     // Don't clear remote players — keep them visible but mark as disconnected
     for (const id of state.remotePlayers.keys()) {
       state.disconnectedPlayerIds.add(id);

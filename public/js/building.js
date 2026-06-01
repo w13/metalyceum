@@ -296,8 +296,8 @@ export function buildBuilding() {
     side: THREE.DoubleSide
   });
   
-  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.75 });
-  const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
+  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const frameMat = state.sharedScenery.frameMat;
   const screenMat = state.sharedScenery.screenMat;
 
@@ -317,15 +317,38 @@ export function buildBuilding() {
     buildRoomInteriorSet(room);
   });
 
+  // ── Grand wood-floored atrium ──────────────────────────────────────────
   const lobbyFloorGeo = new THREE.PlaneGeometry(10, 80);
-  const lobbyFloor = new THREE.Mesh(lobbyFloorGeo, stoneFloorMat);
+  const lobbyFloor = new THREE.Mesh(lobbyFloorGeo, woodFloorMat);
   lobbyFloor.rotation.x = -Math.PI / 2;
   lobbyFloor.position.set(0, 0.015, 0);
   lobbyFloor.receiveShadow = true;
   state.scene.add(lobbyFloor);
 
+  // Decorative border strip around the lobby floor edge
+  const lobbyBorderMat = new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.6, metalness: 0.08 });
+  const lobbyBorder = new THREE.Mesh(new THREE.PlaneGeometry(10.2, 80.2), lobbyBorderMat);
+  lobbyBorder.rotation.x = -Math.PI / 2;
+  lobbyBorder.position.set(0, 0.012, 0);
+  state.scene.add(lobbyBorder);
+
+  // Entrance medallion — a dark circular accent at the main door (z=40)
+  const medallionMat = new THREE.MeshStandardMaterial({ color: '#5c3a1e', roughness: 0.7, metalness: 0.05 });
+  const medallion = new THREE.Mesh(new THREE.CircleGeometry(1.8, 24), medallionMat);
+  medallion.rotation.x = -Math.PI / 2;
+  medallion.position.set(0, 0.018, 38);
+  state.scene.add(medallion);
+
+  const medallionRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.75, 2.0, 24),
+    new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.5, metalness: 0.1 })
+  );
+  medallionRing.rotation.x = -Math.PI / 2;
+  medallionRing.position.set(0, 0.019, 38);
+  state.scene.add(medallionRing);
+
   // ── Entrance threshold & stone landing ─────────────────────────────────
-  const landingMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.72, metalness: 0.06 });
+  const landingMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.72, metalness: 0.06, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   const landingStep = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.10, 3.2), landingMat);
   landingStep.position.set(0, 0.07, 41.6);
   landingStep.receiveShadow = true;
@@ -343,7 +366,7 @@ export function buildBuilding() {
   state.scene.add(sill);
 
   const marbleTex = createMarbleTileTexture();
-  const marbleMat = new THREE.MeshStandardMaterial({ map: marbleTex, color: '#ede8dc', roughness: 0.12, metalness: 0.08 });
+  const marbleMat = new THREE.MeshStandardMaterial({ map: marbleTex, color: '#ede8dc', roughness: 0.12, metalness: 0.08, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 
   const innerFoyer = new THREE.Mesh(new THREE.PlaneGeometry(11.5, 5.2), marbleMat);
   innerFoyer.rotation.x = -Math.PI / 2;
@@ -505,7 +528,7 @@ export function buildBuilding() {
   getCorridorColumnZs(rightDoorZs).forEach((z) => columnPositions.push({ x: 4.2, z }));
   [-3.5, -1.5, 1.5, 3.5].forEach((x) => columnPositions.push({ x, z: 40.8 }));
 
-  const perimSpacing = 7, perimOffset = 0.8;
+  const perimSpacing = 7, perimOffset = -0.3;
   function addPerimeterCol(x, z) {
     if (!columnPositions.some(p => Math.abs(p.x - x) < 0.01 && Math.abs(p.z - z) < 0.01)) {
       columnPositions.push({ x, z });

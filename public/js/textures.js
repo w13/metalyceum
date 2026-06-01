@@ -33,47 +33,64 @@ export function createGrassTexture() {
 
 export function createWoodTexture() {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 512;
+  canvas.height = 512;
   const ctx = canvas.getContext('2d');
-  
-  ctx.fillStyle = '#6b4f3b';
-  ctx.fillRect(0, 0, 256, 256);
-  
-  ctx.strokeStyle = '#3e2a1e';
-  ctx.lineWidth = 3;
-  for (let y = 0; y <= 256; y += 32) {
+
+  // Warm honey-oak base
+  ctx.fillStyle = '#c4956a';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Rich grain lines
+  for (let y = 0; y < 512; y++) {
+    const base = 180 + Math.sin(y * 0.15) * 25 + Math.sin(y * 0.07) * 15;
+    const r = base + Math.random() * 12 - 6;
+    const g = base - 25 + Math.random() * 10 - 5;
+    const b = base - 45 + Math.random() * 8 - 4;
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.fillRect(0, y, 512, 1);
+  }
+
+  // Plank seams every 64px
+  ctx.strokeStyle = '#6b4f3b';
+  ctx.lineWidth = 2;
+  for (let y = 0; y <= 512; y += 64) {
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(256, y);
+    ctx.lineTo(512, y);
     ctx.stroke();
   }
-  
+
+  // Herringbone-style cross seams (staggered every other plank row)
   for (let row = 0; row < 8; row++) {
-    const y = row * 32;
-    const offset = (row % 2) * 64;
-    for (let x = offset; x <= 256 + 64; x += 128) {
+    const y = row * 64;
+    const offset = (row % 2) * 96;
+    ctx.strokeStyle = '#6b4f3b';
+    ctx.lineWidth = 1.5;
+    for (let x = offset; x <= 512 + 96; x += 192) {
       ctx.beginPath();
-      ctx.moveTo(x % 256, y);
-      ctx.lineTo(x % 256, y + 32);
+      ctx.moveTo(x % 512, y);
+      ctx.lineTo(x % 512, y + 64);
       ctx.stroke();
     }
   }
-  
-  ctx.strokeStyle = 'rgba(62, 42, 30, 0.15)';
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < 40; i++) {
-    const y = Math.random() * 256;
+
+  // Subtle glossy sheen streaks
+  ctx.strokeStyle = 'rgba(255, 230, 200, 0.06)';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 30; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.bezierCurveTo(80, y + (Math.random() - 0.5) * 15, 170, y + (Math.random() - 0.5) * 15, 256, y);
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + 40 + Math.random() * 80, y + (Math.random() - 0.5) * 20, x + 120, y + (Math.random() - 0.5) * 10);
     ctx.stroke();
   }
-  
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(4, 4);
+  texture.repeat.set(6, 3);
   return texture;
 }
 
@@ -289,6 +306,43 @@ export function createMarbleTileTexture() {
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(2, 2);
   _texCache.set('marble', texture);
+  return texture;
+}
+
+export function createCanadianFlagTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  // Red field (left and right thirds)
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(0, 0, 256, 128);
+  // White square in the center
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(85, 0, 86, 128);
+  // Red maple leaf — 11-point stylized leaf centered in the white square
+  const cx = 128, cy = 64;
+  ctx.fillStyle = '#ff0000';
+  ctx.beginPath();
+  // Maple leaf points (normalized to fit in roughly 40×40 box)
+  const leafPts = [
+    [0, -20], [4, -8], [16, -8], [6, 0], [12, 12],
+    [0, 6], [-12, 12], [-6, 0], [-16, -8], [-4, -8], [0, -20]
+  ];
+  ctx.moveTo(cx + leafPts[0][0], cy + leafPts[0][1]);
+  for (let i = 1; i < leafPts.length; i++) {
+    ctx.lineTo(cx + leafPts[i][0], cy + leafPts[i][1]);
+  }
+  ctx.closePath();
+  ctx.fill();
+  // Stem
+  ctx.fillRect(cx - 1, cy + 6, 2, 10);
+  // Base
+  ctx.fillRect(cx - 4, cy + 14, 8, 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
   return texture;
 }
 

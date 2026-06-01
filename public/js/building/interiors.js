@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { registerStaticScenery } from '../scenery/visibility.js';
+import { addSceneryCollider } from '../scenery/utils.js';
 
 export function buildClassroomAssets() {
   const woodMat = new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.85 });
@@ -70,6 +71,12 @@ export function buildClassroomAssets() {
     cols.forEach(dz => {
       createDesk(dx, dz);
       createBench(dx - 1.0, dz);
+      // Colliders for desk + bench pair
+      const gx = 17 + dx;
+      const gz = 8 + dz;
+      addSceneryCollider(gx - 0.6, gx + 0.6, gz - 1.75, gz + 1.75, 'room6-desk');
+      const bx = 17 + (dx - 1.0);
+      addSceneryCollider(bx - 0.25, bx + 0.25, gz - 1.5, gz + 1.5, 'room6-bench');
     });
   });
 
@@ -89,6 +96,7 @@ export function buildClassroomAssets() {
 
   podiumGroup.position.set(8.5, 0, 0);
   classroomGroup.add(podiumGroup);
+  addSceneryCollider(25.5 - 0.6, 25.5 + 0.6, 8 - 1.1, 8 + 1.1, 'room6-podium');
 
   classroomGroup.position.set(17, 0, 8);
   registerStaticScenery(classroomGroup, { kind: 'room', roomId: 6 });

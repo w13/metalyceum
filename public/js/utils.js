@@ -223,12 +223,21 @@ export function getRoomPlaybackStartSeconds(room) {
 }
 
 // ── World placement validation ────────────────────────────────────────────────
+export function isFrontPlazaFootprint(x, z) {
+  const approachPromenade = z > 40 && z < 53.5 && Math.abs(x) < 6.5;
+  const fountainPromenade = z >= 53.5 && z < 68 && Math.abs(x) < 9.5;
+  const entryGardens = z > 42 && z < 52 && Math.abs(x) > 6.5 && Math.abs(x) < 18.5;
+  const fountainGardens = z > 51 && z < 66 && Math.abs(x) > 8.25 && Math.abs(x) < 22.5;
+  const fountainCourt = x * x + (z - 56.5) * (z - 56.5) < 86;
+  return approachPromenade || fountainPromenade || entryGardens || fountainGardens || fountainCourt;
+}
+
 // Single source of truth for the exclusion zones used by tree, flower, grass,
 // and boulder placement.  Returns true when (x, z) is a valid outdoor spot.
 export function isWorldPlacementAllowed(x, z) {
   return !(
     (Math.abs(x) < 32 && Math.abs(z) < 44) ||        // building footprint
-    (z > 38 && Math.abs(x) < 16) ||                   // front plaza / path
+    isFrontPlazaFootprint(x, z) ||
     (Math.abs(x - 65) < 40 && Math.abs(z - 150) < 40) || // amphitheater (65, 150)
     (z > 115 && z < 160 && x > -110 && x < -60) ||    // concert venue (-85, 140)
     (z > 60 && z < 130 && x > 0 && x < 70) ||         // road to amphitheater

@@ -36,11 +36,11 @@ export function buildOutdoorVenues() {
     );
     road.rotation.x = -Math.PI / 2;
     road.rotation.y = Math.atan2(dx, -dz);
-    road.position.set(mx, terrainY + 0.04, mz);
+    road.position.set(mx, terrainY + 0.15, mz);
     road.receiveShadow = true;
     state.scene.add(road);
 
-    addRoadBorders(mx, mz, dx, dz, width, len, 0.045);
+    addRoadBorders(mx, mz, dx, dz, width, len, 0.18);
   }
 
   /** Place two border strips along the edges of a road segment. */
@@ -67,47 +67,48 @@ export function buildOutdoorVenues() {
     const len = direction.length();
     if (len < 0.1) return;
 
-    const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, len),
-      roadMat
-    );
-
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(width, len), roadMat);
     const midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
     road.position.copy(midpoint);
-
     const target = new THREE.Vector3().copy(midpoint).add(direction);
     road.lookAt(target);
-    road.rotateX(Math.PI / 2);
+    road.rotateX(-Math.PI / 2);
     road.receiveShadow = true;
     state.scene.add(road);
 
-    // Side borders
     [-1, 1].forEach((side) => {
       const right = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
       const bp1 = new THREE.Vector3().copy(p1).addScaledVector(right, (width / 2) * side);
       const bp2 = new THREE.Vector3().copy(p2).addScaledVector(right, (width / 2) * side);
-      
-      bp1.y = getTerrainHeight(bp1.x, bp1.z) + 0.045;
-      bp2.y = getTerrainHeight(bp2.x, bp2.z) + 0.045;
-
+      bp1.y = getTerrainHeight(bp1.x, bp1.z) + 0.09;
+      bp2.y = getTerrainHeight(bp2.x, bp2.z) + 0.09;
       const bDir = new THREE.Vector3().subVectors(bp2, bp1);
       const bLen = bDir.length();
       const bMid = new THREE.Vector3().addVectors(bp1, bp2).multiplyScalar(0.5);
-
-      const border = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.12, bLen),
-        roadBorderMat
-      );
+      const border = new THREE.Mesh(new THREE.PlaneGeometry(0.12, bLen), roadBorderMat);
       border.position.copy(bMid);
       border.lookAt(new THREE.Vector3().copy(bMid).add(bDir));
-      border.rotateX(Math.PI / 2);
+      border.rotateX(-Math.PI / 2);
+      state.scene.add(border);
+    });
+  }
+    const perpAngle = Math.atan2(dz, dx) + Math.PI / 2;
+    [-1, 1].forEach((side) => {
+      const bx = mx + Math.cos(perpAngle) * (width / 2) * side;
+      const bz = mz + Math.sin(perpAngle) * (width / 2) * side;
+      const borderY = getTerrainHeight(bx, bz);
+      const border = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.12, len),
+        roadBorderMat
+      );
+      border.rotation.x = -Math.PI / 2;
+      border.rotation.y = Math.atan2(dx, -dz);
+      border.position.set(bx, borderY + yOff, bz);
       state.scene.add(border);
     });
   }
 
-  // - Road 1: Fountain plaza NE edge -> Amphitheater (65, 150)
-  // CatmullRom + per-segment terrain sampling — follows the hills rather than
-  // floating at a single midpoint height the way the old buildRoad did.
+  // - Road 1: Fountain plaza NE edge → Amphitheater (terrain-following)
   {
     const ampPts = [
       new THREE.Vector3(4.3, 0, 62.7),
@@ -115,45 +116,33 @@ export function buildOutdoorVenues() {
       new THREE.Vector3(27,  0, 97),
       new THREE.Vector3(42,  0, 118),
       new THREE.Vector3(56,  0, 137),
-      new THREE.Vector3(65,  0, 150),
+      new THREE.Vector3(65,  0, 150)
     ];
-    ampPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.04; });
-    const ampCurve = new THREE.CatmullRomCurve3(ampPts);
-    const ampSegPts = ampCurve.getPoints(28);
-    ampSegPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.04; });
-    for (let i = 0; i < ampSegPts.length - 1; i++) buildRoadSegment3D(ampSegPts[i], ampSegPts[i + 1], 5.0);
+    ampPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    const curve = new THREE.CatmullRomCurve3(ampPts);
+    const pts = curve.getPoints(28);
+    pts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    for (let i = 0; i < pts.length - 1; i++) buildRoadSegment3D(pts[i], pts[i+1], 5.0);
   }
 
-  // - Road 2: Fountain plaza NW edge -> Concert Venue Entrance (Meandering & Terrain-Following)
-  const curvePoints = [
-    new THREE.Vector3(-5.3, 0, 61.8),
-    new THREE.Vector3(-18.0, 0, 68.0),
-    new THREE.Vector3(-26.0, 0, 86.0),
-    new THREE.Vector3(-38.0, 0, 104.0),
-    new THREE.Vector3(-48.0, 0, 122.0),
-    new THREE.Vector3(-60.0, 0, 140.0)
-  ];
-  curvePoints.forEach(p => {
-    p.y = getTerrainHeight(p.x, p.z) + 0.04;
-  });
-
-  const pathCurve = new THREE.CatmullRomCurve3(curvePoints);
-  const divisions = 15;
-  const pathPoints = pathCurve.getPoints(divisions);
-
-  // Re-sample Y for exact terrain following at each step
-  pathPoints.forEach(p => {
-    p.y = getTerrainHeight(p.x, p.z) + 0.04;
-  });
-
-  // Render segments
-  for (let i = 0; i < pathPoints.length - 1; i++) {
-    buildRoadSegment3D(pathPoints[i], pathPoints[i+1], 4.5);
+  // - Road 2: Fountain plaza NW edge → Concert Venue (terrain-following)
+  {
+    const cvPts = [
+      new THREE.Vector3(-5.3, 0, 61.8),
+      new THREE.Vector3(-18,  0, 68),
+      new THREE.Vector3(-26,  0, 86),
+      new THREE.Vector3(-38,  0, 104),
+      new THREE.Vector3(-48,  0, 122),
+      new THREE.Vector3(-60,  0, 140)
+    ];
+    cvPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    const curve = new THREE.CatmullRomCurve3(cvPts);
+    const pts = curve.getPoints(16);
+    pts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    for (let i = 0; i < pts.length - 1; i++) buildRoadSegment3D(pts[i], pts[i+1], 4.5);
   }
 
-  // - Road 3: Fountain plaza S edge -> Main Building Entrance (0, 42)
-  buildRoad(0, 49.0, 0, 42, 5.0);
-
+  // Road 3 removed — plaza circle + approach strip cover the connection
   buildAmphitheater();
   buildConcertVenue();
 }
@@ -184,11 +173,10 @@ export function buildAmphitheater() {
   const outerRadius = rowStartRadius + (rowCount - 1) * rowSpacing + 0.5; // 31.5
 
   // ── Terrain sampler for seating rows ───────────────────────────────────
-  // Blends from flat (inner rows near orchestra) to terrain-following (outer rows).
+  // Each row sits at the terrain height at that position, so the seating is
+  // carved into the hill. Inner rows are near the flat orchestra; outer rows
+  // ride up the hill slope.
   function rowTerrainOffset(radius) {
-    const flatRadius = 10;
-    if (radius <= flatRadius) return 0;
-    const blend = Math.min((radius - flatRadius) / (outerRadius - flatRadius), 1);
     const angles = [-arcAngle / 2, 0, arcAngle / 2];
     let sum = 0;
     for (const theta of angles) {
@@ -197,7 +185,10 @@ export function buildAmphitheater() {
       const sz = az - Math.sin(worldAngle) * radius;
       sum += getTerrainHeight(sx, sz) - baseY;
     }
-    return sum / angles.length * blend;
+    const terrainH = sum / angles.length;
+    // blend terrain offset with step height: flat inner rows step up, outer rows follow hill
+    const stepH = (radius - rowStartRadius) / rowSpacing * rowHeightStep;
+    return Math.max(terrainH, stepH);
   }
 
   // ── Ground platform ─────────────────────────────────────────────────────
@@ -244,7 +235,7 @@ export function buildAmphitheater() {
     const tOff = rowTerrainOffset(radius);
     const step = new THREE.Mesh(stepGeo, seatMat);
     step.rotation.x = -Math.PI / 2;
-    step.position.set(ax, baseY + 0.03 + row * rowHeightStep + tOff, az);
+    step.position.set(ax, baseY + 0.03 + tOff, az);
     step.rotation.z = Math.PI * 0.25;
     step.receiveShadow = true;
     state.scene.add(step);
@@ -252,13 +243,13 @@ export function buildAmphitheater() {
     // Vertical riser
     if (row > 0) {
       const prevTOff = rowTerrainOffset(radius - rowSpacing);
-      const riserH = tOff - prevTOff + rowHeightStep;
+      const riserH = tOff - prevTOff;
       if (riserH > 0.01) {
         const riser = new THREE.Mesh(
           new THREE.CylinderGeometry(radius + 0.5, radius + 0.5, riserH - 0.03, segments, 1, true, -arcAngle / 2, arcAngle),
           stoneMat
         );
-        riser.position.set(ax, baseY + (row - 0.5) * rowHeightStep + (tOff + prevTOff) / 2, az);
+        riser.position.set(ax, baseY + (tOff + prevTOff) / 2, az);
         riser.rotation.y = Math.PI * 0.25;
         state.scene.add(riser);
       }
@@ -283,7 +274,7 @@ export function buildAmphitheater() {
     for (let row = 0; row < rowCount; row++) {
       const r = rowStartRadius + row * rowSpacing;
       const tOff = rowTerrainOffset(r);
-      const y = baseY + 0.03 + row * rowHeightStep + tOff;
+      const y = baseY + 0.03 + tOff;
       const px = ax + cosA * (r - rowSpacing * 0.25);
       const pz = az - sinA * (r - rowSpacing * 0.25);
       _stairObj.position.set(px, y - rowHeightStep * 0.15, pz);
@@ -298,7 +289,7 @@ export function buildAmphitheater() {
 
   // ── Retaining wall (analemma) around the outer seating ─────────────────
   const outerTOff = rowTerrainOffset(outerRadius);
-  const wallHeight = rowCount * rowHeightStep + 0.5 + outerTOff;
+  const wallHeight = outerTOff + 0.5;
   const outerWall = new THREE.Mesh(
     new THREE.CylinderGeometry(outerRadius + 0.3, outerRadius + 0.3, wallHeight, 48, 1, true, -arcAngle / 2, arcAngle),
     stoneMat
@@ -331,37 +322,6 @@ export function buildAmphitheater() {
   embankment.rotation.z = Math.PI * 0.25;
   embankment.receiveShadow = true;
   state.scene.add(embankment);
-
-  // ── Vomitoria (arched passages at top of each staircase) ───────────────
-  for (let s = 0; s < stairCount; s++) {
-    const theta = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (s + 1);
-    const cosA = Math.cos(theta + Math.PI * 0.25);
-    const sinA = Math.sin(theta + Math.PI * 0.25);
-    const px = ax + cosA * (outerRadius + 0.8);
-    const pz = az - sinA * (outerRadius + 0.8);
-    const archY = baseY + wallHeight;
-
-    [-0.6, 0.6].forEach((off) => {
-      const pillar = new THREE.Mesh(
-        new THREE.BoxGeometry(0.25, 2.0, 0.25),
-        stoneMat
-      );
-      pillar.position.set(
-        px + cosA * off,
-        archY,
-        pz - sinA * off
-      );
-      pillar.castShadow = true;
-      state.scene.add(pillar);
-    });
-
-    const lintel = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 0.25, 0.35),
-      warmStoneMat
-    );
-    lintel.position.set(px, archY + 1.1, pz);
-    state.scene.add(lintel);
-  }
 
   // ── Stage ─────────────────────────────────────────────────────
   const stageW = 22, stageD = 8;
@@ -642,7 +602,8 @@ export function buildConcertVenue() {
     color: '#b86842',
     roughness: 0.4,
     metalness: 0.6,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    transparent: true, opacity: 1.0
   });
   // Plush red carpet — very matte, no stone tile
   const floorMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.94, metalness: 0 });
@@ -690,6 +651,7 @@ export function buildConcertVenue() {
   backWall.castShadow = true;
   backWall.receiveShadow = true;
   state.scene.add(backWall);
+  state.upperWalls.push(backWall);
 
   // North Wall
   const northWall = new THREE.Mesh(
@@ -700,6 +662,7 @@ export function buildConcertVenue() {
   northWall.castShadow = true;
   northWall.receiveShadow = true;
   state.scene.add(northWall);
+  state.upperWalls.push(northWall);
 
   // South Wall
   const southWall = new THREE.Mesh(
@@ -710,6 +673,7 @@ export function buildConcertVenue() {
   southWall.castShadow = true;
   southWall.receiveShadow = true;
   state.scene.add(southWall);
+  state.upperWalls.push(southWall);
 
   // East Wall (Front wall - split in two sections for the entrance door centered at vz=140)
   const eastWallLen = (venueD - 6.0) / 2;
@@ -721,6 +685,7 @@ export function buildConcertVenue() {
   eastWallN.castShadow = true;
   eastWallN.receiveShadow = true;
   state.scene.add(eastWallN);
+  state.upperWalls.push(eastWallN);
 
   const eastWallS = new THREE.Mesh(
     new THREE.BoxGeometry(0.5, venueH, eastWallLen - 0.8),
@@ -730,6 +695,7 @@ export function buildConcertVenue() {
   eastWallS.castShadow = true;
   eastWallS.receiveShadow = true;
   state.scene.add(eastWallS);
+  state.upperWalls.push(eastWallS);
 
   // Lintel above entrance
   const lintelHeight = 3.0;
@@ -740,6 +706,22 @@ export function buildConcertVenue() {
   lintel.position.set(vx + venueW / 2, baseY + venueH - lintelHeight / 2, vz);
   lintel.castShadow = true;
   state.scene.add(lintel);
+  state.upperWalls.push(lintel);
+
+  // ── Concert venue ceiling (fades when player enters) ──────────────────
+  const concertCeilMat = new THREE.MeshStandardMaterial({
+    color: '#1a1a2e', roughness: 0.8,
+    transparent: true, opacity: 1.0
+  });
+  const concertCeiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(venueW - 1.0, venueD - 1.0),
+    concertCeilMat
+  );
+  concertCeiling.rotation.x = -Math.PI / 2;
+  concertCeiling.position.set(vx, baseY + venueH, vz);
+  concertCeiling.receiveShadow = true;
+  state.scene.add(concertCeiling);
+  state.roofMeshes.push(concertCeiling);
 
   // Arched Windows
   const windowCount = 4;
@@ -783,9 +765,9 @@ export function buildConcertVenue() {
   // Projects 1.6 units east of the building face so it reads clearly from the road.
   // 4 Doric columns: outer pair flanks the opening, inner pair marks the threshold.
   // The 6-unit doorway gap (z: 137–143) remains passable between the columns.
-  const porticoX  = vx + venueW / 2 + 1.6;   // column centerline: x ≈ -60.4
+  const porticoX  = vx + venueW / 2 + 0.4;   // column centerline: x ≈ -61.6 (flush with wall)
   const porticoColH = venueH - 0.4;             // 9.6 u — taller than the lintel
-  const porticoColPositions = [vz - 4.6, vz - 1.6, vz + 1.6, vz + 4.6];
+  const porticoColPositions = [vz - 3.0, vz - 1.0, vz + 1.0, vz + 3.0];
 
   porticoColPositions.forEach((cz) => {
     // Plinth (square base)

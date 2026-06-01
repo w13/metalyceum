@@ -23,6 +23,7 @@ export const state = {
   sceneAmbientLight: null,
   sceneHemisphereLight: null,
   sceneSunLight: null,
+  sceneIndoorLight: null,
   lastTime: 0,
 
   // --- Scenery & Assets Cache ---

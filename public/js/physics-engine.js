@@ -44,7 +44,7 @@ export async function initCannon() {
     try {
       const mod = await import(CANNON_CDN);
       await _initFromModule(mod);
-      console.log('[Cannon] Physics engine initialized');
+      // [Cannon] Physics engine initialized
     } catch (err) {
       console.warn('[Cannon] Failed to load from CDN, physics disabled:', err);
     }

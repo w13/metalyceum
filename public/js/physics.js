@@ -51,15 +51,18 @@ export function getTerrainHeight(x, z) {
   const rd2 = Math.min(...cvSegs.map(([ax, az, bx, bz]) => _ptSegDist(x, z, ax, az, bx, bz)));
   const f4 = 1 - _ss(4, 11, rd2);
 
-  // ── Amphitheater at (65, 150) ──────────────────────────────────────────
+  // ── Amphitheater at (65, 150) — built into a hill ──────────────────────
+  // The terrain rises from the orchestra (flat at r<8) up 6 units at r=35,
+  // creating a natural bowl. The seating sits on this slope.
   const d5 = Math.sqrt((x - 65) * (x - 65) + (z - 150) * (z - 150));
-  const f5 = 1 - _ss(22, 46, d5);
+  const hillRise = _ss(14, 38, d5) * 7 * (1 - _ss(38, 55, d5));  // hill: +7u from r=14 to r=38, fade by 55
+  const f5 = 1 - _ss(0, 46, d5);
 
   // ── Concert venue at (−85, 140) — elliptical to match building footprint
   const d6 = Math.sqrt(((x + 85) / 28) * ((x + 85) / 28) + ((z - 140) / 22) * ((z - 140) / 22));
   const f6 = 1 - _ss(1.0, 1.8, d6);
 
-  return hills * (1 - Math.max(f1, f2, f3, f4, f5, f6));
+  return hills * (1 - Math.max(f1, f2, f3, f4, f5, f6)) + hillRise;
 }
 
 export function checkCollision(targetX, targetZ) {

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getRoomEventStatus } from '../utils.js';
+import { getTerrainHeight } from '../physics.js';
 
 export function initDebugPanel() {
   state.debugPanel = document.getElementById('debug-panel');
@@ -32,13 +33,25 @@ function copyDiagnosticsToClipboard() {
   const props = state.debugPropsValEl?.textContent || '—';
   const rooms = state.debugRoomsValEl?.textContent || '—';
   
+  const room = state.localPlayer.currentRoom >= 0
+    ? state.ROOMS[state.localPlayer.currentRoom]?.name || '?' : 'Outdoors';
+  const underRoof = state.cameraRig?.wasUnderRoof ? 'Inside' : 'Outside';
+  const mem = performance.memory
+    ? `JS: ${Math.round(performance.memory.usedJSHeapSize / 1048576)} MB`
+    : 'N/A';
+  const webSocket = state.socket?.readyState === WebSocket.OPEN ? 'Connected' : 'Disconnected';
+  const terrainY = state.localPlayer ? getTerrainHeight(state.localPlayer.x, state.localPlayer.z).toFixed(2) : '?';
+
   const text = `Metalyceum Diagnostics Report
 ==============================
 Timestamp: ${new Date().toISOString()}
-- ${pPos}
-- ${cPos}
-- ${cDir}
-Performance Metrics:
+Player:    ${pPos}  (Room: ${room}, State: ${underRoof})
+Camera:    ${cPos}
+Direction: ${cDir}
+Terrain:   y=${terrainY}
+Network:   ${webSocket}  (Profile: ${state._netProfile || 'normal'})
+Memory:    ${mem}
+Performance:
 - FPS: ${fps}
 - Players Online: ${players}
 - Visible Props: ${props}

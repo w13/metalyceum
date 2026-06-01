@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
+import { isFrontPlazaFootprint } from '../utils.js';
 import { registerStaticScenery } from './visibility.js';
 import { deformGroundGeometry, addSceneryCollider } from './utils.js';
 
@@ -11,9 +12,8 @@ export function buildWorldDetails() {
   // Returns false if the point overlaps a road, building, or venue.
   function isSafe(x, z) {
     if (Math.abs(x) < 33 && Math.abs(z) < 45) return false;           // main building
-    if (z > 37 && Math.abs(x) < 18) return false;                     // front plaza / fountain approach
-    if (z > 52 && z < 62 && Math.abs(x) < 6) return false;           // fountain base
-    if ((x - 65) * (x - 65) + (z - 150) * (z - 150) < 1296) return false; // amphitheater platform (r36)
+    if (isFrontPlazaFootprint(x, z)) return false;
+    if (Math.abs(x - 65) < 42 && Math.abs(z - 150) < 42) return false; // amphitheater platform
     if (Math.abs(x + 85) < 27 && Math.abs(z - 140) < 21) return false; // concert hall footprint
     // Road corridors
     if (z > 58 && z < 152 && x > -4 && x < 70) return false;         // road -> amphitheater

@@ -61,6 +61,7 @@ export function buildRoof(batcher, materials, config) {
   function addRoofMesh(mesh) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    state.roofMeshes.push(mesh);
     state.scene.add(mesh);
   }
 
@@ -79,7 +80,7 @@ export function buildRoof(batcher, materials, config) {
     const slopeGeo = new THREE.BoxGeometry(roofHypotenuse + 0.28, 0.3, roofHalfD * 2 + 0.85);
     const slopeMesh = new THREE.Mesh(slopeGeo, roofMat);
     slopeMesh.position.set(xSign * roofSlopeRun / 2, roofBaseY + roofRise / 2, 0);
-    slopeMesh.rotation.z = xSign * Math.atan2(roofRise, roofSlopeRun);
+    slopeMesh.rotation.z = -xSign * Math.atan2(roofRise, roofSlopeRun);
     addRoofMesh(slopeMesh);
 
     const eaveX = xSign * (roofHalfW + 0.08);

@@ -150,6 +150,13 @@ export class MetalyceumWorld extends DurableObject {
     if (now - this.lastPruneAt < MetalyceumWorld.PRUNE_INTERVAL_MS) return;
     this.lastPruneAt = now;
     for (const [ws, session] of this.sessions.entries()) {
+      // Expire sessions that didn't reconnect within the grace period
+      if (session.disconnectedAt !== null && now - session.disconnectedAt > DISCONNECT_GRACE_MS) {
+        this.sessions.delete(ws);
+        this.expireDisconnectedSession(ws);
+        logEvent("player_grace_expired", { id: session.id, username: session.username });
+        continue;
+      }
       if (now - session.lastSeenAt <= STALE_SESSION_MS) continue;
       try {
         ws.close(1001, "Session timed out");

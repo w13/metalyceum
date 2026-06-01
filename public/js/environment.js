@@ -42,7 +42,7 @@ export async function loadHdriEnvironment() {
             texture.dispose();
 
             loaded = true;
-            console.log('[HDRI] Environment map loaded:', HDR_URL);
+            // [HDRI] Environment map loaded
             resolve();
           } catch (genErr) {
             console.warn('[HDRI] PMREM generation failed:', genErr);

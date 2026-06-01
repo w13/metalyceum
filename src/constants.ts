@@ -1,4 +1,4 @@
-export const ROOM_COUNT = 8;
+export const ROOM_COUNT = 10;
 export const MAX_PLAYERS = 10;
 export const MAX_USERNAME_LEN = 24;
 export const MAX_CHAT_LEN = 280;
@@ -49,14 +49,16 @@ export type PersistedChatMessage = {
 };
 
 const DEFAULT_ROOM_SEEDS = [
-  { roomId: 0, name: "North Hall", sourceValue: "dQw4w9WgXcQ" },
-  { roomId: 1, name: "East Studio", sourceValue: "jNQXAC9IVRw" },
-  { roomId: 2, name: "Open Workshop", sourceValue: "kJQP7kiw5Fk" },
-  { roomId: 3, name: "Broadcast Room", sourceValue: "5NV6Rdv1a3I" },
-  { roomId: 4, name: "South Lounge", sourceValue: "JGwWNGJdvx8" },
-  { roomId: 5, name: "Crit Room", sourceValue: "9bZkp7q19f0" },
-  { roomId: 6, name: "Screening Room", sourceValue: "hT_nvWreIhg" },
-  { roomId: 7, name: "Commons", sourceValue: "jbD-r7M4U_8" }
+  { roomId: 0, name: "North Hall", sourceValue: "V0UzCBrWeTI" },
+  { roomId: 1, name: "East Studio", sourceValue: "V_plEMQhOb8" },
+  { roomId: 2, name: "Open Workshop", sourceValue: "nHlTJtGGOGI" },
+  { roomId: 3, name: "Broadcast Room", sourceValue: "NrNR2MdZN7k" },
+  { roomId: 4, name: "South Lounge", sourceValue: "jbD-r7M4U_8" },
+  { roomId: 5, name: "Crit Room", sourceValue: "hL_HGTRMPqI" },
+  { roomId: 6, name: "Screening Room", sourceValue: "UxSzlY506MM" },
+  { roomId: 7, name: "Commons", sourceValue: "ogyX9nIK0kM" },
+  { roomId: 8, name: "Amphitheater", sourceValue: "DyccRj-TBkU" },
+  { roomId: 9, name: "Concert Venue", sourceValue: "V0UzCBrWeTI" }
 ] as const;
 
 export const DEFAULT_ROOMS: RoomEvent[] = DEFAULT_ROOM_SEEDS.map((room) => ({

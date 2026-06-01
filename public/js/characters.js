@@ -45,13 +45,34 @@ function createPlayerNameSprite(name, color = '#ffffff') {
 }
 
 // --- Player Avatar Creation ---
-export function createPlayerAvatar(avatarType, colorHex, username, isLocal = false, isNpc = false) {
+const EMOJIS = ['👋', '🎵', '💃', '🤘', '👀', '✨', '🔥', '💬', '🤔', '😎', '🙌', '💪'];
+
+function createNpcEmojiSprite(emoji) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '42px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, 32, 34);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.8, 0.8, 1);
+  sprite.position.y = 3.2;
+  sprite.visible = false;
+  return sprite;
+}
+
+export function createPlayerAvatar(avatarType, colorHex, username, isLocal = false, isNpc = false, npcStyle = {}) {
   const avatarGroup = new THREE.Group();
 
   const shirtMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.6 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: '#fbcfe8', roughness: 0.8 });
-  const legMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.8 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: '#18181b', roughness: 0.9 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: npcStyle.skin || '#fbcfe8', roughness: 0.8 });
+  const legMat = new THREE.MeshStandardMaterial({ color: npcStyle.pants || '#1e293b', roughness: 0.8 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: npcStyle.shoes || '#18181b', roughness: 0.9 });
   const brownMat = new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.85 });
   const hatBandMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 });
   
@@ -68,8 +89,23 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
   head.castShadow = true;
   avatarGroup.add(head);
 
-  // Explorer hat
-  const hatGroup = new THREE.Group();
+  // Optional glasses
+  if (npcStyle.glasses) {
+    const glassMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.3, metalness: 0.5 });
+    const lensMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.1, transparent: true, opacity: 0.35 });
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, 0.05), glassMat);
+    frame.position.set(0, 1.85, 0.32);
+    avatarGroup.add(frame);
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.02), lensMat);
+    lens.position.set(-0.1, 1.85, 0.35);
+    avatarGroup.add(lens);
+    const lens2 = lens.clone();
+    lens2.position.x = 0.1;
+    avatarGroup.add(lens2);
+  }
+
+  // Hat (style-dependent)
+  if (npcStyle.hat !== 'none') {
   const brimGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.04, 8);
   const brim = new THREE.Mesh(brimGeo, brownMat);
   brim.position.y = 2.02;
@@ -87,13 +123,16 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
   crown.castShadow = true;
   hatGroup.add(crown);
   avatarGroup.add(hatGroup);
+  }
 
-  // Backpack
+  // Backpack (not all NPCs carry one)
+  if (!npcStyle.noBackpack) {
   const packGeo = new THREE.BoxGeometry(0.42, 0.6, 0.22);
   const backpack = new THREE.Mesh(packGeo, brownMat);
   backpack.position.set(0, 1.1, -0.28);
   backpack.castShadow = true;
   avatarGroup.add(backpack);
+  }
 
   // Arms
   const armGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.7, 4);
@@ -135,6 +174,10 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
   rightShoe.castShadow = true;
   rightLeg.add(rightShoe);
 
+  // Emoji sprite (NPCs only — hidden by default)
+  const emojiSprite = isNpc ? createNpcEmojiSprite('👋') : null;
+  if (emojiSprite) avatarGroup.add(emojiSprite);
+
   // Name tag
   let tagColor = '#38bdf8';
   if (isLocal) tagColor = '#818cf8';
@@ -149,14 +192,64 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
     group: avatarGroup,
     leftLeg, rightLeg,
     leftArm, rightArm,
-    nameTag
+    nameTag,
+    emojiSprite
   };
 }
 
 // --- NPC Generation ---
+const NPC_SPAWNS = [
+  // Indoor NPCs — each with unique style
+  { x: -17, z: -30, room: 0, name: 'Alex',  color: '#3b82f6', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: -14, z: -10, room: 1, name: 'Jordan', color: '#22c55e', hat: 'none',        noBackpack: false, glasses: false, pants: '#78350f', shoes: '#451a03' },
+  { x: -11, z: 8,   room: 2, name: 'Morgan', color: '#f59e0b', hat: 'none',        noBackpack: true,  glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#fcd9b6' },
+  { x: -14, z: 26,  room: 3, name: 'Casey',  color: '#ef4444', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 14,  z: -30, room: 4, name: 'Riley',  color: '#a855f7', hat: 'none',        noBackpack: true,  glasses: false, pants: '#4c1d95', shoes: '#2e1065', skin: '#fcd9b6' },
+  { x: 11,  z: -12, room: 5, name: 'Taylor', color: '#ec4899', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b' },
+  { x: 17,  z: 8,   room: 6, name: 'Quinn',  color: '#06b6d4', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#155e75', shoes: '#18181b' },
+  { x: 14,  z: 28,  room: 7, name: 'Avery',  color: '#f97316', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#d4a574' },
+  // Outdoor NPCs
+  { x: -3,  z: -35, room: -1, name: 'Sam',   color: '#8b5cf6', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 3,   z: 38,  room: -1, name: 'Parker', color: '#14b8a6', hat: 'none',        noBackpack: true,  glasses: false, pants: '#115e59', shoes: '#18181b', skin: '#f5d6b8' },
+];
+
 export function spawnNpcs() {
-  // All NPCs removed — they were blocking player paths and spawn areas.
-  // The function is kept as a no-op to avoid import errors.
+  NPC_SPAWNS.forEach((spawn) => {
+    const npcColor = spawn.color;
+    const npcUsername = spawn.name;
+
+    const avatar = createPlayerAvatar('player', npcColor, npcUsername, false, true, spawn);
+
+    const npc = {
+      id: `npc-${spawn.name}`,
+      x: spawn.x,
+      y: getTerrainHeight(spawn.x, spawn.z),
+      z: spawn.z,
+      ry: Math.random() * Math.PI * 2,
+      room: spawn.room,
+      isMoving: false,
+      state: 'idle',
+      waitTimer: 2 + Math.random() * 4,
+      targetX: spawn.x,
+      targetZ: spawn.z,
+      color: npcColor,
+      username: npcUsername,
+      mesh: avatar.group,
+      leftLeg: avatar.leftLeg,
+      rightLeg: avatar.rightLeg,
+      leftArm: avatar.leftArm,
+      rightArm: avatar.rightArm,
+      nameTag: avatar.nameTag,
+      emojiSprite: avatar.emojiSprite,
+      emojiTimer: Math.random() * 10 + 5,
+      emojiDuration: 0,
+    };
+
+    npc.mesh.position.set(npc.x, npc.y, npc.z);
+    npc.mesh.rotation.y = npc.ry;
+
+    state.npcs.push(npc);
+  });
 }
 
 // --- NPC Update Loop ---
@@ -164,6 +257,9 @@ function setNpcIdle(npc, waitOverride = null) {
   npc.state = 'idle';
   npc.isMoving = false;
   npc.waitTimer = waitOverride ?? (Math.random() * 4 + 2);
+  // Hide emoji when walking starts
+  if (npc.emojiSprite) npc.emojiSprite.visible = false;
+  npc.emojiDuration = 0;
 }
 
 function resetNpcLimbSwing(npc) {
@@ -190,6 +286,8 @@ function chooseNpcTarget(npc) {
       npc.targetZ = targetZ;
       npc.state = 'walk';
       npc.isMoving = true;
+      if (npc.emojiSprite) npc.emojiSprite.visible = false;
+      npc.emojiDuration = 0;
       return true;
     }
   }
@@ -239,6 +337,30 @@ function moveNpcTowardTarget(npc, dt) {
 
 export function updateNpcs(dt) {
   state.npcs.forEach((npc) => {
+    // Emoji animation — show random emoji during idle, hide during walk
+    if (npc.emojiSprite) {
+      npc.emojiTimer -= dt;
+      if (npc.emojiDuration > 0) {
+        npc.emojiDuration -= dt;
+        if (npc.emojiDuration <= 0) {
+          npc.emojiSprite.visible = false;
+        }
+      } else if (npc.emojiTimer <= 0 && npc.state === 'idle') {
+        const emoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+        const canvas = npc.emojiSprite.material.map.image;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 64, 64);
+        ctx.font = '42px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, 32, 34);
+        npc.emojiSprite.material.map.needsUpdate = true;
+        npc.emojiSprite.visible = true;
+        npc.emojiDuration = 1.5 + Math.random() * 1.5;
+        npc.emojiTimer = 8 + Math.random() * 12;
+      }
+    }
+
     if (npc.state === "idle") {
       npc.waitTimer -= dt;
       if (npc.waitTimer <= 0) {

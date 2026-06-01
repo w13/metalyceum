@@ -224,14 +224,22 @@ export function animate() {
   }
 
   state.roofMeshes.forEach((roof) => {
-    roof.visible = !isInside;
+    if (roof.material.transparent) {
+      roof.material.opacity = THREE.MathUtils.lerp(roof.material.opacity, isInside ? 0.0 : 1.0, 6 * dt);
+      roof.visible = roof.material.opacity > 0.02;
+    } else {
+      roof.visible = !isInside;
+    }
   });
 
   if (state.sceneSunLight) {
-    state.sceneSunLight.intensity = isInside ? 0.62 : 0.92;
+    state.sceneSunLight.intensity = isInside ? 0.70 : 1.0;
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = isInside ? 0.55 : 0.78;
+    state.sceneHemisphereLight.intensity = isInside ? 0.50 : 0.35;
+  }
+  if (state.sceneIndoorLight) {
+    state.sceneIndoorLight.intensity = isInside ? 1.2 : 0;
   }
 
   state.controls.update();
@@ -253,6 +261,31 @@ export function animate() {
 
 // Log startup diagnostics
 export function getEngineDiagnostics() {
+  // Collect nearby visible objects for debugging misplaced geometry
+  const px = state.localPlayer?.x ?? 0;
+  const pz = state.localPlayer?.z ?? 0;
+  const nearby = [];
+  if (state.scene) {
+    let idx = 0;
+    state.scene.children.forEach((child) => {
+      if (idx >= 10) return;
+      const d = Math.sqrt(
+        (child.position.x - px) ** 2 + (child.position.z - pz) ** 2
+      );
+      if (d < 50 && child.type === 'Mesh' && child.geometry) {
+        const g = child.geometry;
+        const params = g.parameters || {};
+        const info = `${child.type} d=${d.toFixed(1)} ` +
+          `pos=(${child.position.x.toFixed(1)},${child.position.y.toFixed(1)},${child.position.z.toFixed(1)}) ` +
+          `geo=${g.type}` +
+          (params.width ? ` ${params.width.toFixed(2)}x${params.height?.toFixed(2)}` : '') +
+          (params.radiusTop ? ` r=${params.radiusTop?.toFixed(2)} h=${params.height?.toFixed(2)}` : '');
+        nearby.push(info);
+        idx++;
+      }
+    });
+  }
+
   return {
     ts: Date.now(),
     fps: state.DEBUG_STATE.fps,
@@ -269,7 +302,12 @@ export function getEngineDiagnostics() {
     } : null,
     remotePlayers: state.remotePlayers.size,
     roomIndicators: state.ROOM_INDICATORS?.size ?? 0,
-    staticScenery: state.STATIC_SCENERY?.length ?? 0
+    staticScenery: state.STATIC_SCENERY?.length ?? 0,
+    upperWalls: state.upperWalls?.length ?? 0,
+    roofMeshes: state.roofMeshes?.length ?? 0,
+    colliders: state.PLACED_ASSET_COLLIDERS?.length ?? 0,
+    sceneObjects: state.scene?.children?.length ?? 0,
+    nearby: nearby
   };
 }
 
@@ -302,11 +340,11 @@ export function initEngine() {
 
   state.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   state.renderer.setSize(window.innerWidth, window.innerHeight);
-  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   state.renderer.shadowMap.enabled = true;
-  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  state.renderer.shadowMap.type = THREE.PCFShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  state.renderer.toneMappingExposure = 1.0;
+  state.renderer.toneMappingExposure = 0.85;
 
   state.localPlayer.velocity = new THREE.Vector3();
   state.localPlayer.displayVelocity = new THREE.Vector3();
@@ -323,14 +361,14 @@ export function initEngine() {
   state.controls.maxPolarAngle = Math.PI / 2 - 0.04;
   state.controls.minPolarAngle = 0.1;
 
-  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.15);
+  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.08);
   state.scene.add(state.sceneAmbientLight);
 
-  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.78);
+  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.42);
   state.sceneHemisphereLight.position.set(0, 50, 0);
   state.scene.add(state.sceneHemisphereLight);
 
-  state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 0.92);
+  state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 1.0);
   state.sceneSunLight.position.set(24, 48, 12);
   state.sceneSunLight.castShadow = true;
   state.sceneSunLight.shadow.mapSize.width = 2048;
@@ -343,13 +381,18 @@ export function initEngine() {
   state.sceneSunLight.shadow.camera.top = d;
   state.sceneSunLight.shadow.camera.bottom = -d;
   state.sceneSunLight.shadow.bias = -0.0003;
-  state.sceneSunLight.shadow.normalBias = 0.02;
+  state.sceneSunLight.shadow.normalBias = 0.005;
   state.scene.add(state.sceneSunLight);
 
   // Cool fill light from the opposite side — prevents pure-black shadows
-  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.18);
+  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.08);
   fillLight.position.set(-28, 22, -14);
   state.scene.add(fillLight);
+
+  // Warm indoor ambient light — activated when the player enters the building
+  state.sceneIndoorLight = new THREE.PointLight('#fbbf24', 0, 60);
+  state.sceneIndoorLight.position.set(0, 8, 0);
+  state.scene.add(state.sceneIndoorLight);
 
   state.skyDome = new THREE.Mesh(
     new THREE.SphereGeometry(450, 16, 16),

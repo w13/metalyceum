@@ -6,21 +6,23 @@ export const FOUNTAIN_Z = 56.5;
 import { state } from '../state.js';
 import { ROOM_LAYOUTS, WORLD_CONFIG, ROOM_LABEL_HEIGHT } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
-import { createMarbleTileTexture, createStoneTexture, createBrickTexture } from '../textures.js';
+import { createMarbleTileTexture, createStoneTexture, createBrickTexture, createCanadianFlagTexture } from '../textures.js';
 import { registerStaticScenery } from './visibility.js';
 import { createPanelLabelSprite } from './assets.js';
-import { deformPlaneToTerrain, createGroundedRing, getTerrainCeiling, addSceneryCollider } from './utils.js';
+import { deformPlaneToTerrain, createGroundedPatch, createGroundedRing, getTerrainCeiling, addSceneryCollider } from './utils.js';
 import { createTrimmedBush, createOrnamentalTree, createFlowerCluster, buildFrontApproachLandscaping } from './foliage.js';
 
-export function createBannerStand(x, z, rotationY, color) {
+export function createBannerStand(x, z, rotationY, color, texture) {
   const group = new THREE.Group();
   const poleMat = new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.85 });
-  const clothMat = new THREE.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: 0.08,
-    roughness: 0.65
-  });
+  const clothMat = texture
+    ? new THREE.MeshStandardMaterial({ map: texture, roughness: 0.65, side: THREE.DoubleSide })
+    : new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.08,
+        roughness: 0.65
+      });
 
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.4, 6), poleMat);
   pole.position.y = 3.2;
@@ -119,40 +121,52 @@ export function createRoomIndicator(room) {
 }
 
 export function buildExteriorPlaza() {
-  // Well-maintained lawn for the plaza approach — replaces the prior dark slate
-  // so plants and flower beds sit naturally on green ground.
-  const plazaMat = new THREE.MeshStandardMaterial({
+  const lawnMat = new THREE.MeshStandardMaterial({
     color: '#3a7d3a',
     roughness: 0.85,
-    metalness: 0.0
+    metalness: 0.0,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
-  // Slightly darker green path leading up to the entrance
-  const pathMat = new THREE.MeshStandardMaterial({
-    color: '#2d6630',
-    roughness: 0.85,
-    metalness: 0.0
+  const curbMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.62, metalness: 0.06 });
+  const lawnIslands = [
+    { x: -12.5, z: 47.0, radius: 1.95, scaleX: 2.95, scaleY: 1.7 },
+    { x: 12.5, z: 47.0, radius: 1.95, scaleX: 2.95, scaleY: 1.7 },
+    { x: -16.4, z: 58.8, radius: 2.25, scaleX: 2.35, scaleY: 1.9 },
+    { x: 16.4, z: 58.8, radius: 2.25, scaleX: 2.35, scaleY: 1.9 },
+    { x: -9.8, z: 65.8, radius: 1.55, scaleX: 2.15, scaleY: 1.05 },
+    { x: 9.8, z: 65.8, radius: 1.55, scaleX: 2.15, scaleY: 1.05 }
+  ];
+
+  lawnIslands.forEach((island) => {
+    const lawn = createGroundedPatch(
+      new THREE.CircleGeometry(island.radius, 32),
+      lawnMat,
+      island.x,
+      island.z,
+      { yOffset: 0.055, scaleX: island.scaleX, scaleY: island.scaleY }
+    );
+    state.scene.add(lawn);
+
+    const curb = createGroundedRing(
+      island.radius * 0.95,
+      island.radius * 1.08,
+      32,
+      curbMat,
+      island.x,
+      island.z,
+      { yOffset: 0.085, scaleX: island.scaleX, scaleY: island.scaleY }
+    );
+    state.scene.add(curb);
   });
-
-  const plaza = new THREE.Mesh(new THREE.CircleGeometry(18, 48), plazaMat);
-  plaza.rotation.x = -Math.PI / 2;
-  deformPlaneToTerrain(plaza.geometry, 49.5);
-  plaza.position.set(0, 0.06, 49.5);
-  plaza.receiveShadow = true;
-  state.scene.add(plaza);
-
-  // Move the path closer to the building entrance so it's entirely on
-  // the flat approach, and deform its vertices to follow the terrain.
-  const path = new THREE.Mesh(new THREE.PlaneGeometry(12, 14), pathMat);
-  path.rotation.x = -Math.PI / 2;
-  deformPlaneToTerrain(path.geometry, 47);
-  path.position.set(0, 0.08, 47);
-  path.receiveShadow = true;
-  state.scene.add(path);
 
   buildFrontFountain();
   buildFrontApproachLandscaping();
-  createBannerStand(-12.25, 41.6, Math.PI * 0.08, '#38bdf8');
-  createBannerStand(12.25, 41.6, -Math.PI * 0.08, '#8b5cf6');
+  // Replace decorative banners with Canadian flags at the main entrance
+  {
+    const flagTex = createCanadianFlagTexture();
+    createBannerStand(-12.25, 41.6, Math.PI * 0.08, null, flagTex);
+    createBannerStand(12.25, 41.6, -Math.PI * 0.08, null, flagTex);
+  }
 }
 
 export function buildFrontFountain() {
@@ -175,7 +189,7 @@ export function buildFrontFountain() {
   });
   const waterMat = new THREE.MeshStandardMaterial({
     color: '#0c4a6e', roughness: 0.05, metalness: 0.8,
-    transparent: true, opacity: 0.55, side: THREE.DoubleSide
+    transparent: true, opacity: 0.72
   });
   const darkWaterMat = new THREE.MeshStandardMaterial({
     color: '#082f49', roughness: 0.1, metalness: 0.6,
@@ -205,31 +219,33 @@ export function buildFrontFountain() {
       map: marbleTex,
       color: '#ede8dc',
       roughness: 0.12,
-      metalness: 0.08
+      metalness: 0.08,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
     });
 
-    // Approach strip: 7.5 wide, covering z≈43.5 → z≈56.5 (centered at z=50)
-    const approachGeo = new THREE.PlaneGeometry(7.5, 13, 1, 6);
-    deformPlaneToTerrain(approachGeo, 50.0);
+    // Promenade widened slightly so the new side gardens can move outward
+    // without crowding the main entry axis.
+    const approachGeo = new THREE.PlaneGeometry(8.75, 12.5, 4, 10);
+    deformPlaneToTerrain(approachGeo, 50.25);
     const marbleApproach = new THREE.Mesh(approachGeo, marblePlazaMat.clone());
     marbleApproach.rotation.x = -Math.PI / 2;
-    marbleApproach.position.set(fx, 0.08, 50.0);
+    marbleApproach.position.set(fx, 0.09, 50.25);
     marbleApproach.receiveShadow = true;
     state.scene.add(marbleApproach);
 
     // Round plaza slab — fountain sits at its center
     const marbleSlab = new THREE.Mesh(
-      new THREE.CircleGeometry(7.5, 56),
+      new THREE.CircleGeometry(8.2, 56),
       marblePlazaMat
     );
     marbleSlab.rotation.x = -Math.PI / 2;
-    marbleSlab.position.set(fx, fountainBaseY + 0.08, fz);
+    marbleSlab.position.set(fx, fountainBaseY + 0.15, fz);
     marbleSlab.receiveShadow = true;
     state.scene.add(marbleSlab);
 
     // Slim stone curb ring marking the slab perimeter
     const slabRim = new THREE.Mesh(
-      new THREE.TorusGeometry(7.5, 0.07, 4, 56),
+      new THREE.TorusGeometry(8.2, 0.07, 4, 56),
       new THREE.MeshStandardMaterial({ color: '#b0a898', roughness: 0.5, metalness: 0.12 })
     );
     slabRim.rotation.x = Math.PI / 2;
@@ -247,7 +263,7 @@ export function buildFrontFountain() {
   baseWall.receiveShadow = true;
   baseWall.castShadow = true;
   state.scene.add(baseWall);
-  addSceneryCollider(fx - 3.45, fx + 3.45, fz - 3.45, fz + 2.5, 'front-fountain');
+  addSceneryCollider(fx - 3.8, fx + 3.8, fz - 3.8, fz + 3.8, 'front-fountain');
 
   const apronRing = createGroundedRing(
     3.85,
@@ -282,36 +298,24 @@ export function buildFrontFountain() {
 
   // ── Water pool ─────────────────────────────────────────────────────────
   const waterPool = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.0, 3.12, 0.66, 36),
+    new THREE.CylinderGeometry(3.0, 3.12, 0.78, 36),
     new THREE.MeshStandardMaterial({
       color: '#1a6fa8',
       emissive: '#0a3a60',
-      emissiveIntensity: 0.25,
+      emissiveIntensity: 0.35,
       roughness: 0.08,
       metalness: 0.55,
       transparent: true,
-      opacity: 0.88
+      opacity: 0.70,
+      side: THREE.DoubleSide,
+      side: THREE.DoubleSide
     })
   );
-  waterPool.position.set(fx, fountainBaseY + 0.36, fz);
+  waterPool.position.set(fx, fountainBaseY + 0.39, fz);
   waterPool.userData.baseY = waterPool.position.y;
   state.scene.add(waterPool);
 
-  // Bright shimmer cap on top of the water body so the surface reads clearly
-  const basinWaterSurface = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.98, 3.0, 0.04, 36),
-    new THREE.MeshStandardMaterial({
-      color: '#38bdf8',
-      emissive: '#0ea5e9',
-      emissiveIntensity: 0.4,
-      roughness: 0.02,
-      metalness: 0.6,
-      transparent: true,
-      opacity: 0.72
-    })
-  );
-  basinWaterSurface.position.set(fx, fountainBaseY + 0.67, fz);
-  state.scene.add(basinWaterSurface);
+
 
   // ── Central pedestal (stepped) ─────────────────────────────────────────
   const baseStep = new THREE.Mesh(
@@ -370,13 +374,13 @@ export function buildFrontFountain() {
   const upperBowlY = fountainBaseY + 0.8 + 0.35 + 0.5 + 1.2 + 0.55;
 
   const upperWaterBody = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.72, 0.84, 0.18, 18),
+    new THREE.CylinderGeometry(0.72, 0.84, 0.32, 18),
     new THREE.MeshStandardMaterial({
       color: '#0a3d6b', roughness: 0.08, metalness: 0.7,
-      transparent: true, opacity: 0.65
+      transparent: true, opacity: 0.78
     })
   );
-  upperWaterBody.position.set(fx, upperBowlY - 0.28, fz);
+  upperWaterBody.position.set(fx, upperBowlY - 0.38, fz);
   upperWaterBody.userData.baseY = upperWaterBody.position.y;
   state.scene.add(upperWaterBody);
 
@@ -404,10 +408,10 @@ export function buildFrontFountain() {
 
   // ── Bushes around the fountain plaza ─────────────────────────────────────
   [
-    { x: fx - 8.5, z: fz + 2.5, scale: 0.84, id: 'fountain-bush-west-back' },
-    { x: fx + 8.5, z: fz + 2.5, scale: 0.84, id: 'fountain-bush-east-back' },
-    { x: fx - 5.8, z: fz - 6.0, scale: 0.7,  id: 'fountain-bush-west-front' },
-    { x: fx + 5.8, z: fz - 6.0, scale: 0.7,  id: 'fountain-bush-east-front' }
+    { x: fx - 10.8, z: fz + 4.2, scale: 0.86, id: 'fountain-bush-west-back' },
+    { x: fx + 10.8, z: fz + 4.2, scale: 0.86, id: 'fountain-bush-east-back' },
+    { x: fx - 11.2, z: fz - 4.8, scale: 0.72, id: 'fountain-bush-west-front' },
+    { x: fx + 11.2, z: fz - 4.8, scale: 0.72, id: 'fountain-bush-east-front' }
   ].forEach((pos) => {
     createTrimmedBush(pos.x, pos.z, {
       scale: pos.scale,
@@ -417,24 +421,68 @@ export function buildFrontFountain() {
     });
   });
 
-  // ── Flower beds flanking the approach path ────────────────────────────────
-  [
-    { x: fx - 8.0, z: fz - 2.5 },
-    { x: fx + 8.0, z: fz - 2.5 }
-  ].forEach((bed) => {
-    createFlowerCluster(bed.x, bed.z, { radius: 0.82, count: 7 });
-  });
+  // Keep the promenade shoulders open; the flower beds now live in the outer
+  // lawn islands built by buildFrontApproachLandscaping().
 
   // ── Collision barrier ───────────────────────────────────────────────────
   state.WALLS.push(new THREE.Box3(
     new THREE.Vector3(fx - 3.8, -0.5, fz - 3.8),
-    new THREE.Vector3(fx + 3.8, 2.5, fz + 2.8)
+    new THREE.Vector3(fx + 3.8, 2.5, fz + 3.8)
   ));
 
   // ── Enhanced animated water surfaces ────────────────
   const waterAnimGroup = new THREE.Group();
   waterAnimGroup.position.set(fx, fountainBaseY, fz);
   state.scene.add(waterAnimGroup);
+
+  // ── Large apple-shaped water column: fills the entire pool ────────────
+  // A wide-bottomed water mass that covers nearly the full pool radius (r≈2.6)
+  // at the base, narrows through an organic apple waist (r≈1.4), then tapers
+  // up to the upper bowl (r≈0.3). Creates the illusion of deep pool water.
+  {
+    const colTopY = 3.1;
+    const colBotY = 0.35;
+    const colH = colTopY - colBotY;
+    const baPts = [];
+    const baN = 40;
+    for (let i = 0; i <= baN; i++) {
+      const t = i / baN;
+      // Custom profile: wide base → narrow waist → tapered top
+      let r;
+      if (t < 0.15) {
+        // Base: flares out to cover the pool floor
+        const p = t / 0.15;
+        r = 0.3 + p * p * 2.3; // 0.3 → 2.6
+      } else if (t < 0.45) {
+        // Lower body: gently narrow from 2.6 → 1.6
+        const p = (t - 0.15) / 0.3;
+        r = 2.6 - p * 1.0;
+      } else if (t < 0.65) {
+        // Waist: apple bulge, 1.6 → 1.8 → 1.4
+        const p = (t - 0.45) / 0.2;
+        r = 1.6 + 0.2 * Math.sin(p * Math.PI);
+      } else if (t < 0.85) {
+        // Upper body: taper 1.4 → 0.8
+        const p = (t - 0.65) / 0.2;
+        r = 1.4 - p * 0.6;
+      } else {
+        // Top: narrow neck 0.8 → 0.3
+        const p = (t - 0.85) / 0.15;
+        r = 0.8 - p * 0.5;
+      }
+      baPts.push(new THREE.Vector2(Math.max(0.05, r), t * colH - colH / 2));
+    }
+    const bigApple = new THREE.Mesh(
+      new THREE.LatheGeometry(baPts, 28),
+      new THREE.MeshStandardMaterial({
+        color: '#1d4ed8', emissive: '#0ea5e9', emissiveIntensity: 0.3,
+        roughness: 0.03, metalness: 0.5,
+        transparent: true, opacity: 0.48, side: THREE.DoubleSide
+      })
+    );
+    bigApple.position.set(fx, (colTopY + colBotY) / 2, fz);
+    waterAnimGroup.add(bigApple);
+  }
 
   // ── 3D apple-shaped water blob ─────────────────────────────────────────
   {
@@ -481,7 +529,7 @@ export function buildFrontFountain() {
     waterAnimGroup.add(waterAppleGlow);
   }
 
-  // Main pool surface
+  // 3D pool surface — animated cylinder cap with ripple deformation
   const poolSurfaceGeo = new THREE.CircleGeometry(2.96, 48);
   const poolPos = poolSurfaceGeo.attributes.position;
   const poolRadii = new Float32Array(poolPos.count);
@@ -501,39 +549,13 @@ export function buildFrontFountain() {
     side: THREE.DoubleSide
   });
   const poolSurface = new THREE.Mesh(poolSurfaceGeo, poolSurfaceMat);
-  poolSurface.position.y = 0.7;
+  poolSurface.position.y = 0.72;
   poolSurface.userData.baseY = poolSurface.position.y;
   poolSurface.userData.waveAmp = 0.025;
   poolSurface.userData.waveFreq = 2.5;
   waterAnimGroup.add(poolSurface);
 
   // Second water layer
-  const poolSurface2Geo = new THREE.CircleGeometry(2.85, 40);
-  const pool2Pos = poolSurface2Geo.attributes.position;
-  const pool2Radii = new Float32Array(pool2Pos.count);
-  for (let i = 0; i < pool2Pos.count; i++) {
-    const vx = pool2Pos.getX(i);
-    const vy = pool2Pos.getY(i);
-    pool2Radii[i] = Math.sqrt(vx * vx + vy * vy);
-  }
-  poolSurface2Geo.userData.poolRadii = pool2Radii;
-
-  const poolSurface2 = new THREE.Mesh(
-    poolSurface2Geo,
-    new THREE.MeshStandardMaterial({
-      color: '#0284c7',
-      roughness: 0.02,
-      metalness: 0.5,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.DoubleSide
-    })
-  );
-  poolSurface2.position.y = 0.698;
-  poolSurface2.userData.baseY = poolSurface2.position.y;
-  poolSurface2.userData.waveAmp = 0.018;
-  poolSurface2.userData.waveFreq = 3.8;
-  waterAnimGroup.add(poolSurface2);
 
   // Emanating ripple rings
   const rippleMat = new THREE.MeshStandardMaterial({
@@ -696,7 +718,7 @@ export function buildFrontFountain() {
     upperWaterBody,
     upperWater,
     poolSurface,
-    poolSurface2,
+    // poolSurface2 removed,
     poolRipple,
     poolRipple2,
     causticDisc,
