@@ -4,6 +4,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { state } from './state.js';
 import { MAP_SIZE, WORLD_ASSET_CATALOG } from './config.js';
 import { getTerrainHeight, getRoomIdForPosition } from './physics.js';
+import { rebuildAssetColliders } from './physics-engine.js';
 import { closeModal, openModal, registerModal } from './modals.js';
 import { closeRoomEventModal } from './room-panel.js';
 
@@ -397,6 +398,7 @@ export function applyPublishedWorldAssets(assetDefs) {
     return;
   }
   renderPlacedAssets(state.publishedWorldAssets, { applyColliders: !state.editor.enabled });
+  rebuildAssetColliders(); // sync Cannon asset bodies with updated PLACED_ASSET_COLLIDERS
 }
 
 export function saveWorldAssets() {
