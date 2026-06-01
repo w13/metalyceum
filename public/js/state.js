@@ -61,6 +61,7 @@ export const state = {
     ry: 0,
     isMoving: false,
     velocity: null, // will be initialized to Vector3 in engine
+    displayVelocity: null, // post-collision XZ velocity for animation/rotation only
     isGrounded: true,
     currentRoom: -1
   },

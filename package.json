@@ -19,6 +19,7 @@
     "@types/three": "^0.128.0",
     "@vitest/browser": "^4.1.7",
     "@vitest/browser-playwright": "^4.1.7",
+    "cannon-es": "^0.20.0",
     "three": "^0.128.0",
     "typescript": "^5.4.5",
     "vitest": "^4.1.7",

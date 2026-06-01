@@ -292,7 +292,8 @@ export function initEngine() {
   state.renderer.toneMappingExposure = 1.0;
 
   state.localPlayer.velocity = new THREE.Vector3();
-  
+  state.localPlayer.displayVelocity = new THREE.Vector3();
+
   const container = document.getElementById('game-container');
   if (container) container.appendChild(state.renderer.domElement);
 
