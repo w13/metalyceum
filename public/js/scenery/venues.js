@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
-import { createBrickTexture, createStoneTexture } from '../textures.js';
+import { createBrickTexture, createStoneTexture, createCarpetTexture } from '../textures.js';
 import { registerStaticScenery } from './visibility.js';
 import { vec2LengthAngle } from './utils.js';
 import { FOUNTAIN_X, FOUNTAIN_Z } from './plaza.js';
@@ -626,8 +626,8 @@ export function buildConcertVenue() {
   const vx = -85, vz = 140;
   const baseY = getTerrainHeight(vx, vz);
 
-  const brickTex = createBrickTexture();
-  const stoneTex = createStoneTexture();
+  const brickTex    = createBrickTexture();
+  const carpetTex   = createCarpetTexture();
 
   const brickMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 });
   const stoneTrimMat = state.sharedScenery.limestoneMat;
@@ -644,7 +644,8 @@ export function buildConcertVenue() {
     metalness: 0.6,
     side: THREE.DoubleSide
   });
-  const floorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
+  // Plush red carpet — very matte, no stone tile
+  const floorMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.94, metalness: 0 });
   const stageMat = new THREE.MeshStandardMaterial({ color: '#3d2b1f', roughness: 0.6, metalness: 0.08 });
   const frameMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.5, metalness: 0.2 });
   const screenMat = state.sharedScenery.screenMat;
@@ -926,10 +927,12 @@ export function buildConcertVenue() {
   state.scene.add(spireGlow);
   state.roofMeshes.push(spireGlow);
 
-  // Stage (West wall)
+  // Stage (against west wall)
+  // stageW = north-south span, stageD = east-west depth — BoxGeometry maps to (X, Y, Z)
+  // so we pass (stageD, stageH, stageW) to get depth in X and width in Z.
   const stageW = 26, stageD = 8, stageH = 0.5;
   const stage = new THREE.Mesh(
-    new THREE.BoxGeometry(stageW, stageH, stageD),
+    new THREE.BoxGeometry(stageD, stageH, stageW),
     stageMat
   );
   stage.position.set(vx - venueW / 2 + stageD / 2 + 1.0, baseY + stageH / 2, vz);
@@ -937,12 +940,20 @@ export function buildConcertVenue() {
   stage.castShadow = true;
   state.scene.add(stage);
 
+  // Raised lip at the audience-facing (east) edge of the stage
   const stageFront = new THREE.Mesh(
-    new THREE.BoxGeometry(0.08, stageH, stageW),
+    new THREE.BoxGeometry(0.1, stageH + 0.1, stageW),
     new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.6 })
   );
-  stageFront.position.set(vx - venueW / 2 + stageD + 1.0, baseY + stageH / 2, vz);
+  stageFront.position.set(vx - venueW / 2 + stageD + 1.0, baseY + stageH / 2 + 0.05, vz);
+  stageFront.castShadow = true;
   state.scene.add(stageFront);
+
+  // Collision wall — stops players walking into the stage face so legs don't clip
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(vx - venueW / 2 + stageD + 0.6, baseY, vz - stageW / 2),
+    new THREE.Vector3(vx - venueW / 2 + stageD + 1.4, baseY + stageH + 1.8, vz + stageW / 2)
+  ));
 
   // Giant screen
   const screenW = 22, screenH = 8;

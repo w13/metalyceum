@@ -77,7 +77,11 @@ export function createWoodTexture() {
   return texture;
 }
 
+const _texCache = new Map();
+
 export function createStoneTexture() {
+  const cached = _texCache.get('stone');
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
@@ -107,10 +111,13 @@ export function createStoneTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(8, 4);
+  _texCache.set('stone', texture);
   return texture;
 }
 
 export function createBrickTexture() {
+  const cached = _texCache.get('brick');
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
@@ -150,10 +157,79 @@ export function createBrickTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(5, 2);
+  _texCache.set('brick', texture);
+  return texture;
+}
+
+export function createCarpetTexture() {
+  const cached = _texCache.get('carpet');
+  if (cached) return cached;
+
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Deep crimson base
+  ctx.fillStyle = '#701020';
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle pile shading — alternating micro-rows give a woven-fabric feel
+  for (let y = 0; y < size; y += 2) {
+    const alpha = 0.04 + (y % 4 === 0 ? 0.04 : 0);
+    ctx.fillStyle = `rgba(220,100,80,${alpha})`;
+    ctx.fillRect(0, y, size, 1);
+  }
+
+  // Gold diamond lattice — classic ornate carpet motif
+  const step = 32;
+  ctx.strokeStyle = 'rgba(195,152,55,0.30)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let row = -1; row <= size / step + 1; row++) {
+    for (let col = -1; col <= size / step + 1; col++) {
+      const cx = col * step;
+      const cy = row * step;
+      ctx.moveTo(cx,              cy - step / 2);
+      ctx.lineTo(cx + step / 2,  cy);
+      ctx.lineTo(cx,              cy + step / 2);
+      ctx.lineTo(cx - step / 2,  cy);
+      ctx.closePath();
+    }
+  }
+  ctx.stroke();
+
+  // Small gold dot at each lattice vertex
+  ctx.fillStyle = 'rgba(195,152,55,0.50)';
+  for (let row = 0; row <= size / step; row++) {
+    for (let col = 0; col <= size / step; col++) {
+      ctx.beginPath();
+      ctx.arc(col * step, row * step, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Narrow double-rule border (single tile)
+  ctx.strokeStyle = 'rgba(195,152,55,0.55)';
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(5, 5, size - 10, size - 10);
+  ctx.strokeStyle = 'rgba(195,152,55,0.30)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, size - 20, size - 20);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(7, 5);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  _texCache.set('carpet', texture);
   return texture;
 }
 
 export function createMarbleTileTexture() {
+  const cached = _texCache.get('marble');
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 512;
@@ -212,6 +288,7 @@ export function createMarbleTileTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(2, 2);
+  _texCache.set('marble', texture);
   return texture;
 }
 
