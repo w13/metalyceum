@@ -114,11 +114,11 @@ export function updateLocalPlayer(dt, now) {
     state.localPlayer.velocity.z = (state.localPlayer.velocity.z / speedXZ) * maxSpeed;
   }
 
-  if (isCannonReady()) {
+  const body = isCannonReady() ? getPlayerBodyRef() : null;
+  if (body) {
     // Cannon path: push control velocity to body, step, read XZ position back.
     // Control velocity (state.localPlayer.velocity) is never overwritten by Cannon —
     // post-collision velocity goes to displayVelocity for animation/rotation only.
-    const body = getPlayerBodyRef();
     body.velocity.x = state.localPlayer.velocity.x;
     body.velocity.z = state.localPlayer.velocity.z;
     syncBodyY(state.localPlayer.y); // keeps body at correct height so wall colliders intersect
