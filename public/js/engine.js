@@ -11,6 +11,7 @@ import {
   WORLD_CONFIG
 } from './config.js';
 import { getRoomIdForPosition, isLocalPlayerUnderRoof } from './physics.js';
+import { initCannon } from './physics-engine.js';
 import { loadHdriEnvironment } from './environment.js';
 import {
   spawnNpcs,
@@ -362,6 +363,7 @@ export function initEngine() {
   state.scene.add(state.skyDome);
   
   buildMap();
+  initCannon(); // async, non-blocking — fallback collision runs until CDN resolves
   refreshStaticSceneryVisibility();
   
   const event = new CustomEvent('room-marker-teleport');
