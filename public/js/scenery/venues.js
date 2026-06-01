@@ -22,7 +22,7 @@ export function buildOutdoorVenues() {
 
   // - Helper: build a straight road segment
   function buildRoad(x1, z1, x2, z2, width) {
-    const { len, angle } = vec2LengthAngle(x1, z1, x2, z2);
+    const { len } = vec2LengthAngle(x1, z1, x2, z2);
     if (len < 0.5) return;
     const dx = x2 - x1;
     const dz = z2 - z1;
@@ -106,7 +106,23 @@ export function buildOutdoorVenues() {
   }
 
   // - Road 1: Fountain plaza NE edge -> Amphitheater (65, 150)
-  buildRoad(4.3, 62.7, 65, 150, 5.0);
+  // CatmullRom + per-segment terrain sampling — follows the hills rather than
+  // floating at a single midpoint height the way the old buildRoad did.
+  {
+    const ampPts = [
+      new THREE.Vector3(4.3, 0, 62.7),
+      new THREE.Vector3(14,  0, 78),
+      new THREE.Vector3(27,  0, 97),
+      new THREE.Vector3(42,  0, 118),
+      new THREE.Vector3(56,  0, 137),
+      new THREE.Vector3(65,  0, 150),
+    ];
+    ampPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.04; });
+    const ampCurve = new THREE.CatmullRomCurve3(ampPts);
+    const ampSegPts = ampCurve.getPoints(28);
+    ampSegPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.04; });
+    for (let i = 0; i < ampSegPts.length - 1; i++) buildRoadSegment3D(ampSegPts[i], ampSegPts[i + 1], 5.0);
+  }
 
   // - Road 2: Fountain plaza NW edge -> Concert Venue Entrance (Meandering & Terrain-Following)
   const curvePoints = [
@@ -122,7 +138,7 @@ export function buildOutdoorVenues() {
   });
 
   const pathCurve = new THREE.CatmullRomCurve3(curvePoints);
-  const divisions = 30;
+  const divisions = 15;
   const pathPoints = pathCurve.getPoints(divisions);
 
   // Re-sample Y for exact terrain following at each step
@@ -152,11 +168,14 @@ export function buildAmphitheater() {
   const seatMat = new THREE.MeshStandardMaterial({ color: '#57534e', roughness: 0.75, flatShading: true });
   const stageMat = new THREE.MeshStandardMaterial({ color: '#4a5568', roughness: 0.6, metalness: 0.08 });
   const marbleMat = new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.15, metalness: 0.05 });
-  const frameMat = state.sharedScenery.frameMat;
   const screenMat = state.sharedScenery.screenMat;
   const bronzeMat = state.sharedScenery.bronzeMat;
   const stageAngle = Math.PI * 0.25;
+  const cosSA = Math.cos(stageAngle);
+  const sinSA = Math.sin(stageAngle);
   const perpAngle = stageAngle + Math.PI / 2;
+  const cosPA = Math.cos(perpAngle);
+  const sinPA = Math.sin(perpAngle);
   const rowCount = 12;
   const rowStartRadius = 9;
   const rowSpacing = 2.0;
@@ -255,23 +274,26 @@ export function buildAmphitheater() {
     const cosA = Math.cos(theta + Math.PI * 0.25);
     const sinA = Math.sin(theta + Math.PI * 0.25);
 
+    // Batch all stair steps into one InstancedMesh (60 identical BoxGeometry → 1 draw call)
+    const stairStepGeo = new THREE.BoxGeometry(1.0, rowHeightStep * 0.7, rowSpacing * 0.45);
+    const stairInstances = new THREE.InstancedMesh(stairStepGeo, stairMat, rowCount);
+    stairInstances.castShadow = true;
+    stairInstances.receiveShadow = true;
+    const _stairObj = new THREE.Object3D();
     for (let row = 0; row < rowCount; row++) {
       const r = rowStartRadius + row * rowSpacing;
       const tOff = rowTerrainOffset(r);
       const y = baseY + 0.03 + row * rowHeightStep + tOff;
-
-      const stairW = 1.0;
-      const stair = new THREE.Mesh(
-        new THREE.BoxGeometry(stairW, rowHeightStep * 0.7, rowSpacing * 0.45),
-        stairMat
-      );
       const px = ax + cosA * (r - rowSpacing * 0.25);
       const pz = az - sinA * (r - rowSpacing * 0.25);
-      stair.position.set(px, y - rowHeightStep * 0.15, pz);
-      stair.castShadow = true;
-      stair.receiveShadow = true;
-      state.scene.add(stair);
+      _stairObj.position.set(px, y - rowHeightStep * 0.15, pz);
+      _stairObj.scale.set(1, 1, 1);
+      _stairObj.rotation.set(0, 0, 0);
+      _stairObj.updateMatrix();
+      stairInstances.setMatrixAt(row, _stairObj.matrix);
     }
+    stairInstances.instanceMatrix.needsUpdate = true;
+    state.scene.add(stairInstances);
   }
 
   // ── Retaining wall (analemma) around the outer seating ─────────────────
@@ -566,36 +588,29 @@ export function buildAmphitheater() {
   });
 
   // ── Collision barriers ─────────────────────────────────────────────────
-  // Use a segmented barrier with gaps at each vomitorium so players can
-  // enter/exit through the radial staircases from multiple sides.
+  // Segmented arc with gaps at each vomitorium so players can enter/exit
+  // through the radial staircases from multiple sides.
   const barrierR = 32;
-  const gapAngle = 0.12; // ~7° gap at each vomitorium
-  for (let s = 0; s < stairCount; s++) {
-    const theta = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (s + 1);
-    const gapStart = theta - gapAngle;
-    const gapEnd = theta + gapAngle;
-    // Build arc segments between the gaps using box colliders
-    for (let seg = 0; seg < 12; seg++) {
-      const a0 = -arcAngle / 2 + (arcAngle / 12) * seg;
-      const a1 = -arcAngle / 2 + (arcAngle / 12) * (seg + 1);
-      // Skip if this segment overlaps a gap
-      let overlaps = false;
-      for (let g = 0; g < stairCount; g++) {
-        const gt = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (g + 1);
-        if (a0 < gt + gapAngle * 1.5 && a1 > gt - gapAngle * 1.5) { overlaps = true; break; }
-      }
-      if (overlaps) continue;
-
-      const midAngle = (a0 + a1) / 2;
-      const worldAngle = -(midAngle + Math.PI * 0.25);
-      const cx = ax + Math.cos(worldAngle) * (barrierR - 2);
-      const cz = az - Math.sin(worldAngle) * (barrierR - 2);
-      state.PLACED_ASSET_COLLIDERS.push({
-        minX: cx - 3, maxX: cx + 3,
-        minZ: cz - 3, maxZ: cz + 3,
-        assetId: 'amphitheater'
-      });
+  const gapAngle = 0.12;
+  for (let seg = 0; seg < 12; seg++) {
+    const a0 = -arcAngle / 2 + (arcAngle / 12) * seg;
+    const a1 = -arcAngle / 2 + (arcAngle / 12) * (seg + 1);
+    // Check if this segment overlaps any vomitorium gap
+    let overlaps = false;
+    for (let g = 0; g < stairCount; g++) {
+      const gt = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (g + 1);
+      if (a0 < gt + gapAngle * 1.5 && a1 > gt - gapAngle * 1.5) { overlaps = true; break; }
     }
+    if (overlaps) continue;
+    const midAngle = (a0 + a1) / 2;
+    const worldAngle = -(midAngle + Math.PI * 0.25);
+    const cx = ax + Math.cos(worldAngle) * (barrierR - 2);
+    const cz = az - Math.sin(worldAngle) * (barrierR - 2);
+    state.PLACED_ASSET_COLLIDERS.push({
+      minX: cx - 3, maxX: cx + 3,
+      minZ: cz - 3, maxZ: cz + 3,
+      assetId: 'amphitheater'
+    });
   }
   // Also block the area behind the stage (scaenae frons side)
   state.PLACED_ASSET_COLLIDERS.push({
