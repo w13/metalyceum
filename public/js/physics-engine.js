@@ -25,6 +25,8 @@ export async function _initFromModule(cannonMod) {
   world.broadphase = new CANNON.SAPBroadphase(world);
   world.allowSleep = true;
   world.solver.iterations = 10;
+  world.defaultContactMaterial.friction = 0;
+  world.defaultContactMaterial.restitution = 0;
 
   buildWallColliders();
   buildAssetColliders();
@@ -91,18 +93,11 @@ function buildAssetColliders() {
 
 // ── Player body ────────────────────────────────────────────────────────────────
 function createPlayerBody() {
-  const playerMat = new CANNON.Material('player');
-  const worldMat = new CANNON.Material('world');
-  const contact = new CANNON.ContactMaterial(playerMat, worldMat, {
-    friction: 0,
-    restitution: 0,
-  });
-  world.addContactMaterial(contact);
-
-  playerBody = new CANNON.Body({ mass: 1, material: playerMat });
+  playerBody = new CANNON.Body({ mass: 1 });
   playerBody.addShape(new CANNON.Sphere(PLAYER_RADIUS));
   playerBody.fixedRotation = true;
   playerBody.linearDamping = 0; // all drag comes from manual system
+  playerBody.allowSleep = false; // direct velocity writes don't wake sleeping bodies
   playerBody.updateMassProperties();
 
   const startY = getTerrainHeight(state.localPlayer.x, state.localPlayer.z) + PLAYER_RADIUS;
