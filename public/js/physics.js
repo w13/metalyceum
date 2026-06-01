@@ -5,6 +5,7 @@ import { MAP_SIZE, COVERED_BOUNDS, LOBBY_BOUNDS } from './config.js';
 
 // Scratch objects — zero allocations per frame
 const _sphere = new THREE.Sphere(new THREE.Vector3(), 0.4);
+const _sphereLoose = new THREE.Sphere(new THREE.Vector3(), 0.55);
 const _cBox = new THREE.Box3();
 
 // Bumpy terrain function - flat in the center building zone, rolling hills outdoors
@@ -85,4 +86,23 @@ export function getRoomIdForPosition(x, z, padding = 0) {
 export function isLocalPlayerUnderRoof() {
   if (state.localPlayer.currentRoom !== -1) return true;
   return isPointWithinBounds(state.localPlayer.x, state.localPlayer.z, LOBBY_BOUNDS);
+}
+
+// Safety-net collision check with expanded radius — only fires on gross failures.
+// Used on the Cannon path so the net doesn't veto positions Cannon already validated.
+export function checkCollisionLoose(targetX, targetZ) {
+  const mapLim = MAP_SIZE / 2 - 2;
+  if (Math.abs(targetX) > mapLim || Math.abs(targetZ) > mapLim) {
+    return true;
+  }
+  _sphereLoose.center.set(targetX, state.localPlayer?.y ?? 0, targetZ);
+  for (const wallBox of state.WALLS) {
+    if (wallBox.intersectsSphere(_sphereLoose)) return true;
+  }
+  for (const collider of state.PLACED_ASSET_COLLIDERS) {
+    _cBox.min.set(collider.minX, -20, collider.minZ);
+    _cBox.max.set(collider.maxX, 20, collider.maxZ);
+    if (_cBox.intersectsSphere(_sphereLoose)) return true;
+  }
+  return false;
 }
