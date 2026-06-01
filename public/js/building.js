@@ -296,7 +296,7 @@ export function buildBuilding() {
     side: THREE.DoubleSide
   });
   
-  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.35, metalness: 0.08, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const frameMat = state.sharedScenery.frameMat;
   const screenMat = state.sharedScenery.screenMat;
@@ -380,7 +380,7 @@ export function buildBuilding() {
   porticoFoyer.receiveShadow = true;
   state.scene.add(porticoFoyer);
 
-  const carpetMat = new THREE.MeshStandardMaterial({ color: '#7a1a1a', roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide });
+  const carpetMat = new THREE.MeshStandardMaterial({ color: '#7a1a1a', roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const borderMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide });
 
   const carpetExterior = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.0), carpetMat);

@@ -55,7 +55,7 @@ export function getTerrainHeight(x, z) {
   // The terrain rises from the orchestra (flat at r<8) up 6 units at r=35,
   // creating a natural bowl. The seating sits on this slope.
   const d5 = Math.sqrt((x - 65) * (x - 65) + (z - 150) * (z - 150));
-  const hillRise = _ss(14, 38, d5) * 7 * (1 - _ss(38, 55, d5));  // hill: +7u from r=14 to r=38, fade by 55
+  const hillRise = _ss(6, 36, d5) * 9 * (1 - _ss(36, 52, d5));  // hill: +9u from r=6 to r=36, fade by 52
   const f5 = 1 - _ss(0, 46, d5);
 
   // ── Concert venue at (−85, 140) — elliptical to match building footprint

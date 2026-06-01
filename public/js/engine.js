@@ -223,6 +223,14 @@ export function animate() {
     });
   }
 
+  state.upperWalls.forEach(w => {
+    if (w.material && w.material.transparent) {
+      w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, isInside ? 0.0 : 1.0, 8 * dt);
+      w.visible = w.material.opacity > 0.02;
+    } else {
+      w.visible = !isInside;
+    }
+  });
   state.roofMeshes.forEach((roof) => {
     if (roof.material.transparent) {
       roof.material.opacity = THREE.MathUtils.lerp(roof.material.opacity, isInside ? 0.0 : 1.0, 6 * dt);

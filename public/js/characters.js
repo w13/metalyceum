@@ -106,6 +106,7 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
 
   // Hat (style-dependent)
   if (npcStyle.hat !== 'none') {
+  const hatGroup = new THREE.Group();
   const brimGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.04, 8);
   const brim = new THREE.Mesh(brimGeo, brownMat);
   brim.position.y = 2.02;

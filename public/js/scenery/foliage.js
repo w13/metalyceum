@@ -153,8 +153,8 @@ export function buildFrontApproachLandscaping() {
     { x: 12.5, z: 47.0, bushScale: 0.98, id: 'entry-garden-east' },
     { x: -16.4, z: 58.8, bushScale: 1.1, id: 'fountain-garden-west' },
     { x: 16.4, z: 58.8, bushScale: 1.1, id: 'fountain-garden-east' },
-    { x: -9.8, z: 65.8, bushScale: 0.82, id: 'front-garden-west' },
-    { x: 9.8, z: 65.8, bushScale: 0.82, id: 'front-garden-east' }
+    { x: -24.0, z: 63.0, bushScale: 0.82, id: 'front-garden-west' },
+    { x: 22.0, z: 63.0, bushScale: 0.82, id: 'front-garden-east' }
   ];
 
   gardenPods.forEach((pod, index) => {
@@ -185,7 +185,7 @@ export function buildFrontApproachLandscaping() {
   [
     { x: -22.5, z: 45.2, scale: 0.78, id: 'plaza-tree-west-entry' },
     { x: 22.5, z: 45.2, scale: 0.78, id: 'plaza-tree-east-entry' },
-    { x: -24.5, z: 61.5, scale: 0.94, id: 'plaza-tree-west-fountain' },
+    { x: -27.2, z: 60.8, scale: 0.94, id: 'plaza-tree-west-fountain' },
     { x: 24.5, z: 61.5, scale: 0.94, id: 'plaza-tree-east-fountain' }
   ].forEach((tree) => {
     createOrnamentalTree(tree.x, tree.z, { scale: tree.scale, assetId: tree.id });

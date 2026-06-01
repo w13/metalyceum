@@ -37,60 +37,62 @@ export function createWoodTexture() {
   canvas.height = 512;
   const ctx = canvas.getContext('2d');
 
-  // Warm honey-oak base
-  ctx.fillStyle = '#c4956a';
+  // Dark oak base
+  ctx.fillStyle = '#3a2510';
   ctx.fillRect(0, 0, 512, 512);
 
-  // Rich grain lines
+  // Wood grain — per-line sine-wave brightness with noise
   for (let y = 0; y < 512; y++) {
-    const base = 180 + Math.sin(y * 0.15) * 25 + Math.sin(y * 0.07) * 15;
-    const r = base + Math.random() * 12 - 6;
-    const g = base - 25 + Math.random() * 10 - 5;
-    const b = base - 45 + Math.random() * 8 - 4;
-    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    const grain = Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * 18
+                + Math.sin(y * 0.3) * 6
+                + Math.sin(y * 0.7) * 3;
+    const noise = (Math.random() - 0.5) * 8;
+    const val = 60 + grain + noise;
+    ctx.fillStyle = `rgb(${val + 8}, ${val - 5}, ${val - 20})`;
     ctx.fillRect(0, y, 512, 1);
   }
 
-  // Plank seams every 64px
-  ctx.strokeStyle = '#6b4f3b';
+  // Vertical plank seams every 64px
+  ctx.strokeStyle = '#1a0f05';
   ctx.lineWidth = 2;
-  for (let y = 0; y <= 512; y += 64) {
+  for (let x = 0; x <= 512; x += 64) {
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(512, y);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 512);
     ctx.stroke();
   }
 
-  // Herringbone-style cross seams (staggered every other plank row)
-  for (let row = 0; row < 8; row++) {
-    const y = row * 64;
-    const offset = (row % 2) * 96;
-    ctx.strokeStyle = '#6b4f3b';
-    ctx.lineWidth = 1.5;
-    for (let x = offset; x <= 512 + 96; x += 192) {
+  // Subtle horizontal cross-seams (staggered like real flooring)
+  for (let col = 0; col < 8; col++) {
+    const x = col * 64;
+    const offset = (col % 2) * 80;
+    ctx.strokeStyle = '#1a0f05';
+    ctx.lineWidth = 1.2;
+    for (let y = offset; y <= 512 + 80; y += 160) {
       ctx.beginPath();
-      ctx.moveTo(x % 512, y);
-      ctx.lineTo(x % 512, y + 64);
+      ctx.moveTo(x, y % 512);
+      ctx.lineTo(x + 64, y % 512);
       ctx.stroke();
     }
   }
 
-  // Subtle glossy sheen streaks
-  ctx.strokeStyle = 'rgba(255, 230, 200, 0.06)';
-  ctx.lineWidth = 3;
-  for (let i = 0; i < 30; i++) {
+  // Glossy highlights
+  ctx.strokeStyle = 'rgba(160, 120, 80, 0.07)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 20; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x + 40 + Math.random() * 80, y + (Math.random() - 0.5) * 20, x + 120, y + (Math.random() - 0.5) * 10);
+    ctx.lineTo(x + (Math.random() - 0.5) * 80, y + 2 + Math.random() * 8);
     ctx.stroke();
   }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(6, 3);
+  texture.repeat.set(8, 3);
+  texture.anisotropy = 4;
   return texture;
 }
 

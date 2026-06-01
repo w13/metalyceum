@@ -273,9 +273,11 @@ function applyRoomScreenFallback(roomId) {
   if (!screenEntry) return;
   screenEntry.pendingVideoId = '';
   screenEntry.material.map = null;
+  screenEntry.material.emissiveMap = null;
   screenEntry.material.color.copy(screenEntry.baseColor);
   screenEntry.material.emissive.copy(screenEntry.baseEmissive);
   screenEntry.material.emissiveIntensity = 0.2;
+  screenEntry.material.toneMapped = true;
   screenEntry.material.needsUpdate = true;
 }
 
@@ -345,9 +347,11 @@ export function syncRoomScreenMedia(room) {
       return;
     }
     latestEntry.material.map = texture;
+    latestEntry.material.emissiveMap = texture;
     latestEntry.material.color.set('#ffffff');
-    latestEntry.material.emissive.copy(latestEntry.baseEmissive);
-    latestEntry.material.emissiveIntensity = 0.28;
+    latestEntry.material.emissive.set('#ffffff');
+    latestEntry.material.emissiveIntensity = 0.95;
+    latestEntry.material.toneMapped = false;
     latestEntry.material.needsUpdate = true;
   });
 }

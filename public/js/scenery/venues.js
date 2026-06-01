@@ -4,7 +4,6 @@ import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { createBrickTexture, createStoneTexture, createCarpetTexture } from '../textures.js';
 import { registerStaticScenery } from './visibility.js';
-import { vec2LengthAngle } from './utils.js';
 import { FOUNTAIN_X, FOUNTAIN_Z } from './plaza.js';
 
 export function buildOutdoorVenues() {
@@ -20,94 +19,54 @@ export function buildOutdoorVenues() {
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
 
-  // - Helper: build a straight road segment
-  function buildRoad(x1, z1, x2, z2, width) {
-    const { len } = vec2LengthAngle(x1, z1, x2, z2);
-    if (len < 0.5) return;
-    const dx = x2 - x1;
-    const dz = z2 - z1;
-    const mx = (x1 + x2) / 2;
-    const mz = (z1 + z2) / 2;
-    const terrainY = getTerrainHeight(mx, mz);
+  function buildTerrainRibbon(points, width, material, yOffset, lateralOffset = 0) {
+    if (points.length < 2) return;
 
-    const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, len),
-      roadMat
-    );
-    road.rotation.x = -Math.PI / 2;
-    road.rotation.y = Math.atan2(dx, -dz);
-    road.position.set(mx, terrainY + 0.15, mz);
-    road.receiveShadow = true;
-    state.scene.add(road);
+    const positions = [];
+    const indices = [];
 
-    addRoadBorders(mx, mz, dx, dz, width, len, 0.18);
-  }
+    for (let i = 0; i < points.length; i++) {
+      const prev = points[Math.max(i - 1, 0)];
+      const next = points[Math.min(i + 1, points.length - 1)];
+      const tangent = new THREE.Vector3(next.x - prev.x, 0, next.z - prev.z);
+      if (tangent.lengthSq() < 1e-6) tangent.set(0, 0, 1);
+      tangent.normalize();
 
-  /** Place two border strips along the edges of a road segment. */
-  function addRoadBorders(mx, mz, dx, dz, width, len, yOff) {
-    const perpAngle = Math.atan2(dz, dx) + Math.PI / 2;
-    [-1, 1].forEach((side) => {
-      const bx = mx + Math.cos(perpAngle) * (width / 2) * side;
-      const bz = mz + Math.sin(perpAngle) * (width / 2) * side;
-      const borderY = getTerrainHeight(bx, bz);
-      const border = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.12, len),
-        roadBorderMat
+      const right = new THREE.Vector3(tangent.z, 0, -tangent.x);
+      const centerX = points[i].x + right.x * lateralOffset;
+      const centerZ = points[i].z + right.z * lateralOffset;
+      const halfWidth = width / 2;
+      const leftX = centerX - right.x * halfWidth;
+      const leftZ = centerZ - right.z * halfWidth;
+      const rightX = centerX + right.x * halfWidth;
+      const rightZ = centerZ + right.z * halfWidth;
+
+      positions.push(
+        leftX, getTerrainHeight(leftX, leftZ) + yOffset, leftZ,
+        rightX, getTerrainHeight(rightX, rightZ) + yOffset, rightZ
       );
-      border.rotation.x = -Math.PI / 2;
-      border.rotation.y = Math.atan2(dx, -dz);
-      border.position.set(bx, borderY + yOff, bz);
-      state.scene.add(border);
-    });
+
+      if (i < points.length - 1) {
+        const base = i * 2;
+        indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.receiveShadow = true;
+    state.scene.add(mesh);
   }
 
-  // - Helper: build a 3D terrain-following road segment
-  function buildRoadSegment3D(p1, p2, width) {
-    const direction = new THREE.Vector3().subVectors(p2, p1);
-    const len = direction.length();
-    if (len < 0.1) return;
-
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(width, len), roadMat);
-    const midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-    road.position.copy(midpoint);
-    const target = new THREE.Vector3().copy(midpoint).add(direction);
-    road.lookAt(target);
-    road.rotateX(-Math.PI / 2);
-    road.receiveShadow = true;
-    state.scene.add(road);
-
-    [-1, 1].forEach((side) => {
-      const right = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
-      const bp1 = new THREE.Vector3().copy(p1).addScaledVector(right, (width / 2) * side);
-      const bp2 = new THREE.Vector3().copy(p2).addScaledVector(right, (width / 2) * side);
-      bp1.y = getTerrainHeight(bp1.x, bp1.z) + 0.09;
-      bp2.y = getTerrainHeight(bp2.x, bp2.z) + 0.09;
-      const bDir = new THREE.Vector3().subVectors(bp2, bp1);
-      const bLen = bDir.length();
-      const bMid = new THREE.Vector3().addVectors(bp1, bp2).multiplyScalar(0.5);
-      const border = new THREE.Mesh(new THREE.PlaneGeometry(0.12, bLen), roadBorderMat);
-      border.position.copy(bMid);
-      border.lookAt(new THREE.Vector3().copy(bMid).add(bDir));
-      border.rotateX(-Math.PI / 2);
-      state.scene.add(border);
-    });
+  function buildTerrainRoad(points, width) {
+    buildTerrainRibbon(points, width, roadMat, 0.15);
+    buildTerrainRibbon(points, 0.12, roadBorderMat, 0.18, width / 2);
+    buildTerrainRibbon(points, 0.12, roadBorderMat, 0.18, -width / 2);
   }
-    const perpAngle = Math.atan2(dz, dx) + Math.PI / 2;
-    [-1, 1].forEach((side) => {
-      const bx = mx + Math.cos(perpAngle) * (width / 2) * side;
-      const bz = mz + Math.sin(perpAngle) * (width / 2) * side;
-      const borderY = getTerrainHeight(bx, bz);
-      const border = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.12, len),
-        roadBorderMat
-      );
-      border.rotation.x = -Math.PI / 2;
-      border.rotation.y = Math.atan2(dx, -dz);
-      border.position.set(bx, borderY + yOff, bz);
-      state.scene.add(border);
-    });
-  }
-
   // - Road 1: Fountain plaza NE edge → Amphitheater (terrain-following)
   {
     const ampPts = [
@@ -118,11 +77,9 @@ export function buildOutdoorVenues() {
       new THREE.Vector3(56,  0, 137),
       new THREE.Vector3(65,  0, 150)
     ];
-    ampPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
     const curve = new THREE.CatmullRomCurve3(ampPts);
-    const pts = curve.getPoints(28);
-    pts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
-    for (let i = 0; i < pts.length - 1; i++) buildRoadSegment3D(pts[i], pts[i+1], 5.0);
+    const pts = curve.getPoints(72);
+    buildTerrainRoad(pts, 5.0);
   }
 
   // - Road 2: Fountain plaza NW edge → Concert Venue (terrain-following)
@@ -135,11 +92,9 @@ export function buildOutdoorVenues() {
       new THREE.Vector3(-48,  0, 122),
       new THREE.Vector3(-60,  0, 140)
     ];
-    cvPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
     const curve = new THREE.CatmullRomCurve3(cvPts);
-    const pts = curve.getPoints(16);
-    pts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
-    for (let i = 0; i < pts.length - 1; i++) buildRoadSegment3D(pts[i], pts[i+1], 4.5);
+    const pts = curve.getPoints(56);
+    buildTerrainRoad(pts, 4.5);
   }
 
   // Road 3 removed — plaza circle + approach strip cover the connection
@@ -164,422 +119,172 @@ export function buildAmphitheater() {
   const sinSA = Math.sin(stageAngle);
   const perpAngle = stageAngle + Math.PI / 2;
   const cosPA = Math.cos(perpAngle);
-  const sinPA = Math.sin(perpAngle);
   const rowCount = 12;
   const rowStartRadius = 9;
   const rowSpacing = 2.0;
-  const rowHeightStep = 0.5;
-  const arcAngle = Math.PI * 0.85; // ~153° arc
-  const outerRadius = rowStartRadius + (rowCount - 1) * rowSpacing + 0.5; // 31.5
+  const arcAngle = Math.PI * 0.85;
+  const outerRadius = rowStartRadius + (rowCount - 1) * rowSpacing + 0.5;
 
-  // ── Terrain sampler for seating rows ───────────────────────────────────
-  // Each row sits at the terrain height at that position, so the seating is
-  // carved into the hill. Inner rows are near the flat orchestra; outer rows
-  // ride up the hill slope.
-  function rowTerrainOffset(radius) {
+  // Row Y: each row sits at the higher of terrain height or the step level
+  function rowY(row) {
+    const radius = rowStartRadius + row * rowSpacing;
     const angles = [-arcAngle / 2, 0, arcAngle / 2];
     let sum = 0;
     for (const theta of angles) {
-      const worldAngle = -(theta + Math.PI * 0.25);
-      const sx = ax + Math.cos(worldAngle) * radius;
-      const sz = az - Math.sin(worldAngle) * radius;
-      sum += getTerrainHeight(sx, sz) - baseY;
+      const wa = -(theta + Math.PI * 0.25);
+      sum += getTerrainHeight(ax + Math.cos(wa) * radius, az - Math.sin(wa) * radius);
     }
-    const terrainH = sum / angles.length;
-    // blend terrain offset with step height: flat inner rows step up, outer rows follow hill
-    const stepH = (radius - rowStartRadius) / rowSpacing * rowHeightStep;
-    return Math.max(terrainH, stepH);
+    return Math.max(sum / 3, baseY + row * 0.5) + 0.03;
   }
 
-  // ── Ground platform ─────────────────────────────────────────────────────
-  const platform = new THREE.Mesh(
-    new THREE.CircleGeometry(34, 48),
-    new THREE.MeshStandardMaterial({ color: '#3a5a3a', roughness: 0.85 })
-  );
-  platform.rotation.x = -Math.PI / 2;
-  platform.position.set(ax, baseY + 0.02, az);
-  platform.receiveShadow = true;
-  state.scene.add(platform);
+  // ── Unified amphitheater ──────────────────────────────────────────────
+  // Orchestra: flat marble circle at center
+  const orch = new THREE.Mesh(new THREE.CircleGeometry(8, 36), marbleMat);
+  orch.rotation.x = -Math.PI / 2;
+  orch.position.set(ax, baseY + 0.03, az);
+  orch.receiveShadow = true;
+  state.scene.add(orch);
 
-  // ── Orchestra (marble floor) ────────────────────────────────────────────
-  const orchestra = new THREE.Mesh(
-    new THREE.CircleGeometry(7.5, 36),
-    marbleMat
-  );
-  orchestra.rotation.x = -Math.PI / 2;
-  orchestra.position.set(ax, baseY + 0.03, az);
-  orchestra.receiveShadow = true;
-  state.scene.add(orchestra);
+  // Orchestra border
+  const ob = new THREE.Mesh(new THREE.RingGeometry(7.8, 8.2, 36),
+    new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.5 }));
+  ob.rotation.x = -Math.PI / 2;
+  ob.position.set(ax, baseY + 0.035, az);
+  state.scene.add(ob);
 
-  // Orchestra border ring
-  const orchestraBorder = new THREE.Mesh(
-    new THREE.RingGeometry(7.4, 7.7, 36),
-    new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.5 })
-  );
-  orchestraBorder.rotation.x = -Math.PI / 2;
-  orchestraBorder.position.set(ax, baseY + 0.035, az);
-  state.scene.add(orchestraBorder);
-
-  // ── Stepped seating (concentric arcs) ────────────────────────────────────
+  // Stepped seating — concentric arcs rising with the terrain hill
   for (let row = 0; row < rowCount; row++) {
-    const radius = rowStartRadius + row * rowSpacing;
-    const segments = 24 + row * 2;
+    const r = rowStartRadius + row * rowSpacing;
+    const y = rowY(row);
+    const segs = 24 + row * 2;
+    const sg = new THREE.Mesh(
+      new THREE.RingGeometry(r - 0.5, r + 0.5, segs, 1, -arcAngle / 2, arcAngle),
+      seatMat);
+    sg.rotation.x = -Math.PI / 2;
+    sg.position.set(ax, y, az);
+    sg.rotation.z = Math.PI * 0.25;
+    sg.receiveShadow = true;
+    state.scene.add(sg);
 
-    const stepGeo = new THREE.RingGeometry(
-      radius - 0.5,
-      radius + 0.5,
-      segments, 1,
-      -arcAngle / 2,
-      arcAngle
-    );
-    const tOff = rowTerrainOffset(radius);
-    const step = new THREE.Mesh(stepGeo, seatMat);
-    step.rotation.x = -Math.PI / 2;
-    step.position.set(ax, baseY + 0.03 + tOff, az);
-    step.rotation.z = Math.PI * 0.25;
-    step.receiveShadow = true;
-    state.scene.add(step);
-
-    // Vertical riser
     if (row > 0) {
-      const prevTOff = rowTerrainOffset(radius - rowSpacing);
-      const riserH = tOff - prevTOff;
-      if (riserH > 0.01) {
+      const prevY = rowY(row - 1);
+      const rh = y - prevY;
+      if (rh > 0.01) {
         const riser = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius + 0.5, radius + 0.5, riserH - 0.03, segments, 1, true, -arcAngle / 2, arcAngle),
-          stoneMat
-        );
-        riser.position.set(ax, baseY + (tOff + prevTOff) / 2, az);
+          new THREE.CylinderGeometry(r + 0.5, r + 0.5, rh - 0.03, segs, 1, true, -arcAngle / 2, arcAngle),
+          stoneMat);
+        riser.position.set(ax, (y + prevY) / 2, az);
         riser.rotation.y = Math.PI * 0.25;
         state.scene.add(riser);
       }
     }
   }
 
-  // ── Radial staircases (kerkides) — 5 stairs, 6 wedges ──────────────────
-  const stairCount = 5;
+  // Radial stairs — 5 staircases up the seating
   const stairMat = new THREE.MeshStandardMaterial({ color: '#78716c', roughness: 0.72 });
-
-  for (let s = 0; s < stairCount; s++) {
-    const theta = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (s + 1);
-    const cosA = Math.cos(theta + Math.PI * 0.25);
-    const sinA = Math.sin(theta + Math.PI * 0.25);
-
-    // Batch all stair steps into one InstancedMesh (60 identical BoxGeometry → 1 draw call)
-    const stairStepGeo = new THREE.BoxGeometry(1.0, rowHeightStep * 0.7, rowSpacing * 0.45);
-    const stairInstances = new THREE.InstancedMesh(stairStepGeo, stairMat, rowCount);
-    stairInstances.castShadow = true;
-    stairInstances.receiveShadow = true;
-    const _stairObj = new THREE.Object3D();
+  for (let s = 0; s < 5; s++) {
+    const theta = -arcAngle / 2 + (arcAngle / 6) * (s + 1);
+    const ca = Math.cos(theta + Math.PI * 0.25);
+    const sa = Math.sin(theta + Math.PI * 0.25);
+    const stepGeo = new THREE.BoxGeometry(1.0, 0.35, 0.9);
+    const inst = new THREE.InstancedMesh(stepGeo, stairMat, rowCount);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    const obj = new THREE.Object3D();
     for (let row = 0; row < rowCount; row++) {
       const r = rowStartRadius + row * rowSpacing;
-      const tOff = rowTerrainOffset(r);
-      const y = baseY + 0.03 + tOff;
-      const px = ax + cosA * (r - rowSpacing * 0.25);
-      const pz = az - sinA * (r - rowSpacing * 0.25);
-      _stairObj.position.set(px, y - rowHeightStep * 0.15, pz);
-      _stairObj.scale.set(1, 1, 1);
-      _stairObj.rotation.set(0, 0, 0);
-      _stairObj.updateMatrix();
-      stairInstances.setMatrixAt(row, _stairObj.matrix);
+      const y = rowY(row);
+      obj.position.set(ax + ca * (r - 0.5), y - 0.075, az - sa * (r - 0.5));
+      obj.updateMatrix();
+      inst.setMatrixAt(row, obj.matrix);
     }
-    stairInstances.instanceMatrix.needsUpdate = true;
-    state.scene.add(stairInstances);
+    inst.instanceMatrix.needsUpdate = true;
+    state.scene.add(inst);
   }
 
-  // ── Retaining wall (analemma) around the outer seating ─────────────────
-  const outerTOff = rowTerrainOffset(outerRadius);
-  const wallHeight = outerTOff + 0.5;
-  const outerWall = new THREE.Mesh(
-    new THREE.CylinderGeometry(outerRadius + 0.3, outerRadius + 0.3, wallHeight, 48, 1, true, -arcAngle / 2, arcAngle),
-    stoneMat
-  );
-  outerWall.position.set(ax, baseY + wallHeight / 2, az);
-  outerWall.rotation.y = Math.PI * 0.25;
-  outerWall.castShadow = true;
-  outerWall.receiveShadow = true;
-  state.scene.add(outerWall);
+  // Retaining wall around outer seating
+  const outerY = rowY(rowCount - 1);
+  const wall = new THREE.Mesh(
+    new THREE.CylinderGeometry(outerRadius + 0.3, outerRadius + 0.3, outerY - baseY + 0.5, 48, 1, true, -arcAngle / 2, arcAngle),
+    stoneMat);
+  wall.position.set(ax, (baseY + outerY + 0.5) / 2, az);
+  wall.rotation.y = Math.PI * 0.25;
+  wall.castShadow = true;
+  wall.receiveShadow = true;
+  state.scene.add(wall);
 
-  // Wall cap (top rim)
-  const wallCap = new THREE.Mesh(
+  // Wall cap
+  const cap = new THREE.Mesh(
     new THREE.RingGeometry(outerRadius + 0.1, outerRadius + 0.6, 48, 1, -arcAngle / 2, arcAngle),
-    warmStoneMat
-  );
-  wallCap.rotation.x = -Math.PI / 2;
-  wallCap.position.set(ax, baseY + wallHeight + 0.03, az);
-  wallCap.rotation.z = Math.PI * 0.25;
-  state.scene.add(wallCap);
+    warmStoneMat);
+  cap.rotation.x = -Math.PI / 2;
+  cap.position.set(ax, outerY + 0.5, az);
+  cap.rotation.z = Math.PI * 0.25;
+  state.scene.add(cap);
 
-  // ── Earth embankment ─────────
-  const embBankMat = new THREE.MeshStandardMaterial({ color: '#4a7a2a', roughness: 0.9, flatShading: true });
-  const embOuterRadius = outerRadius + 8;
-  const embankment = new THREE.Mesh(
-    new THREE.RingGeometry(outerRadius + 0.5, embOuterRadius, 48, 1, -arcAngle / 2, arcAngle),
-    embBankMat
-  );
-  embankment.rotation.x = -Math.PI / 2;
-  embankment.position.set(ax, baseY + 0.02, az);
-  embankment.rotation.z = Math.PI * 0.25;
-  embankment.receiveShadow = true;
-  state.scene.add(embankment);
-
-  // ── Stage ─────────────────────────────────────────────────────
-  const stageW = 22, stageD = 8;
+  // Stage — sits at the open side of the seating arc, connected to the orchestra
   const stageDist = rowStartRadius - 1.5;
-
-  const stage = new THREE.Mesh(
-    new THREE.BoxGeometry(stageW, 0.4, stageD),
-    stageMat
-  );
-  stage.position.set(
-    ax + Math.cos(stageAngle) * stageDist,
-    baseY + 0.2,
-    az + Math.sin(stageAngle) * stageDist
-  );
+  const stage = new THREE.Mesh(new THREE.BoxGeometry(22, 0.4, 8), stageMat);
+  stage.position.set(ax + cosSA * stageDist, baseY + 0.2, az + sinSA * stageDist);
   stage.receiveShadow = true;
   stage.castShadow = true;
   state.scene.add(stage);
 
-  // Stage front facing (decorative panel)
-  const stageFront = new THREE.Mesh(
-    new THREE.BoxGeometry(stageW + 0.1, 0.35, 0.08),
-    new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.3 })
-  );
-  stageFront.position.set(
-    ax + Math.cos(stageAngle) * (stageDist - stageD / 2),
-    baseY + 0.175,
-    az + Math.sin(stageAngle) * (stageDist - stageD / 2)
-  );
-  stageFront.rotation.y = stageAngle;
-  state.scene.add(stageFront);
+  const sf = new THREE.Mesh(new THREE.BoxGeometry(22.1, 0.35, 0.08),
+    new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.3 }));
+  sf.position.set(ax + cosSA * (stageDist - 4), baseY + 0.175, az + sinSA * (stageDist - 4));
+  sf.rotation.y = stageAngle;
+  state.scene.add(sf);
 
-  // Stage border trim
-  const stageTrim = new THREE.Mesh(
-    new THREE.BoxGeometry(stageW + 0.5, 0.06, stageD + 0.5),
-    new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.5, metalness: 0.15 })
-  );
-  stageTrim.position.set(
-    ax + Math.cos(stageAngle) * stageDist,
-    baseY + 0.02,
-    az + Math.sin(stageAngle) * stageDist
-  );
-  state.scene.add(stageTrim);
+  // Scaenae frons — grand backdrop wall with screen
+  const sDist = stageDist + 5;
+  const sx = ax + cosSA * sDist, sz = az + sinSA * sDist;
+  const bw = new THREE.Mesh(new THREE.BoxGeometry(24, 9, 0.5), warmStoneMat);
+  bw.position.set(sx, baseY + 4.5, sz);
+  bw.receiveShadow = true;
+  bw.castShadow = true;
+  state.scene.add(bw);
 
-  // ── Scaenae frons ──────────────
-  const scaenaeW = 24;
-  const scaenaeH = 9;
-  const scaenaeDist = stageDist + stageD / 2 + 0.5;
-  const scaenaeX = ax + Math.cos(stageAngle) * scaenaeDist;
-  const scaenaeZ = az + Math.sin(stageAngle) * scaenaeDist;
+  // Screen embedded in the central niche of the scaenae frons
+  const sm = new THREE.Mesh(new THREE.PlaneGeometry(7, 4), screenMat.clone());
+  sm.position.set(sx + cosSA * 0.3, baseY + 4.8, sz + sinSA * 0.3);
+  sm.rotation.y = stageAngle;
+  sm.userData = { roomId: 8 };
+  state.clickableScreens.push(sm);
+  state.roomScreens.set(8, { material: sm.material, baseColor: sm.material.color.clone(),
+    baseEmissive: sm.material.emissive.clone() });
+  state.scene.add(sm);
 
-  // Main back wall
-  const backWall = new THREE.Mesh(
-    new THREE.BoxGeometry(scaenaeW, scaenaeH, 0.5),
-    warmStoneMat
-  );
-  backWall.position.set(scaenaeX, baseY + scaenaeH / 2, scaenaeZ);
-  backWall.receiveShadow = true;
-  backWall.castShadow = true;
-  state.scene.add(backWall);
+  const gl = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(7.2, 4.2)),
+    new THREE.LineBasicMaterial({ color: '#22c55e', transparent: true, opacity: 0.25 }));
+  gl.position.copy(sm.position); gl.rotation.copy(sm.rotation);
+  state.scene.add(gl);
 
-  // Three arched niches
-  const nicheMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.8 });
-  const nicheW = [8, 6, 6];
-  const nicheH = [5.0, 3.5, 3.5];
-
-  [-1, 0, 1].forEach((n) => {
-    const nw = n === 0 ? nicheW[0] : nicheW[1];
-    const nh = n === 0 ? nicheH[0] : nicheH[1];
-    const nxOff = n * 8.5;
-
-    const niche = new THREE.Mesh(
-      new THREE.BoxGeometry(nw, nh, 0.05),
-      nicheMat
-    );
-    niche.position.set(
-      scaenaeX + Math.cos(perpAngle) * nxOff,
-      baseY + 2.5 + nh / 2,
-      scaenaeZ + Math.cos(stageAngle) * 0.28
-    );
-    state.scene.add(niche);
-
-    // Arch trim
-    const archTrim = new THREE.Mesh(
-      new THREE.BoxGeometry(nw + 0.4, 0.15, 0.12),
-      bronzeMat
-    );
-    archTrim.position.set(
-      scaenaeX + Math.cos(perpAngle) * nxOff,
-      baseY + 2.5 + nh + 0.05,
-      scaenaeZ + Math.cos(stageAngle) * 0.28
-    );
-    state.scene.add(archTrim);
-  });
-
-  // Pilasters
-  [-1, 0, 1].forEach((p) => {
-    const pilasterX = scaenaeX + Math.cos(perpAngle) * p * 8.5;
-    const pilW = p === 0 ? 0.6 : 0.4;
-    const pilaster = new THREE.Mesh(
-      new THREE.BoxGeometry(pilW, scaenaeH, 0.55),
-      warmStoneMat
-    );
-    pilaster.position.set(pilasterX, baseY + scaenaeH / 2, scaenaeZ);
-    pilaster.castShadow = true;
-    state.scene.add(pilaster);
-  });
-
-  // Entablature
-  const entablature = new THREE.Mesh(
-    new THREE.BoxGeometry(scaenaeW + 1.0, 0.5, 0.7),
-    warmStoneMat
-  );
-  entablature.position.set(scaenaeX, baseY + scaenaeH + 0.25, scaenaeZ);
-  state.scene.add(entablature);
-
-  // Cornice
-  const cornice = new THREE.Mesh(
-    new THREE.BoxGeometry(scaenaeW + 1.5, 0.2, 0.9),
-    new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.3 })
-  );
-  cornice.position.set(scaenaeX, baseY + scaenaeH + 0.6, scaenaeZ);
-  state.scene.add(cornice);
-
-  // Pediment
-  const pedShape = new THREE.Shape();
-  const pedHalf = (scaenaeW + 1.0) / 2;
-  pedShape.moveTo(-pedHalf, 0);
-  pedShape.lineTo(pedHalf, 0);
-  pedShape.lineTo(0, 2.0);
-  pedShape.closePath();
-
-  const pedGeo = new THREE.ExtrudeGeometry(pedShape, { depth: 0.5, bevelEnabled: false });
-  const pediment = new THREE.Mesh(pedGeo, warmStoneMat);
-  pediment.position.set(scaenaeX, baseY + scaenaeH + 0.7, scaenaeZ - 0.22);
-  const pedAngle = stageAngle + Math.PI;
-  pediment.rotation.y = pedAngle;
-  state.scene.add(pediment);
-
-  // ── Screen ────────────────────────────────
-  const screenW = 8, screenH = 4.5;
-  const screenMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(screenW, screenH),
-    screenMat.clone()
-  );
-  screenMesh.position.set(
-    scaenaeX + Math.cos(stageAngle) * 0.3,
-    baseY + 5.0,
-    scaenaeZ + Math.sin(stageAngle) * 0.3
-  );
-  screenMesh.rotation.y = stageAngle;
-  screenMesh.userData = { roomId: 8 };
-  state.clickableScreens.push(screenMesh);
-  state.roomScreens.set(8, {
-    material: screenMesh.material,
-    baseColor: screenMesh.material.color.clone(),
-    baseEmissive: screenMesh.material.emissive.clone()
-  });
-  state.scene.add(screenMesh);
-
-  // Green glow border
-  const glowEdgeGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(screenW + 0.2, screenH + 0.2));
-  const glowBorder = new THREE.LineSegments(
-    glowEdgeGeo,
-    new THREE.LineBasicMaterial({ color: '#22c55e', transparent: true, opacity: 0.25 })
-  );
-  glowBorder.position.copy(screenMesh.position);
-  glowBorder.rotation.copy(screenMesh.rotation);
-  state.scene.add(glowBorder);
-
-  // ── Grand entrance stairway ──────────────────────────────
-  const stairDirX = Math.cos(stageAngle);
-  const stairDirZ = Math.sin(stageAngle);
-  const stairSteps = 8;
-  const stairW = 4.0;
-  const stepHeight = 0.2;
-  const stepDepth = 0.6;
-
-  for (let st = 0; st < stairSteps; st++) {
-    const sDist = stageDist + 1.5 + st * stepDepth;
-    const sY = baseY + (st + 1) * stepHeight;
-    const stepMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(stairW, stepHeight, stepDepth),
-      stoneMat
-    );
-    stepMesh.position.set(
-      ax + stairDirX * sDist,
-      sY,
-      az + stairDirZ * sDist
-    );
-    stepMesh.receiveShadow = true;
-    stepMesh.castShadow = true;
-    state.scene.add(stepMesh);
+  // Entrance stairway from the road
+  for (let st = 0; st < 8; st++) {
+    const d = stageDist + 2 + st * 0.6;
+    const step = new THREE.Mesh(new THREE.BoxGeometry(4, 0.2, 0.6), stoneMat);
+    step.position.set(ax + cosSA * d, baseY + (st + 1) * 0.2, az + sinSA * d);
+    step.receiveShadow = true;
+    step.castShadow = true;
+    state.scene.add(step);
   }
 
-  // ── Entrance marker columns ────────────────────────────────────────────
-  const colMat = new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.4, metalness: 0.05 });
-  [-3.5, 3.5].forEach((xOff) => {
-    const colPos = {
-      x: ax + stairDirX * (stageDist + 1.0) + Math.cos(perpAngle) * xOff,
-      z: az + stairDirZ * (stageDist + 1.0) + Math.sin(perpAngle) * xOff
-    };
-
-    const col = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.25, 4.5, 8),
-      colMat
-    );
-    col.position.set(colPos.x, baseY + 2.25, colPos.z);
-    col.castShadow = true;
-    state.scene.add(col);
-
-    const capital = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.35, 0.2, 0.3, 8),
-      colMat
-    );
-    capital.position.set(colPos.x, baseY + 4.5, colPos.z);
-    state.scene.add(capital);
-
-    const topper = new THREE.Mesh(
-      new THREE.SphereGeometry(0.25, 6, 6),
-      new THREE.MeshBasicMaterial({ color: '#22c55e' })
-    );
-    topper.position.set(colPos.x, baseY + 4.9, colPos.z);
-    state.scene.add(topper);
-  });
-
-  // ── Collision barriers ─────────────────────────────────────────────────
-  // Segmented arc with gaps at each vomitorium so players can enter/exit
-  // through the radial staircases from multiple sides.
-  const barrierR = 32;
-  const gapAngle = 0.12;
-  for (let seg = 0; seg < 12; seg++) {
-    const a0 = -arcAngle / 2 + (arcAngle / 12) * seg;
-    const a1 = -arcAngle / 2 + (arcAngle / 12) * (seg + 1);
-    // Check if this segment overlaps any vomitorium gap
-    let overlaps = false;
-    for (let g = 0; g < stairCount; g++) {
-      const gt = -arcAngle / 2 + (arcAngle / (stairCount + 1)) * (g + 1);
-      if (a0 < gt + gapAngle * 1.5 && a1 > gt - gapAngle * 1.5) { overlaps = true; break; }
-    }
-    if (overlaps) continue;
-    const midAngle = (a0 + a1) / 2;
-    const worldAngle = -(midAngle + Math.PI * 0.25);
-    const cx = ax + Math.cos(worldAngle) * (barrierR - 2);
-    const cz = az - Math.sin(worldAngle) * (barrierR - 2);
-    state.PLACED_ASSET_COLLIDERS.push({
-      minX: cx - 3, maxX: cx + 3,
-      minZ: cz - 3, maxZ: cz + 3,
-      assetId: 'amphitheater'
-    });
+  // Collision: block the seating arc with stairway gaps
+  for (let seg = 0; seg < 10; seg++) {
+    if ([2, 4, 6, 8].includes(seg)) continue;
+    const ma = (-arcAngle / 2 + (arcAngle / 10) * (seg + 0.5));
+    const wa = -(ma + Math.PI * 0.25);
+    const cx = ax + Math.cos(wa) * 30, cz = az - Math.sin(wa) * 30;
+    state.PLACED_ASSET_COLLIDERS.push({ minX: cx - 3, maxX: cx + 3, minZ: cz - 3, maxZ: cz + 3, assetId: 'amphitheater' });
   }
-  // Also block the area behind the stage (scaenae frons side)
-  state.PLACED_ASSET_COLLIDERS.push({
-    minX: ax + 25, maxX: ax + 40,
-    minZ: az + 18, maxZ: az + 40,
-    assetId: 'amphitheater'
-  });
+  // Block the stage area and scaenae frons
+  const stageCx = ax + cosSA * (stageDist + 2);
+  const stageCz = az + sinSA * (stageDist + 2);
+  state.PLACED_ASSET_COLLIDERS.push({ minX: stageCx - 13, maxX: stageCx + 10, minZ: stageCz - 13, maxZ: stageCz + 10, assetId: 'amphitheater' });
 
-  registerStaticScenery(platform, { kind: 'outdoor', distance: 140 });
+  registerStaticScenery(orch, { kind: 'outdoor', distance: 140 });
 }
 
 export function buildConcertVenue() {
@@ -761,106 +466,8 @@ export function buildConcertVenue() {
     state.scene.add(glassS);
   }
 
-  // ── Greek Revival Portico (East Entrance) ──────────────────────────────
-  // Projects 1.6 units east of the building face so it reads clearly from the road.
-  // 4 Doric columns: outer pair flanks the opening, inner pair marks the threshold.
-  // The 6-unit doorway gap (z: 137–143) remains passable between the columns.
-  const porticoX  = vx + venueW / 2 + 0.4;   // column centerline: x ≈ -61.6 (flush with wall)
-  const porticoColH = venueH - 0.4;             // 9.6 u — taller than the lintel
-  const porticoColPositions = [vz - 3.0, vz - 1.0, vz + 1.0, vz + 3.0];
-
-  porticoColPositions.forEach((cz) => {
-    // Plinth (square base)
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.28, 0.88), stoneTrimMat);
-    plinth.position.set(porticoX, baseY + 0.14, cz);
-    plinth.castShadow = true;
-    plinth.receiveShadow = true;
-    state.scene.add(plinth);
-
-    // Shaft — Doric taper (bottom radius 0.36, top 0.27)
-    const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.27, 0.36, porticoColH - 0.55, 10),
-      stoneTrimMat
-    );
-    shaft.position.set(porticoX, baseY + 0.28 + (porticoColH - 0.55) / 2, cz);
-    shaft.castShadow = true;
-    shaft.receiveShadow = true;
-    state.scene.add(shaft);
-
-    // Echinus (curved capital transition)
-    const echinus = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.44, 0.28, 0.24, 10),
-      stoneTrimMat
-    );
-    echinus.position.set(porticoX, baseY + porticoColH - 0.32, cz);
-    echinus.castShadow = true;
-    state.scene.add(echinus);
-
-    // Abacus (flat capital slab)
-    const abacus = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.2, 0.9), stoneTrimMat);
-    abacus.position.set(porticoX, baseY + porticoColH - 0.1, cz);
-    abacus.castShadow = true;
-    state.scene.add(abacus);
-  });
-
-  // Entablature spanning all 4 columns (architrave + frieze + geison)
-  const entabSpan = (vz + 4.6) - (vz - 4.6) + 1.0; // 10.2 u with overhang
-
-  const architrave = new THREE.Mesh(
-    new THREE.BoxGeometry(0.68, 0.42, entabSpan), stoneTrimMat
-  );
-  architrave.position.set(porticoX, baseY + porticoColH + 0.21, vz);
-  architrave.castShadow = true;
-  architrave.receiveShadow = true;
-  state.scene.add(architrave);
-
-  const frieze = new THREE.Mesh(
-    new THREE.BoxGeometry(0.62, 0.52, entabSpan - 0.1),
-    new THREE.MeshStandardMaterial({ color: '#d4cfc6', roughness: 0.5 })
-  );
-  frieze.position.set(porticoX, baseY + porticoColH + 0.64, vz);
-  frieze.castShadow = true;
-  state.scene.add(frieze);
-
-  const geison = new THREE.Mesh(
-    new THREE.BoxGeometry(0.88, 0.22, entabSpan + 0.4), stoneTrimMat
-  );
-  geison.position.set(porticoX, baseY + porticoColH + 1.01, vz);
-  geison.castShadow = true;
-  state.scene.add(geison);
-
-  // Triangular pediment — proper Greek gable facing east (toward road)
-  // rotation.y = PI/2 → local +X maps to world -Z (spans north-south), local +Z → world +X (projects east)
-  const pedHalfSpan = entabSpan / 2 + 0.1;
-  const pedShape = new THREE.Shape();
-  pedShape.moveTo(-pedHalfSpan, 0);
-  pedShape.lineTo(pedHalfSpan, 0);
-  pedShape.lineTo(0, 2.1);
-  pedShape.closePath();
-
-  const pedGeo = new THREE.ExtrudeGeometry(pedShape, { depth: 0.58, bevelEnabled: false });
-  const pedimentMesh = new THREE.Mesh(pedGeo, stoneTrimMat);
-  pedimentMesh.rotation.y = Math.PI / 2;
-  pedimentMesh.position.set(porticoX, baseY + porticoColH + 1.12, vz);
-  pedimentMesh.castShadow = true;
-  state.scene.add(pedimentMesh);
-
-  // Portico roof slab (ties portico to building wall)
-  const porticoRoofSlab = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.18, entabSpan + 0.6),
-    new THREE.MeshStandardMaterial({ color: '#bab6ae', roughness: 0.55 })
-  );
-  porticoRoofSlab.position.set(vx + venueW / 2 + 0.9, baseY + porticoColH + 1.14, vz);
-  state.scene.add(porticoRoofSlab);
-  state.roofMeshes.push(porticoRoofSlab);
-
-  // Portico floor extension (marble apron in front of entrance)
-  const porticoFloor = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.14, entabSpan + 0.8), stoneTrimMat
-  );
-  porticoFloor.position.set(vx + venueW / 2 + 0.9, baseY + 0.07, vz);
-  porticoFloor.receiveShadow = true;
-  state.scene.add(porticoFloor);
+  // Portico removed — columns looked freestanding from across the field.
+  // The wall opening + lintel still frame the entrance clearly.
 
   // Stone Trim / Cornice
   const cornice = new THREE.Mesh(

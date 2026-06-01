@@ -133,8 +133,8 @@ export function buildExteriorPlaza() {
     { x: 12.5, z: 47.0, radius: 1.95, scaleX: 2.95, scaleY: 1.7 },
     { x: -16.4, z: 58.8, radius: 2.25, scaleX: 2.35, scaleY: 1.9 },
     { x: 16.4, z: 58.8, radius: 2.25, scaleX: 2.35, scaleY: 1.9 },
-    { x: -9.8, z: 65.8, radius: 1.55, scaleX: 2.15, scaleY: 1.05 },
-    { x: 9.8, z: 65.8, radius: 1.55, scaleX: 2.15, scaleY: 1.05 }
+    { x: -24.0, z: 63.0, radius: 1.55, scaleX: 2.2, scaleY: 1.1 },
+    { x: 22.0, z: 63.0, radius: 1.55, scaleX: 2.2, scaleY: 1.1 }
   ];
 
   lawnIslands.forEach((island) => {
@@ -408,8 +408,8 @@ export function buildFrontFountain() {
 
   // ── Bushes around the fountain plaza ─────────────────────────────────────
   [
-    { x: fx - 10.8, z: fz + 4.2, scale: 0.86, id: 'fountain-bush-west-back' },
-    { x: fx + 10.8, z: fz + 4.2, scale: 0.86, id: 'fountain-bush-east-back' },
+    { x: fx - 13.5, z: fz + 3.1, scale: 0.86, id: 'fountain-bush-west-back' },
+    { x: fx + 12.6, z: fz + 3.7, scale: 0.86, id: 'fountain-bush-east-back' },
     { x: fx - 11.2, z: fz - 4.8, scale: 0.72, id: 'fountain-bush-west-front' },
     { x: fx + 11.2, z: fz - 4.8, scale: 0.72, id: 'fountain-bush-east-front' }
   ].forEach((pos) => {
@@ -732,6 +732,7 @@ export function buildFrontFountain() {
     waterAppleGlow
   };
 
+  registerStaticScenery(waterAnimGroup, { kind: 'outdoor', distance: 95 });
   state.animatedScenery.push({
     object: waterAnimGroup,
     type: 'fountain',

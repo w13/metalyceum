@@ -2,6 +2,35 @@
 import { state } from './state.js';
 
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+const VENUE_ROAD_SEGMENTS = [
+  { x1: 4.3, z1: 62.7, x2: 14, z2: 78, width: 5.0 },
+  { x1: 14, z1: 78, x2: 27, z2: 97, width: 5.0 },
+  { x1: 27, z1: 97, x2: 42, z2: 118, width: 5.0 },
+  { x1: 42, z1: 118, x2: 56, z2: 137, width: 5.0 },
+  { x1: 56, z1: 137, x2: 65, z2: 150, width: 5.0 },
+  { x1: -5.3, z1: 61.8, x2: -18, z2: 68, width: 4.5 },
+  { x1: -18, z1: 68, x2: -26, z2: 86, width: 4.5 },
+  { x1: -26, z1: 86, x2: -38, z2: 104, width: 4.5 },
+  { x1: -38, z1: 104, x2: -48, z2: 122, width: 4.5 },
+  { x1: -48, z1: 122, x2: -60, z2: 140, width: 4.5 }
+];
+
+function pointToSegmentDistanceSquared(px, pz, x1, z1, x2, z2) {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const lenSquared = dx * dx + dz * dz;
+  if (lenSquared === 0) {
+    const ddx = px - x1;
+    const ddz = pz - z1;
+    return ddx * ddx + ddz * ddz;
+  }
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSquared));
+  const cx = x1 + dx * t;
+  const cz = z1 + dz * t;
+  const ddx = px - cx;
+  const ddz = pz - cz;
+  return ddx * ddx + ddz * ddz;
+}
 
 function tryParseUrl(value) {
   if (typeof value !== 'string') return null;
@@ -229,7 +258,15 @@ export function isFrontPlazaFootprint(x, z) {
   const entryGardens = z > 42 && z < 52 && Math.abs(x) > 6.5 && Math.abs(x) < 18.5;
   const fountainGardens = z > 51 && z < 66 && Math.abs(x) > 8.25 && Math.abs(x) < 22.5;
   const fountainCourt = x * x + (z - 56.5) * (z - 56.5) < 86;
-  return approachPromenade || fountainPromenade || entryGardens || fountainGardens || fountainCourt;
+  const outerGardenPods = z > 60 && z < 67.5 && Math.abs(x) > 17.5 && Math.abs(x) < 26.5;
+  return approachPromenade || fountainPromenade || entryGardens || fountainGardens || fountainCourt || outerGardenPods;
+}
+
+export function isVenueRoadFootprint(x, z, margin = 0) {
+  return VENUE_ROAD_SEGMENTS.some((segment) => {
+    const radius = segment.width / 2 + margin;
+    return pointToSegmentDistanceSquared(x, z, segment.x1, segment.z1, segment.x2, segment.z2) < radius * radius;
+  });
 }
 
 // Single source of truth for the exclusion zones used by tree, flower, grass,
@@ -238,6 +275,7 @@ export function isWorldPlacementAllowed(x, z) {
   return !(
     (Math.abs(x) < 32 && Math.abs(z) < 44) ||        // building footprint
     isFrontPlazaFootprint(x, z) ||
+    isVenueRoadFootprint(x, z, 2.5) ||
     (Math.abs(x - 65) < 40 && Math.abs(z - 150) < 40) || // amphitheater (65, 150)
     (z > 115 && z < 160 && x > -110 && x < -60) ||    // concert venue (-85, 140)
     (z > 60 && z < 130 && x > 0 && x < 70) ||         // road to amphitheater
