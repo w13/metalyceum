@@ -1,6 +1,7 @@
 // Classroom desk, bench, and podium geometry for Metalyceum room interiors
+import * as THREE from 'three';
 import { state } from '../state.js';
-import { registerStaticScenery } from '../scenery.js';
+import { registerStaticScenery } from '../scenery/visibility.js';
 
 export function buildClassroomAssets() {
   const woodMat = new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.85 });

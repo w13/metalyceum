@@ -1,4 +1,5 @@
 // YouTube Live and Google Meet media synchronization for Metalyceum room screens
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { getRoomPlaybackStartSeconds, safeMeetUrl } from '../utils.js';
 import { closeModal, isModalRegistered, isModalOpen } from '../modals.js';
@@ -276,6 +277,32 @@ function applyRoomScreenFallback(roomId) {
   screenEntry.material.needsUpdate = true;
 }
 
+/** Fallback thumbnail sizes for videos missing hqdefault.jpg */
+const THUMBNAIL_SIZES = ['hqdefault', 'mqdefault', 'default'];
+
+function loadThumbnailSize(videoId, sizes, index) {
+  return new Promise((resolve) => {
+    roomScreenTextureLoader.load(
+      `https://i.ytimg.com/vi/${videoId}/${sizes[index]}.jpg`,
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        resolve(texture);
+      },
+      undefined,
+      () => {
+        // Try next size, or null if none left
+        if (index + 1 < sizes.length) {
+          resolve(loadThumbnailSize(videoId, sizes, index + 1));
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  });
+}
+
 function loadRoomScreenThumbnail(videoId) {
   if (roomScreenTextureCache.has(videoId)) {
     return Promise.resolve(roomScreenTextureCache.get(videoId));
@@ -284,23 +311,12 @@ function loadRoomScreenThumbnail(videoId) {
     return roomScreenTextureLoads.get(videoId);
   }
 
-  const texturePromise = new Promise((resolve) => {
-    roomScreenTextureLoader.load(
-      `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-      (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        roomScreenTextureCache.set(videoId, texture);
-        roomScreenTextureLoads.delete(videoId);
-        resolve(texture);
-      },
-      undefined,
-      () => {
-        roomScreenTextureLoads.delete(videoId);
-        resolve(null);
-      }
-    );
+  const texturePromise = loadThumbnailSize(videoId, THUMBNAIL_SIZES, 0).then((texture) => {
+    if (texture) {
+      roomScreenTextureCache.set(videoId, texture);
+    }
+    roomScreenTextureLoads.delete(videoId);
+    return texture;
   });
 
   roomScreenTextureLoads.set(videoId, texturePromise);

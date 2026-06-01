@@ -1,4 +1,5 @@
 // Door frame geometry for Metalyceum building entrances
+import * as THREE from 'three';
 import { state } from '../state.js';
 
 export function createDoorFrame(cx, cz, dir, width) {

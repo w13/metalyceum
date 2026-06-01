@@ -1,6 +1,8 @@
 // Wall torch geometry and light sources for Metalyceum room interiors
+import * as THREE from 'three';
 import { state } from '../state.js';
-import { initSceneryAssets, registerStaticScenery } from '../scenery.js';
+import { initSceneryAssets } from '../scenery/assets.js';
+import { registerStaticScenery } from '../scenery/visibility.js';
 
 export function createWallTorch(x, y, z, rotationY, roomId = null, withLight = true) {
   initSceneryAssets();

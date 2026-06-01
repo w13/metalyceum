@@ -1,4 +1,5 @@
 // Local player kinematics, physics fallback, and collision handling for Metalyceum
+import * as THREE from 'three';
 import { state } from '../state.js';
 import {
   CAMERA_FOLLOW_LERP,

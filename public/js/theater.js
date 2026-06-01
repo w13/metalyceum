@@ -1,4 +1,5 @@
 // Theater Mode for Metalyceum
+import * as THREE from 'three';
 import { state } from './state.js';
 import { addChatLog } from './chat.js';
 import { resetCameraFollow } from './engine.js';

@@ -1,4 +1,5 @@
 // Chat Log, Chat Bubbles, and Scope Filtering for Metalyceum
+import * as THREE from 'three';
 import { state } from './state.js';
 import { ROOM_LAYOUTS } from './config.js';
 

@@ -1,4 +1,5 @@
 // Large outdoor venues (Amphitheater & Concert Venue) and pathways
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { createBrickTexture, createStoneTexture } from '../textures.js';
@@ -9,12 +10,14 @@ import { FOUNTAIN_X, FOUNTAIN_Z } from './plaza.js';
 export function buildOutdoorVenues() {
   const fx = FOUNTAIN_X, fz = FOUNTAIN_Z;
 
-  // - Road materials
+  // - Road materials (polygonOffset prevents z-fighting with terrain)
   const roadMat = new THREE.MeshStandardMaterial({
-    color: '#334155', roughness: 0.85, metalness: 0.04
+    color: '#334155', roughness: 0.85, metalness: 0.04,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
   });
   const roadBorderMat = new THREE.MeshStandardMaterial({
-    color: '#475569', roughness: 0.7, metalness: 0.08
+    color: '#475569', roughness: 0.7, metalness: 0.08,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
   });
 
   // - Helper: build a straight road segment

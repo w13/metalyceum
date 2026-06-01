@@ -1,4 +1,5 @@
 // Building Construction, Architecture, and Scenery Population for Metalyceum
+import * as THREE from 'three';
 import { state } from './state.js';
 import { ROOM_HEIGHT, MAP_SIZE, WORLD_CONFIG, ROOM_LAYOUTS } from './config.js';
 import { getTerrainHeight } from './physics.js';

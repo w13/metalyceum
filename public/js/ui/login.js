@@ -1,6 +1,6 @@
 // Login form interface, custom avatar color syncing, and entry coordinator for Metalyceum
 import { state } from '../state.js';
-import { createPlayerAvatar } from '../scenery.js';
+import { createPlayerAvatar } from '../characters.js';
 import { connectMultiplayer } from '../multiplayer.js';
 import { resumeAudioContext } from '../audio.js';
 

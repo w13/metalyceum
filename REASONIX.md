@@ -5,7 +5,7 @@
 ## Stack
 
 - **Language/Framework** — TypeScript on Cloudflare Workers (Durable Objects for real-time state)
-- **Client 3D** — Three.js r128 via CDN `<script>` tags (not ES module imports)
+- **Client 3D** — Three.js r184 via CDN import map (ES module imports)
 - **Testing** — Vitest (`vitest run`)
 - **Deployment** — Wrangler (`wrangler deploy`)
 - **Key deps** — `@cloudflare/workers-types`, `typescript`, `wrangler`, `vitest`
@@ -33,7 +33,7 @@ No lint or format scripts are configured.
 - **Test files** — `*.test.ts` colocated with source in `src/` (e.g. `src/validation.test.ts`, `src/realtime.test.ts`)
 - **Validation module** — `src/validation.ts` contains pure functions only (no `cloudflare:workers` imports), so they're unit-testable outside the Workers runtime and reused across Durable Object handlers
 - **Constants & types** — centralized in `src/constants.ts` (server config values, shared type definitions, default room seeds)
-- **Client modules** — ES6 module entry (`public/app.js`) imports from `public/js/*.js`; Three.js globals (`THREE.*`) come from CDN scripts, not import maps
+- **Client modules** — ES6 module entry (`public/app.js`) imports from `public/js/*.js`; Three.js loaded via import map (`<script type="importmap">` in index.html), each file imports `THREE` explicitly
 - **Security** — CSP delivered via `<meta>` tag in `index.html`; edge headers in `public/_headers` apply to static assets without invoking the Worker
 
 ## Watch out for
@@ -41,4 +41,4 @@ No lint or format scripts are configured.
 - `.wrangler/` is auto-generated — never edit manually
 - `public/_headers` is the only way to set headers on static asset responses (the Worker doesn't run for those requests)
 - `src/validation.ts` must stay free of `cloudflare:workers` imports to remain testable outside the Workers runtime
-- Three.js r128 uses legacy `THREE.*` global namespace via CDN script tags, not npm-style imports — don't try to `import * as THREE` on the client
+- Three.js r184 is loaded via `<script type="importmap">` — every file that references THREE.* must have `import * as THREE from 'three'` at the top

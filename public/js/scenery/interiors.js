@@ -1,4 +1,5 @@
 // Room interior furnishings and sets
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { ROOM_LAYOUTS, WORLD_CONFIG } from '../config.js';
 import { registerStaticScenery } from './visibility.js';

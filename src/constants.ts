@@ -49,13 +49,13 @@ export type PersistedChatMessage = {
 };
 
 const DEFAULT_ROOM_SEEDS = [
-  { roomId: 0, name: "North Hall", sourceValue: "4G4Ni53z_rk" },
-  { roomId: 1, name: "East Studio", sourceValue: "V_plEMQhOb8" },
-  { roomId: 2, name: "Open Workshop", sourceValue: "jbD-r7M4U_8" },
-  { roomId: 3, name: "Broadcast Room", sourceValue: "oEMfcwtW8xc" },
-  { roomId: 4, name: "South Lounge", sourceValue: "hL_HGTRMPqI" },
-  { roomId: 5, name: "Crit Room", sourceValue: "V_plEMQhOb8" },
-  { roomId: 6, name: "Screening Room", sourceValue: "oEMfcwtW8xc" },
+  { roomId: 0, name: "North Hall", sourceValue: "dQw4w9WgXcQ" },
+  { roomId: 1, name: "East Studio", sourceValue: "jNQXAC9IVRw" },
+  { roomId: 2, name: "Open Workshop", sourceValue: "kJQP7kiw5Fk" },
+  { roomId: 3, name: "Broadcast Room", sourceValue: "5NV6Rdv1a3I" },
+  { roomId: 4, name: "South Lounge", sourceValue: "JGwWNGJdvx8" },
+  { roomId: 5, name: "Crit Room", sourceValue: "9bZkp7q19f0" },
+  { roomId: 6, name: "Screening Room", sourceValue: "hT_nvWreIhg" },
   { roomId: 7, name: "Commons", sourceValue: "jbD-r7M4U_8" }
 ] as const;
 

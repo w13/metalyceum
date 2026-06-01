@@ -1,4 +1,5 @@
 // Soundtrack and Ambient Spatial Audio for Metalyceum
+import * as THREE from 'three';
 import { state } from './state.js';
 import { SOUNDTRACK_LIBRARY } from './config.js';
 import { getRoomEventStatus } from './utils.js';

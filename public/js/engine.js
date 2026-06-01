@@ -1,4 +1,7 @@
 // Game Engine, Camera, Rendering Loop, and Physics Update Scheduler for Metalyceum
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { orbitCamera } from './engine/camera.js';
 import { state } from './state.js';
 import {
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
@@ -31,6 +34,7 @@ import { syncChatScopeWithLocation } from './chat.js';
 import { buildMap } from './building.js';
 import { renderMinimap } from './minimap.js';
 import { animateAvatarWalk } from './characters.js';
+import { initTransformControls } from './editor.js';
 
 // Camera & Movement Sub-modules
 import {
@@ -286,11 +290,13 @@ export function initEngine() {
   state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
   state.renderer.toneMappingExposure = 1.0;
+
+  state.localPlayer.velocity = new THREE.Vector3();
   
   const container = document.getElementById('game-container');
   if (container) container.appendChild(state.renderer.domElement);
 
-  state.controls = new THREE.OrbitControls(state.camera, state.renderer.domElement);
+  state.controls = new OrbitControls(state.camera, state.renderer.domElement);
   state.controls.enableDamping = true;
   state.controls.dampingFactor = 0.05;
   state.controls.screenSpacePanning = false;
@@ -367,6 +373,7 @@ export function initEngine() {
   if (loading) loading.classList.remove('active');
   
   setTimeout(() => loadHdriEnvironment(), 100);
+  initTransformControls();
 
   window.__metalyceumDiagnostics = getEngineDiagnostics;
 }

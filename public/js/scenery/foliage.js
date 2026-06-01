@@ -1,4 +1,5 @@
 // Individual foliage models, flower beds, and landscaping
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';

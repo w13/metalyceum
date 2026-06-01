@@ -1,4 +1,5 @@
 // Physics and Collision Handling for Metalyceum
+import * as THREE from 'three';
 import { state } from './state.js';
 import { MAP_SIZE, COVERED_BOUNDS, LOBBY_BOUNDS } from './config.js';
 

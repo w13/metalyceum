@@ -1,5 +1,6 @@
 // Procedural Canvas Texture Generators for Metalyceum
 // Pure utility functions — no imports from other project modules.
+import * as THREE from 'three';
 
 export function createGrassTexture() {
   const canvas = document.createElement('canvas');

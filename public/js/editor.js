@@ -1,4 +1,6 @@
 // World Editor and Placeable Assets for Metalyceum
+import * as THREE from 'three';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { state } from './state.js';
 import { MAP_SIZE, WORLD_ASSET_CATALOG } from './config.js';
 import { getTerrainHeight, getRoomIdForPosition } from './physics.js';
@@ -567,3 +569,22 @@ export function initEditorUiHandlers() {
   const saveBtn = document.getElementById('editor-save-btn');
   if (saveBtn) saveBtn.addEventListener('click', saveWorldAssets);
 }
+
+export function initTransformControls() {
+  if (!state.camera || !state.renderer || !state.scene) return;
+  if (state.editor.transformControls) return;
+
+  const controls = new TransformControls(state.camera, state.renderer.domElement);
+  controls.setMode(transformControlsMode(state.editor.mode));
+  controls.visible = false;
+  controls.addEventListener('dragging-changed', (event) => {
+    state.editor.transformDragging = Boolean(event.value);
+    if (state.controls) state.controls.enabled = !event.value;
+  });
+  controls.addEventListener('change', () => {
+    if (state.editor.selectedId) syncSelectedAssetFromObject();
+  });
+  state.scene.add(controls);
+  state.editor.transformControls = controls;
+}
+

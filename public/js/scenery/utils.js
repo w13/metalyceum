@@ -1,4 +1,5 @@
 // Low-level terrain-alignment and collision helper utilities
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { MAP_SIZE } from '../config.js';
 import { getTerrainHeight } from '../physics.js';

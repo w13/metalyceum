@@ -1,4 +1,5 @@
 // Debug panel, diagnostics collection, performance (FPS), and clipboard tools for Metalyceum
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { getRoomEventStatus } from '../utils.js';
 

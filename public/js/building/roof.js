@@ -1,4 +1,5 @@
 // Greek Museum Roof — gabled terracotta-tile roof with pediments
+import * as THREE from 'three';
 import { state } from '../state.js';
 
 export function buildRoof(batcher, materials, config) {

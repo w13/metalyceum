@@ -1,5 +1,6 @@
 // Top-down Mini-Map for Metalyceum
 // Renders a camera-oriented circular overview showing the terrain, building layout,
+import * as THREE from 'three';
 // walls, rooms, the local player (as an arrow), and other players/NPCs nearby.
 import { state } from './state.js';
 import { ROOM_LAYOUTS } from './config.js';

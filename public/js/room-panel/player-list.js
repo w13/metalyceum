@@ -1,8 +1,10 @@
 // Room players list and visual indicators updates for Metalyceum
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { ROOM_LAYOUTS, WORLD_CONFIG } from '../config.js';
 import { sanitizeColor, getRoomEventStatus } from '../utils.js';
-import { createPanelLabelSprite, disposeSprite } from '../scenery.js';
+import { createPanelLabelSprite } from '../scenery/assets.js';
+import { disposeSprite } from '../scenery/visibility.js';
 import { updateRoomAudioState } from '../audio.js';
 import { syncRoomScreenMedia } from './media.js';
 

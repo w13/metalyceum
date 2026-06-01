@@ -2,9 +2,10 @@
 // Loads a free Poly Haven HDRI to provide realistic reflections and ambient lighting
 // while keeping the existing stylized sky dome as the background.
 // Uses dynamic import for RGBELoader (matching the @tonejs/midi pattern).
+import * as THREE from 'three';
 import { state } from './state.js';
 
-const RGBE_LOADER_URL = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/RGBELoader.js';
+const RGBE_LOADER_URL = 'three/addons/loaders/RGBELoader.js';
 
 // Poly Haven CC0 HDRI — 1K resolution for performance, outdoor dawn sky
 const HDR_URL = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kiara_1_dawn_1k.hdr';

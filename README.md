@@ -1,7 +1,7 @@
 # 🌌 Metalyceum
 
 [![Deploy to Cloudflare](https://img.shields.io/badge/Deploy-Cloudflare_Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://metalyceum.app)
-[![Three.js](https://img.shields.io/badge/Three.js-r128_via_CDN-black?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
+[![Three.js](https://img.shields.io/badge/Three.js-r184_ESM-black?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 [![Database](https://img.shields.io/badge/Database-SQLite_in_Durable_Objects-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Tests](https://img.shields.io/badge/Tests-Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev/)
 
@@ -13,7 +13,7 @@ The entire backend infrastructure is powered by a single, high-performance Cloud
 
 ## 🌟 Key Features
 
-*   **Interactive 3D Scene**: Custom rendering with Three.js (r128) containing a physical lobby, distinct virtual rooms, bounds/physics, dynamic camera controls (first/third-person orbit controls), and avatar customization (shirt colors and display names).
+*   **Interactive 3D Scene**: Custom rendering with Three.js (r184 ESM) containing a physical lobby, distinct virtual rooms, bounds/physics, dynamic camera controls (first/third-person orbit controls), and avatar customization (shirt colors and display names).
 *   **Real-time Multiplayer**: Powered by WebSockets via Cloudflare Durable Objects (`MetalyceumWorld`). Implements player proximity relevance calculations, location-scoped chat, and network profile adjustment (8–50 Hz position updates).
 *   **Virtual Rooms & Event Streams**:
     *   **8 Synchronized Rooms**: North Hall, East Studio, Open Workshop, Broadcast Room, South Lounge, Crit Room, Screening Room, and Commons.
@@ -34,7 +34,7 @@ The entire backend infrastructure is powered by a single, high-performance Cloud
 | **Real-time State** | **Durable Objects** | Single-isolate target mapping WebSockets and managing SQLite instances. |
 | **Database** | **DO SQLite** | Durable storage for assets, chat histories, and rooms (`ctx.storage.sql`). |
 | **Client Core** | **Vanilla ES6 Javascript** | Client-side game loop, coordinator modules, and WebSocket handlers. |
-| **Graphics Engine** | **Three.js (r128)** | Render loop, OrbitControls, and TransformControls loaded via CDN. |
+| **Graphics Engine** | **Three.js (r184)** | Render loop, OrbitControls, and TransformControls loaded via ESM import map. |
 | **Type Check** | **TypeScript** | Static typing across server-side code and shared contracts. |
 | **Testing Frame** | **Vitest** | Fast, runner-based unit tests for pure domain helpers. |
 

@@ -1,4 +1,5 @@
 // Camera follow, auto-align, and orbital controls for Metalyceum
+import * as THREE from 'three';
 import { state } from '../state.js';
 import {
   CAMERA_AUTO_ALIGN_DECAY,

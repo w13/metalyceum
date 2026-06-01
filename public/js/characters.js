@@ -1,4 +1,5 @@
 // Player Avatars for Metalyceum
+import * as THREE from 'three';
 import { state } from './state.js';
 import { MAP_SIZE } from './config.js';
 import { checkCollision, getTerrainHeight } from './physics.js';

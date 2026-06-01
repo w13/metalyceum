@@ -1,4 +1,5 @@
 // Shared asset geometries and material pools
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { registerStaticScenery } from './visibility.js';
 import { samplePosition } from './utils.js';

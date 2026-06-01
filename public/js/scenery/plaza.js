@@ -1,4 +1,5 @@
 // Exterior plaza construction, banners, indicators, and the animated fountain
+import * as THREE from 'three';
 export const FOUNTAIN_X = 0;
 export const FOUNTAIN_Z = 56.5;
 

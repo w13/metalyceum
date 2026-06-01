@@ -1,4 +1,5 @@
 // Procedural instanced details: forest trees, wildflower meadows, ponds, and grass patches
+import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';

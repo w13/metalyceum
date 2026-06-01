@@ -1,6 +1,7 @@
 // Lil-gui Debug Tweaks for Metalyceum
 // Live parameter sliders toggleable via the backtick (`) key.
-// Dependencies: lil-gui (global `GUI` from CDN script tag), state.js, config.js, physics.js
+import * as THREE from 'three';
+import GUI from 'lil-gui';
 import { state } from './state.js';
 import {
   CAMERA_DEFAULT_DISTANCE,
@@ -76,10 +77,6 @@ export function applyTweaks() {
 // ── Build the GUI panel ─────────────────────────────────────────────────
 export function initDebugTweaks() {
   if (gui) return;
-  if (typeof GUI === 'undefined') {
-    console.warn('[debug-tweaks] lil-gui not loaded, debug panel unavailable');
-    return;
-  }
   gui = new GUI({ 
     title: 'Debug Tweaks',
     width: 280,
