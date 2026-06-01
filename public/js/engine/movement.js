@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import {
+  MAP_SIZE,
   CAMERA_FOLLOW_LERP,
   CAMERA_HEADING_DECAY,
   CAMERA_TARGET_DECAY,
@@ -10,7 +11,7 @@ import {
   CAMERA_EXIT_WATCH_YAW,
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET
 } from '../config.js';
-import { getTerrainHeight, checkCollision, checkCollisionLoose } from '../physics.js';
+import { getTerrainHeight, checkCollision } from '../physics.js';
 import { isCannonReady, getPlayerBodyRef, teleportPlayer, syncBodyY, stepCannon } from '../physics-engine.js';
 import { animateAvatarWalk } from '../characters.js';
 import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
@@ -128,9 +129,10 @@ export function updateLocalPlayer(dt, now) {
     state.localPlayer.displayVelocity.x = body.velocity.x;
     state.localPlayer.displayVelocity.z = body.velocity.z;
 
-    // Safety net: gross-failure catch only. Expanded sphere (r=0.55 vs r=0.40) so
-    // this does not veto positions Cannon already validated — avoids sticking on walls.
-    if (checkCollisionLoose(state.localPlayer.x, state.localPlayer.z)) {
+    // Safety net: map boundary only. Cannon handles wall/asset contacts.
+    // Any sphere-vs-wall check here fires on valid Cannon contacts and breaks sliding.
+    const _mapLim = MAP_SIZE / 2 - 2;
+    if (Math.abs(state.localPlayer.x) > _mapLim || Math.abs(state.localPlayer.z) > _mapLim) {
       state.localPlayer.x = oldPos.x;
       state.localPlayer.z = oldPos.z;
       state.localPlayer.velocity.x = 0;
