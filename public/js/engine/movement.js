@@ -10,8 +10,8 @@ import {
   CAMERA_EXIT_WATCH_YAW,
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET
 } from '../config.js';
-import { getTerrainHeight, checkCollision } from '../physics.js';
-import { isCannonReady, getPlayerBodyRef, teleportPlayer } from '../physics-engine.js';
+import { getTerrainHeight, checkCollision, checkCollisionLoose } from '../physics.js';
+import { isCannonReady, getPlayerBodyRef, teleportPlayer, syncBodyY, stepCannon } from '../physics-engine.js';
 import { animateAvatarWalk } from '../characters.js';
 import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
 import {
@@ -114,56 +114,75 @@ export function updateLocalPlayer(dt, now) {
     state.localPlayer.velocity.z = (state.localPlayer.velocity.z / speedXZ) * maxSpeed;
   }
 
-  const stepX = state.localPlayer.velocity.x * dt;
-  const stepZ = state.localPlayer.velocity.z * dt;
-
-  if (Math.abs(stepX) > 0.0001 || Math.abs(stepZ) > 0.0001) {
-    let nextX = state.localPlayer.x + stepX;
-    let nextZ = state.localPlayer.z + stepZ;
-
-    if (!checkCollision(nextX, nextZ)) {
-      state.localPlayer.x = nextX;
-      state.localPlayer.z = nextZ;
-    } else {
-      if (!checkCollision(nextX, state.localPlayer.z)) {
-        state.localPlayer.x = nextX;
-        state.localPlayer.velocity.z = 0;
-      }
-      else if (!checkCollision(state.localPlayer.x, nextZ)) {
-        state.localPlayer.z = nextZ;
-        state.localPlayer.velocity.x = 0;
-      } else {
-        state.localPlayer.velocity.x = 0;
-        state.localPlayer.velocity.z = 0;
-      }
-    }
-  }
-
-  // Sync velocity from Cannon body so avatar rotation and animations work
   if (isCannonReady()) {
-    const bodyRef = getPlayerBodyRef();
-    if (bodyRef) {
-      state.localPlayer.velocity.x = bodyRef.velocity.x;
-      state.localPlayer.velocity.z = bodyRef.velocity.z;
-    }
-  }
+    // Cannon path: push control velocity to body, step, read XZ position back.
+    // Control velocity (state.localPlayer.velocity) is never overwritten by Cannon —
+    // post-collision velocity goes to displayVelocity for animation/rotation only.
+    const body = getPlayerBodyRef();
+    body.velocity.x = state.localPlayer.velocity.x;
+    body.velocity.z = state.localPlayer.velocity.z;
+    syncBodyY(state.localPlayer.y); // keeps body at correct height so wall colliders intersect
+    stepCannon(dt);
+    state.localPlayer.x = body.position.x;
+    state.localPlayer.z = body.position.z;
+    state.localPlayer.displayVelocity.x = body.velocity.x;
+    state.localPlayer.displayVelocity.z = body.velocity.z;
 
-  // Collision safety net: revert XZ if we ended up inside a wall
-  if (checkCollision(state.localPlayer.x, state.localPlayer.z)) {
-    state.localPlayer.x = oldPos.x;
-    state.localPlayer.z = oldPos.z;
-    state.localPlayer.velocity.x = 0;
-    state.localPlayer.velocity.z = 0;
-    if (isCannonReady()) teleportPlayer(oldPos.x, oldPos.z);
+    // Safety net: gross-failure catch only. Expanded sphere (r=0.55 vs r=0.40) so
+    // this does not veto positions Cannon already validated — avoids sticking on walls.
+    if (checkCollisionLoose(state.localPlayer.x, state.localPlayer.z)) {
+      state.localPlayer.x = oldPos.x;
+      state.localPlayer.z = oldPos.z;
+      state.localPlayer.velocity.x = 0;
+      state.localPlayer.velocity.z = 0;
+      teleportPlayer(oldPos.x, oldPos.z);
+    }
+  } else {
+    // Fallback: axis-split manual collision (used until Cannon CDN loads, or on failure).
+    const stepX = state.localPlayer.velocity.x * dt;
+    const stepZ = state.localPlayer.velocity.z * dt;
+
+    if (Math.abs(stepX) > 0.0001 || Math.abs(stepZ) > 0.0001) {
+      const nextX = state.localPlayer.x + stepX;
+      const nextZ = state.localPlayer.z + stepZ;
+
+      if (!checkCollision(nextX, nextZ)) {
+        state.localPlayer.x = nextX;
+        state.localPlayer.z = nextZ;
+      } else {
+        if (!checkCollision(nextX, state.localPlayer.z)) {
+          state.localPlayer.x = nextX;
+          state.localPlayer.velocity.z = 0;
+        } else if (!checkCollision(state.localPlayer.x, nextZ)) {
+          state.localPlayer.z = nextZ;
+          state.localPlayer.velocity.x = 0;
+        } else {
+          state.localPlayer.velocity.x = 0;
+          state.localPlayer.velocity.z = 0;
+        }
+      }
+    }
+
+    // Safety net (normal radius on fallback — no Cannon to fight)
+    if (checkCollision(state.localPlayer.x, state.localPlayer.z)) {
+      state.localPlayer.x = oldPos.x;
+      state.localPlayer.z = oldPos.z;
+      state.localPlayer.velocity.x = 0;
+      state.localPlayer.velocity.z = 0;
+    }
+
+    // Populate displayVelocity so animation works during CDN load window and on failure
+    state.localPlayer.displayVelocity.x = state.localPlayer.velocity.x;
+    state.localPlayer.displayVelocity.z = state.localPlayer.velocity.z;
   }
 
   speedXZ = Math.sqrt(
-    state.localPlayer.velocity.x * state.localPlayer.velocity.x +
-    state.localPlayer.velocity.z * state.localPlayer.velocity.z
+    state.localPlayer.displayVelocity.x * state.localPlayer.displayVelocity.x +
+    state.localPlayer.displayVelocity.z * state.localPlayer.displayVelocity.z
   );
 
   if (speedXZ > 0.4) {
-    const targetAngle = Math.atan2(state.localPlayer.velocity.x, state.localPlayer.velocity.z);
+    const targetAngle = Math.atan2(state.localPlayer.displayVelocity.x, state.localPlayer.displayVelocity.z);
     let diff = targetAngle - state.localPlayer.ry;
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;
