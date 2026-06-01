@@ -1,0 +1,16 @@
+# Metalyceum Secrets & Environment Variables
+# Copy this file to .dev.vars OR .env and fill in the values.
+# Both files are gitignored — they will NOT be committed.
+#
+# In production, use `npx wrangler secret put <NAME>` for each variable.
+
+# ─── Admin bootstrap token ─────────────────────────────────────────────────
+# Used to create the first admin account via POST /api/v1/auth/init.
+# CHANGE THIS to a strong random string before deploying to production.
+#   Generate one with: openssl rand -hex 32
+ADMIN_INIT_TOKEN=change-me-to-a-random-string
+
+# ─── World Editor token ────────────────────────────────────────────────────
+# Required to authenticate the in-game editor with the server.
+# CHANGE THIS to a strong random string before deploying to production.
+WORLD_EDITOR_TOKEN=change-me-to-another-random-string

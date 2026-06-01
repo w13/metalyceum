@@ -4,6 +4,7 @@ node_modules/
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+.env
 
 # Build Outputs
 dist/

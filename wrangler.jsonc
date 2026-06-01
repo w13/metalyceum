@@ -39,7 +39,9 @@
     { "tag": "v2", "new_sqlite_classes": ["AdminDO"] }
   ],
 
-  // Local dev vars (override with `wrangler secret put ADMIN_INIT_TOKEN` in prod)
+  // Local dev vars — OVERRIDE BOTH with `wrangler secret put <NAME>` in production.
+  // The dev values are placeholders; if deployed as-is, anyone can bootstrap an admin
+  // account. See .dev.vars.example for instructions.
   "vars": {
     "ADMIN_INIT_TOKEN": "dev-init-token-change-me"
   }
