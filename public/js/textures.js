@@ -96,6 +96,71 @@ export function createWoodTexture() {
   return texture;
 }
 
+export function createDarkWoodTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  // Deep dark oak base
+  ctx.fillStyle = '#1e1005';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Wood grain — per-line sine-wave brightness with noise
+  for (let y = 0; y < 512; y++) {
+    const grain = Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * 10
+                + Math.sin(y * 0.3) * 3
+                + Math.sin(y * 0.7) * 1.5;
+    const noise = (Math.random() - 0.5) * 4;
+    const val = 28 + grain + noise;
+    ctx.fillStyle = `rgb(${val + 6}, ${val + 1}, ${val - 6})`;
+    ctx.fillRect(0, y, 512, 1);
+  }
+
+  // Vertical plank seams every 64px
+  ctx.strokeStyle = '#0a0401';
+  ctx.lineWidth = 2.5;
+  for (let x = 0; x <= 512; x += 64) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 512);
+    ctx.stroke();
+  }
+
+  // Subtle horizontal cross-seams (staggered like real flooring)
+  for (let col = 0; col < 8; col++) {
+    const x = col * 64;
+    const offset = (col % 2) * 80;
+    ctx.strokeStyle = '#0a0401';
+    ctx.lineWidth = 1.5;
+    for (let y = offset; y <= 512 + 80; y += 160) {
+      ctx.beginPath();
+      ctx.moveTo(x, y % 512);
+      ctx.lineTo(x + 64, y % 512);
+      ctx.stroke();
+    }
+  }
+
+  // Glossy highlights
+  ctx.strokeStyle = 'rgba(120, 90, 60, 0.05)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 20; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 80, y + 2 + Math.random() * 8);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(8, 3);
+  texture.anisotropy = 4;
+  return texture;
+}
+
 const _texCache = new Map();
 
 export function createStoneTexture() {

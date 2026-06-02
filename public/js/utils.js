@@ -244,11 +244,15 @@ export function getRoomPlaybackStartSeconds(room) {
   const { startDate, durationMinutes } = getRoomEventWindow(room);
   if (!startDate) return 0;
   const elapsed = Math.floor((Date.now() - startDate.getTime()) / 1000);
-  const clampedElapsed = Math.max(0, elapsed);
-  if (durationMinutes > 0) {
-    return Math.min(durationMinutes * 60, clampedElapsed);
-  }
-  return clampedElapsed;
+  if (elapsed < 0) return 0;
+
+  // Never send `start` for an ongoing live stream — YouTube treats any start
+  // parameter as a recording seek and shows "This live stream recording is not
+  // available." Only seek into the video once the event has a defined duration
+  // and that window has fully elapsed (i.e. it's now a VOD recording).
+  if (durationMinutes <= 0) return 0;
+  if (elapsed < durationMinutes * 60) return 0;
+  return Math.min(durationMinutes * 60, elapsed);
 }
 
 // ── World placement validation ────────────────────────────────────────────────

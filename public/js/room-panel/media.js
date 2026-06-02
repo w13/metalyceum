@@ -123,12 +123,13 @@ function renderYoutubeEmbed({ containerId, videoId, playbackStart = 0, sourceKey
   // Resolve full URLs (e.g. youtube.com/live/ID) to bare video IDs
   const resolvedId = parseVideoInput(videoId) || videoId;
   const iframe = document.createElement('iframe');
+  const startSeconds = Math.max(0, Math.floor(playbackStart));
   const params = new URLSearchParams({
     autoplay: '1',
     enablejsapi: '1',
     playsinline: '1',
     rel: '0',
-    start: String(Math.max(0, Math.floor(playbackStart)))
+    ...(startSeconds > 0 ? { start: String(startSeconds) } : {})
   });
   iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(resolvedId)}?${params.toString()}`;
   iframe.title = 'Room video';

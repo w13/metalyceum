@@ -88,9 +88,10 @@ export function getTerrainHeight(x, z) {
 
   // ── Meandering river — kept well away from the main building (avoids |x|<35, |z|<50)
   const riverPts = [
-    [200, -200], [160, -150], [115, -100], [75, -55],
-    [70, -10], [75, 25], [50, 70], [10, 110],
-    [-30, 150], [-80, 190], [-130, 220]
+    [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
+    [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
+    [62, 47], [50, 70], [30, 90], [10, 110], [-10, 130],
+    [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
   ];
   let riverDist = Infinity;
   for (let i = 0; i < riverPts.length - 1; i++) {
@@ -174,7 +175,7 @@ export function getRoomIdForPosition(x, z, padding = 0) {
 
 export function isLocalPlayerUnderRoof() {
   if (state.localPlayer.currentRoom !== -1) return true;
-  if (isPointWithinBounds(state.localPlayer.x, state.localPlayer.z, LOBBY_BOUNDS)) return true;
+  if (isPointWithinBounds(state.localPlayer.x, state.localPlayer.z, COVERED_BOUNDS)) return true;
   // Direct distance check for venues that may not trigger room detection
   const px = state.localPlayer.x, pz = state.localPlayer.z;
   if ((px + 85) * (px + 85) + (pz - 140) * (pz - 140) < 400) return true; // concert venue r=20

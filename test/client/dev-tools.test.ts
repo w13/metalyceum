@@ -36,7 +36,7 @@ describe('World Placement Auditor', () => {
 
     runWorldAudit();
 
-    const clippingIssues = devState.auditIssues.filter(iss => iss.type === 'clipping');
+    const clippingIssues = (devState.auditIssues as any[]).filter(iss => iss.type === 'clipping');
     expect(clippingIssues.length).toBeGreaterThan(0);
     expect(clippingIssues[0].message).toContain('Clipping');
   });
@@ -55,7 +55,7 @@ describe('World Placement Auditor', () => {
 
     runWorldAudit();
 
-    const zFightingIssues = devState.auditIssues.filter(iss => iss.type === 'z-fighting');
+    const zFightingIssues = (devState.auditIssues as any[]).filter(iss => iss.type === 'z-fighting');
     expect(zFightingIssues.length).toBeGreaterThan(0);
     expect(zFightingIssues[0].message).toContain('Z-Fighting');
   });
@@ -69,7 +69,7 @@ describe('World Placement Auditor', () => {
 
     runWorldAudit();
 
-    const riverIssues = devState.auditIssues.filter(iss => iss.type === 'river');
+    const riverIssues = (devState.auditIssues as any[]).filter(iss => iss.type === 'river');
     expect(riverIssues.length).toBeGreaterThan(0);
     expect(riverIssues[0].message).toContain('River Encroachment');
   });
@@ -91,8 +91,8 @@ describe('World Placement Auditor', () => {
 
     runWorldAudit();
 
-    const floatingIssues = devState.auditIssues.filter(iss => iss.type === 'floating');
-    const buriedIssues = devState.auditIssues.filter(iss => iss.type === 'buried');
+    const floatingIssues = (devState.auditIssues as any[]).filter(iss => iss.type === 'floating');
+    const buriedIssues = (devState.auditIssues as any[]).filter(iss => iss.type === 'buried');
 
     expect(floatingIssues.length).toBe(1);
     expect(buriedIssues.length).toBe(1);

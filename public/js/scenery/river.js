@@ -4,9 +4,10 @@ import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 
 const RIVER_PTS = [
-  [200, -200], [160, -150], [115, -100], [75, -55],
-  [70, -10], [75, 25], [50, 70], [10, 110],
-  [-30, 150], [-80, 190], [-130, 220]
+  [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
+  [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
+  [62, 47], [50, 70], [30, 90], [10, 110], [-10, 130],
+  [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
 ];
 
 const RIVER_WIDTH = 4.5;
@@ -58,15 +59,30 @@ const waterFragShader = `
     color += shimmer;
 
     // Edge darkening
-    float edgeDist = min(vUv.x, 1.0 - vUv.x) * 2.0;
-    edgeDist = clamp(edgeDist, 0.0, 1.0);
-    color *= (0.85 + edgeDist * 0.15);
+    float edgeDist = min(vUv.x, 1.0 - vUv.x);
+    float darkFactor = clamp(edgeDist * 5.0, 0.0, 1.0);
+    color *= (0.85 + darkFactor * 0.15);
+
+    // Integrated procedural foam at the edges
+    float foamWidth = 0.08; // 8% of the width on each side
+    if (edgeDist < foamWidth) {
+      float foamFactor = clamp((foamWidth - edgeDist) / foamWidth, 0.0, 1.0);
+      
+      // Animated noise along the river length and width
+      float foamNoise = sin(vUv.y * 120.0 - uTime * 2.5) * 0.5 + 0.5;
+      foamNoise *= sin(vUv.x * 40.0 + uTime * 1.2 + vUv.y * 10.0) * 0.5 + 0.5;
+      foamNoise = pow(foamNoise, 2.5); // sharpen the foam pattern
+      
+      float finalFoam = foamNoise * foamFactor * 0.45;
+      color = mix(color, vec3(0.95, 0.98, 1.0), finalFoam);
+    }
 
     gl_FragColor = vec4(color, 0.82);
   }
 `;
 
-const foamVertShader = `
+// Shaders for the vertical waterfall
+const fallVertShader = `
   varying vec2 vUv;
   void main() {
     vUv = uv;
@@ -74,19 +90,119 @@ const foamVertShader = `
   }
 `;
 
-const foamFragShader = `
+const fallFragShader = `
   uniform float uTime;
   varying vec2 vUv;
   void main() {
-    // Procedural foam texture along the strip length
-    float foam = sin(vUv.x * 80.0 + uTime * 1.5) * 0.5 + 0.5;
-    foam *= sin(vUv.y * 30.0 - uTime * 0.8 + vUv.x * 10.0) * 0.5 + 0.5;
-    foam = pow(foam, 3.0);
-    foam *= 1.0 - vUv.y; // fades inward
-    float alpha = foam * 0.35;
-    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+    // Water fall effect: scrolling texture and noise
+    float flow = sin(vUv.y * 15.0 + uTime * 8.0) * 0.5 + 0.5;
+    flow *= sin(vUv.x * 10.0 + uTime * 2.0) * 0.5 + 0.5;
+    
+    // Add vertical streaks
+    float streaks = sin(vUv.x * 60.0 + sin(vUv.y * 10.0) * 2.0) * 0.3 + 0.7;
+    
+    vec3 waterColor = vec3(0.3, 0.65, 0.9);
+    vec3 foamColor = vec3(0.95, 0.98, 1.0);
+    
+    float foamFactor = pow(flow * streaks, 1.5) * 0.85;
+    vec3 color = mix(waterColor, foamColor, foamFactor);
+    
+    gl_FragColor = vec4(color, 0.75);
   }
 `;
+
+function buildRiverRibbon(points, width, material, isUpper) {
+  if (points.length < 2) return null;
+
+  const positions = [];
+  const indices = [];
+  const uvs = [];
+
+  let cumulativeDistance = 0;
+
+  for (let i = 0; i < points.length; i++) {
+    const prev = points[Math.max(i - 1, 0)];
+    const next = points[Math.min(i + 1, points.length - 1)];
+
+    // Calculate tangent in XZ plane
+    let dx = next[0] - prev[0];
+    let dz = next[1] - prev[1];
+    
+    const tangent = new THREE.Vector2(dx, dz);
+    if (tangent.lengthSq() < 1e-6) tangent.set(0, 1);
+    tangent.normalize();
+
+    // Perpendicular vector (pointing to the right side of the river flow)
+    const right = new THREE.Vector2(-tangent.y, tangent.x);
+
+    const [cx, cz] = points[i];
+
+    // Determine the height (waterY) at this point along the river
+    let sampleX = cx;
+    let sampleZ = cz;
+
+    if (isUpper && i === points.length - 1) {
+      // Last point of upper river: sample slightly upstream to get the upper level height
+      const pdx = cx - prev[0];
+      const pdz = cz - prev[1];
+      sampleX = cx - pdx * 0.05;
+      sampleZ = cz - pdz * 0.05;
+    } else if (!isUpper && i === 0) {
+      // First point of lower river: sample slightly downstream to get the lower level height
+      const ndx = next[0] - cx;
+      const ndz = next[1] - cz;
+      sampleX = cx + ndx * 0.05;
+      sampleZ = cz + ndz * 0.05;
+    }
+
+    const waterY = getTerrainHeight(sampleX, sampleZ) + 1.0;
+
+    const halfWidth = width / 2;
+    // Compute left and right coordinates of the ribbon in world space
+    const lx = cx - right.x * halfWidth;
+    const lz = cz - right.y * halfWidth;
+    const rx = cx + right.x * halfWidth;
+    const rz = cz + right.y * halfWidth;
+
+    // Map to local coordinates before rotation: (lx, -lz, waterY)
+    positions.push(
+      lx, -lz, waterY, // Left bank vertex
+      rx, -rz, waterY  // Right bank vertex
+    );
+
+    // Calculate cumulative distance for UV mapping
+    if (i > 0) {
+      const pdx = cx - points[i - 1][0];
+      const pdz = cz - points[i - 1][1];
+      cumulativeDistance += Math.sqrt(pdx * pdx + pdz * pdz);
+    }
+
+    const vCoord = cumulativeDistance / width;
+    uvs.push(
+      0, vCoord, // Left bank vertex
+      1, vCoord  // Right bank vertex
+    );
+
+    if (i < points.length - 1) {
+      const base = i * 2;
+      // Triangle 1: base, base + 2, base + 1
+      // Triangle 2: base + 1, base + 2, base + 3
+      indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  state.scene.add(mesh);
+  return mesh;
+}
 
 export function buildRiver() {
   const waterMat = new THREE.ShaderMaterial({
@@ -97,49 +213,12 @@ export function buildRiver() {
     uniforms: { uTime: { value: 0 } },
   });
 
-  const foamMat = new THREE.ShaderMaterial({
-    vertexShader: foamVertShader,
-    fragmentShader: foamFragShader,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 } },
-  });
+  // Construct upper and lower river ribbons (waterfall is at index 13)
+  const upperPts = RIVER_PTS.slice(0, 14);
+  const lowerPts = RIVER_PTS.slice(13);
 
-  // Build river segments
-  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
-    const [ax, az] = RIVER_PTS[i];
-    const [bx, bz] = RIVER_PTS[i + 1];
-    const dx = bx - ax, dz = bz - az;
-    const len = Math.sqrt(dx * dx + dz * dz);
-    if (len < 0.5) continue;
-    const segAngle = Math.atan2(dx, -dz);
-    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
-    // Water sits at the terrain height (which includes the 4.3u river channel depression)
-    // plus a small offset so it's just above the channel bottom, well below the surface
-    const waterY = getTerrainHeight(mx, mz) + 1.0;
-
-    // Water surface with wave shader
-    const segGeo = new THREE.PlaneGeometry(RIVER_WIDTH, len, 16, 16 * Math.ceil(len / 3));
-    const seg = new THREE.Mesh(segGeo, waterMat.clone());
-    seg.rotation.x = -Math.PI / 2;
-    seg.rotation.y = segAngle;
-    seg.position.set(mx, waterY, mz);
-    state.scene.add(seg);
-
-    // Foam strips along each edge
-    for (let side = -1; side <= 1; side += 2) {
-      const perpAngle = Math.atan2(dz, dx) + Math.PI / 2;
-      const fx = mx + Math.cos(perpAngle) * (RIVER_WIDTH / 2 - 0.1) * side;
-      const fz = mz + Math.sin(perpAngle) * (RIVER_WIDTH / 2 - 0.1) * side;
-      const foamGeo = new THREE.PlaneGeometry(0.3, len, 1, 8);
-      const foam = new THREE.Mesh(foamGeo, foamMat.clone());
-      foam.rotation.x = -Math.PI / 2;
-      foam.rotation.y = segAngle;
-      foam.position.set(fx, waterY + 0.01, fz);
-      state.scene.add(foam);
-    }
-  }
+  buildRiverRibbon(upperPts, RIVER_WIDTH, waterMat.clone(), true);
+  buildRiverRibbon(lowerPts, RIVER_WIDTH, waterMat.clone(), false);
 
   // ── Waterfall ────────────────────────────────────────────────────────
   buildWaterfall();
@@ -199,7 +278,7 @@ export function buildRiver() {
   // Animate water and foam shaders each frame
   function animateRiver(time) {
     const t = time * 0.001;
-    // Update all water material uniforms
+    // Update all water and waterfall material uniforms
     state.scene.traverse((child) => {
       if (child.isMesh && child.material && child.material.uniforms && child.material.uniforms.uTime) {
         child.material.uniforms.uTime.value = t;
@@ -217,26 +296,34 @@ export function buildRiver() {
 function buildWaterfall() {
   const wx = WATERFALL_X, wz = WATERFALL_Z;
 
-  const fallMat = new THREE.MeshStandardMaterial({
-    color: '#7dd3fc', roughness: 0.02, metalness: 0.3,
-    transparent: true, opacity: 0.55, side: THREE.DoubleSide
-  });
-  const topY = getTerrainHeight(wx + 2, wz - 2) + 0.5;
-  const botY = getTerrainHeight(wx - 2, wz + 2) + 0.5;
-  const fallH = Math.max(0, topY - botY + 0.5);
-  if (fallH > 0.5) {
-    const fall = new THREE.Mesh(new THREE.PlaneGeometry(2.5, fallH), fallMat);
-    fall.position.set(wx, (topY + botY) / 2, wz);
-    state.scene.add(fall);
+  // We sample slightly upstream/downstream along flow vector (-1, 1) for top and bottom heights
+  const topY = getTerrainHeight(wx + 0.1, wz - 0.1) + 1.0;
+  const botY = getTerrainHeight(wx - 0.1, wz + 0.1) + 1.0;
+  const fallH = Math.max(0.1, topY - botY);
 
-    const mistMat = new THREE.MeshBasicMaterial({
-      color: '#e0f2fe', transparent: true, opacity: 0.12, side: THREE.DoubleSide
-    });
-    const mist = new THREE.Mesh(new THREE.CircleGeometry(2.0, 12), mistMat);
-    mist.rotation.x = -Math.PI / 2;
-    mist.position.set(wx, botY + 0.05, wz);
-    state.scene.add(mist);
-  }
+  const fallMat = new THREE.ShaderMaterial({
+    vertexShader: fallVertShader,
+    fragmentShader: fallFragShader,
+    transparent: true,
+    side: THREE.DoubleSide,
+    uniforms: { uTime: { value: 0 } },
+  });
+
+  const fall = new THREE.Mesh(new THREE.PlaneGeometry(RIVER_WIDTH, fallH), fallMat);
+  const cy = (topY + botY) / 2;
+  fall.position.set(wx, cy, wz);
+
+  // Rotate to align with the ledge (flow is at angle 3 * Math.PI / 4)
+  fall.rotation.y = Math.atan2(-1, 1);
+  state.scene.add(fall);
+
+  const mistMat = new THREE.MeshBasicMaterial({
+    color: '#e0f2fe', transparent: true, opacity: 0.12, side: THREE.DoubleSide
+  });
+  const mist = new THREE.Mesh(new THREE.CircleGeometry(2.0, 12), mistMat);
+  mist.rotation.x = -Math.PI / 2;
+  mist.position.set(wx, botY + 0.05, wz);
+  state.scene.add(mist);
 
   for (let i = 0; i < 12; i++) {
     const a = (Math.PI * 2 * i) / 12 + (Math.random() - 0.5) * 0.5;
@@ -282,7 +369,6 @@ function buildStoneArchBridge() {
   const springY = bridgeY + 0.2; // springing level (just above water)
 
   // ── Solid arch barrel (the curved underside) ────────────────────────
-  // Circular arch: center at (0, springY + rise - R), radius R = (span²+rise²)/(2·rise)
   const archR = (span * span + archRise * archRise) / (2 * archRise);
   const centerY = springY + archRise - archR;
   const voussoirCount = 18;
@@ -309,7 +395,6 @@ function buildStoneArchBridge() {
   }
 
   // ── Spandrel fill (triangular panels between arch and deck) ─────────
-  // Solid stone blocks filling the gap between the arch curve and the flat deck
   for (let side = -1; side <= 1; side += 2) {
     for (let i = 0; i < 8; i++) {
       const t = (i + 0.5) / 8;
@@ -352,7 +437,6 @@ function buildStoneArchBridge() {
       const t = (i / 9) - 0.5;
       const px = bx + Math.cos(perpAngle) * pOff + Math.cos(segAngle) * t * 5;
       const pz = bz + Math.sin(perpAngle) * pOff + Math.sin(segAngle) * t * 5;
-      // Solid wall segment
       const seg = new THREE.Mesh(
         new THREE.BoxGeometry(0.55, 0.7, 0.18),
         stoneMat
@@ -360,7 +444,6 @@ function buildStoneArchBridge() {
       seg.position.set(px, springY + 1.45, pz);
       seg.castShadow = true;
       state.scene.add(seg);
-      // Merlon on top (every other one is raised)
       if (i % 2 === 0) {
         const merlon = new THREE.Mesh(
           new THREE.BoxGeometry(0.45, 0.25, 0.18),

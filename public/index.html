@@ -385,6 +385,33 @@
     </div>
   </div>
 
+  <!-- Elevator control panel (slide-in from right, 1920s style) -->
+  <div id="elevator-panel" class="elevator-panel" aria-hidden="true">
+    <div class="elevator-panel-inner">
+      <div class="elevator-header">
+        <span class="elevator-brand">OTIS</span>
+        <span class="elevator-sub">ELEVATOR CO.</span>
+      </div>
+      <div class="elevator-indicator">
+        <div class="elevator-floor-num" id="elevator-floor-num">G</div>
+        <div class="elevator-floor-label">FLOOR</div>
+      </div>
+      <div class="elevator-arrow-panel">
+        <button id="elevator-up-btn" class="elevator-arrow-btn" type="button" title="Up">
+          <span class="elevator-arrow up">▲</span>
+        </button>
+        <button id="elevator-down-btn" class="elevator-arrow-btn" type="button" title="Down">
+          <span class="elevator-arrow down">▼</span>
+        </button>
+      </div>
+      <div class="elevator-brass-plate">
+        <span class="elevator-plate-text">PUSH</span>
+        <span class="elevator-plate-text">TO</span>
+        <span class="elevator-plate-text">CALL</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Script initialization -->
   <!-- v3: cache-bust — update version on each deploy to force re-fetch -->
   <script src="app.js?v=3" type="module"></script>

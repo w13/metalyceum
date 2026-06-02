@@ -20,6 +20,7 @@ import {
 import { toggleMinimap } from './minimap.js';
 
 import { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
+import { initElevatorUI } from './ui/elevator.js';
 import { initSoundtrackUi, initSoundtrackControls } from './ui/soundtrack-panel.js';
 import { initLoginForm, initColorPickerSync } from './ui/login.js';
 
@@ -246,6 +247,7 @@ export function initUiHandlers() {
   initRoomPanelClose();
   initGlobalPointerHandlers();
   initKeyboardHandlers();
+  initElevatorUI();
 }
 
 export { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';

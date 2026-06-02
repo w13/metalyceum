@@ -259,7 +259,7 @@ export function animate() {
   });
 
   if (state.sceneSunLight) {
-    state.sceneSunLight.intensity = isInside ? 0.20 : 1.0;
+    state.sceneSunLight.intensity = isInside ? 0.05 : 1.0;
     if (state.localPlayer && state.localPlayer.mesh) {
       const px = state.localPlayer.x;
       const pz = state.localPlayer.z;
@@ -275,10 +275,10 @@ export function animate() {
     }
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = isInside ? 0.06 : 0.10;
+    state.sceneHemisphereLight.intensity = isInside ? 0.02 : 0.10;
   }
   if (state.sceneIndoorLight) {
-    state.sceneIndoorLight.intensity = isInside ? 1.2 : 0;
+    state.sceneIndoorLight.intensity = isInside ? 0.25 : 0;
   }
 
   state.controls.update();
@@ -287,6 +287,57 @@ export function animate() {
   updateDevTools(_now);
 
   try {
+    // ── Elevator proximity door open ───────────────────────────────────────
+    if (!state._elevatorMoving && state._elevatorTargetY === 0) {
+      const dist = state.localPlayer
+        ? Math.sqrt(state.localPlayer.x ** 2 + (state.localPlayer.z + 36) ** 2)
+        : 99;
+      const shouldOpen = dist < 2.5;
+      state._elevatorDoorTarget = shouldOpen ? 0 : 1;
+      if (state._elevatorDoorCollider) {
+        state._elevatorDoorCollider.visible = !shouldOpen;
+      }
+    }
+
+    // ── Elevator animation ────────────────────────────────────────────────
+    if (state._elevatorMoving) {
+      const car = state._elevatorCar;
+      const targetY = state._elevatorTargetY;
+      const speed = 2.5 * dt;
+      state._elevatorY = THREE.MathUtils.lerp(state._elevatorY, targetY, speed);
+      car.position.y = state._elevatorY;
+
+      // Door close/open
+      const doorTarget = state._elevatorDoorTarget;
+      state._elevatorDoorState = THREE.MathUtils.lerp(state._elevatorDoorState, doorTarget, 4 * dt);
+      const doorAngle = state._elevatorDoorState * 0.4;
+      state._elevatorDoorPanels.forEach((panel) => {
+        const side = panel.userData._side || 1;
+        const base = panel.userData._baseRY || 0;
+        panel.rotation.y = base + side * doorAngle;
+      });
+
+      // Move player with the car
+      if (state._elevatorRiding && state.localPlayer) {
+        state.localPlayer.y = state._elevatorY;
+        if (state.localPlayer.mesh) {
+          state.localPlayer.mesh.position.y = state._elevatorY;
+        }
+      }
+
+      // Check if arrived
+      if (Math.abs(state._elevatorY - targetY) < 0.05) {
+        state._elevatorY = targetY;
+        car.position.y = targetY;
+        state._elevatorMoving = false;
+        state._elevatorDoorTarget = 0;
+        state._elevatorRiding = false;
+        if (targetY > 0) {
+          state.localPlayer.currentRoom = -1; // force room re-detection
+        }
+      }
+    }
+
     state.renderer.render(state.scene, state.camera);
   } catch (err) {
     console.error("[Metalyceum] Render error:", err);
@@ -297,6 +348,7 @@ export function animate() {
     refreshStaticSceneryVisibility();
     renderMinimap();
   }
+  if (state._elevatorCheck) state._elevatorCheck();
 }
 
 // Log startup diagnostics

@@ -1909,3 +1909,49 @@ body, html {
   cursor: pointer;
 }
 
+
+/* ── 1920s Elevator Control Panel (slide-in from right) ──────────────── */
+.elevator-panel {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%) translateX(100%);
+  width: 100px;
+  background: linear-gradient(180deg, #2a1a0a 0%, #1a0f05 100%);
+  border: 3px solid #b8860b;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: -4px 0 20px rgba(0,0,0,0.6);
+  z-index: 40;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.elevator-panel.elevator-visible {
+  transform: translateY(-50%) translateX(0);
+}
+.elevator-panel-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.elevator-header { text-align: center; line-height: 1; margin-bottom: 4px; }
+.elevator-brand { display: block; font-family: 'Georgia', serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 3px; color: #b8860b; }
+.elevator-sub { display: block; font-size: 0.45rem; letter-spacing: 2px; color: #8a7a5a; }
+.elevator-indicator { background: #0a0a0a; border: 2px solid #b8860b; border-radius: 3px; padding: 4px 12px; text-align: center; width: 100%; box-sizing: border-box; }
+.elevator-floor-num { font-family: 'Georgia', serif; font-size: 1.4rem; font-weight: 700; color: #fbbf24; line-height: 1; text-shadow: 0 0 6px rgba(251,191,36,0.4); }
+.elevator-floor-label { font-size: 0.4rem; letter-spacing: 2px; color: #8a7a5a; text-transform: uppercase; }
+.elevator-arrow-panel { display: flex; flex-direction: row; gap: 6px; width: 100%; }
+.elevator-arrow-btn { flex: 1; background: linear-gradient(180deg, #3a2510 0%, #2a1a0a 100%); border: 2px solid #b8860b; border-radius: 3px; padding: 6px 0; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.elevator-arrow-btn:hover { background: linear-gradient(180deg, #4a3520 0%, #3a2510 100%); border-color: #d4a030; }
+.elevator-arrow-btn:active { background: #1a0f05; }
+.elevator-arrow { font-size: 1.2rem; color: #b8860b; display: block; line-height: 1; }
+.elevator-arrow.up { color: #22c55e; }
+.elevator-arrow.down { color: #ef4444; }
+.elevator-brass-plate { border: 1px solid #8a7a5a; border-radius: 2px; padding: 3px 6px; text-align: center; width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.3); }
+.elevator-plate-text { display: block; font-size: 0.38rem; letter-spacing: 2px; color: #8a7a5a; line-height: 1.2; text-transform: uppercase; }
