@@ -130,6 +130,8 @@ export function createBoulder() {
   geo.computeVertexNormals();
 
   const boulder = new THREE.Mesh(geo, state.sharedScenery.boulderMat);
+  boulder.castShadow = true;
+  boulder.receiveShadow = true;
   
   const { x, z, groundY } = samplePosition(20);
   boulder.position.set(x, groundY + 0.15, z);

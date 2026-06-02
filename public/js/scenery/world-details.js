@@ -16,6 +16,8 @@ export function buildWorldDetails() {
     if (isVenueRoadFootprint(x, z, 4)) return false;
     if (Math.abs(x - 65) < 42 && Math.abs(z - 150) < 42) return false; // amphitheater platform
     if (Math.abs(x + 85) < 27 && Math.abs(z - 140) < 21) return false; // concert hall footprint
+    if (Math.abs(x - 160) < 55 && Math.abs(z - 220) < 55) return false; // airport
+    if (Math.abs(x - 75) < 25 && Math.abs(z - 25) < 25) return false;   // cave & underground city
     // Road corridors
     if (z > 58 && z < 152 && x > -4 && x < 70) return false;         // road -> amphitheater
     if (z > 58 && z < 140 && x > -90 && x < 4) return false;         // road -> concert hall

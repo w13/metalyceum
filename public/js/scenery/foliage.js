@@ -26,6 +26,7 @@ export function createTrimmedBush(x, z, {
   );
   pot.position.y = 0.17;
   pot.castShadow = true;
+  pot.receiveShadow = true;
   bushGroup.add(pot);
 
   // Pot rim
@@ -35,17 +36,22 @@ export function createTrimmedBush(x, z, {
   );
   rim.position.y = 0.35;
   rim.rotation.x = Math.PI / 2;
+  rim.castShadow = true;
+  rim.receiveShadow = true;
   bushGroup.add(rim);
 
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.56, 7, 7), bodyMat);
   body.position.y = 0.34;
   body.scale.set(1.15, 0.7, 1);
   body.castShadow = true;
+  body.receiveShadow = true;
   bushGroup.add(body);
 
   const leftTuft = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), tuftMat);
   leftTuft.position.set(-0.28, 0.54, 0.04);
   leftTuft.scale.y = 0.75;
+  leftTuft.castShadow = true;
+  leftTuft.receiveShadow = true;
   bushGroup.add(leftTuft);
 
   const rightTuft = leftTuft.clone();
@@ -55,6 +61,8 @@ export function createTrimmedBush(x, z, {
   const crown = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), tuftMat);
   crown.position.set(0, 0.68, -0.1);
   crown.scale.y = 0.72;
+  crown.castShadow = true;
+  crown.receiveShadow = true;
   bushGroup.add(crown);
 
   bushGroup.position.set(x, getTerrainHeight(x, z), z);
@@ -83,11 +91,13 @@ export function createOrnamentalTree(x, z, {
   const lowerFoliage = new THREE.Mesh(state.sharedScenery.treeCone1Geo, state.sharedScenery.treeFoliageMat);
   lowerFoliage.position.y = 4.2;
   lowerFoliage.castShadow = true;
+  lowerFoliage.receiveShadow = true;
   treeGroup.add(lowerFoliage);
 
   const upperFoliage = new THREE.Mesh(state.sharedScenery.treeCone2Geo, state.sharedScenery.treeFoliageMat);
   upperFoliage.position.y = 5.65;
   upperFoliage.castShadow = true;
+  upperFoliage.receiveShadow = true;
   treeGroup.add(upperFoliage);
 
   treeGroup.position.set(x, getTerrainHeight(x, z), z);
@@ -110,7 +120,7 @@ export function createFlowerCluster(centerX, centerZ, {
     new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.95 }),
     centerX,
     centerZ,
-    { yOffset: soilYOffset }
+    { yOffset: soilYOffset, receiveShadow: true }
   );
   state.scene.add(soil);
 
@@ -121,7 +131,7 @@ export function createFlowerCluster(centerX, centerZ, {
     new THREE.MeshStandardMaterial({ color: '#7c8a96', roughness: 0.76 }),
     centerX,
     centerZ,
-    { yOffset: edgeYOffset }
+    { yOffset: edgeYOffset, receiveShadow: true }
   );
   state.scene.add(edging);
 
@@ -135,6 +145,7 @@ export function createFlowerCluster(centerX, centerZ, {
     const stem = new THREE.Mesh(state.sharedScenery.flowerStemGeo, state.sharedScenery.flowerStemMat);
     stem.position.set(bloomX, bloomGroundY + 0.24, bloomZ);
     stem.castShadow = true;
+    stem.receiveShadow = true;
     state.scene.add(stem);
 
     const petal = new THREE.Mesh(
@@ -143,6 +154,7 @@ export function createFlowerCluster(centerX, centerZ, {
     );
     petal.position.set(bloomX, bloomGroundY + 0.46, bloomZ);
     petal.castShadow = true;
+    petal.receiveShadow = true;
     state.scene.add(petal);
   }
 }

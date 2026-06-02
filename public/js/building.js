@@ -33,7 +33,7 @@ export function syncSelectedAssetFromObject() {
 
 export function buildMap() {
   const grassTex = createGrassTexture();
-  const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 550, 550);
+  const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 280, 280);
   
   const positions = groundGeo.attributes.position;
   for (let i = 0; i < positions.count; i++) {
@@ -741,6 +741,249 @@ export function buildBuilding() {
   addAcroterion(-29.2, 39.2);
   addAcroterion(29.2, 39.2);
   flushBatches();
+
+  // ── Executive Director's Office (north end of lobby) — opulent ────────
+  const officeZ = -36;
+  const officeW = 7.0, officeD = 5.5;
+  const goldMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.25, metalness: 0.7 });
+  const officeFloorMat = new THREE.MeshStandardMaterial({ color: '#1a0f05', roughness: 0.2, metalness: 0.15 });
+  const officeWallMat = new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.5 });
+  const darkWoodMat = new THREE.MeshStandardMaterial({ color: '#3a1f0a', roughness: 0.45, metalness: 0.08 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.5, metalness: 0.1 });
+
+  // Front wall with double doors
+  const frontWall = new THREE.Mesh(new THREE.BoxGeometry(officeW - 2.0, 5.5, 0.2), officeWallMat);
+  frontWall.position.set(0, 2.75, officeZ + officeD / 2);
+  frontWall.castShadow = true;
+  frontWall.receiveShadow = true;
+  state.scene.add(frontWall);
+
+  // Door frame
+  const doorFrameMat = new THREE.MeshStandardMaterial({ color: '#5c3a1e', roughness: 0.4, metalness: 0.1 });
+  [-0.7, 0.7].forEach((xOff) => {
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.0, 0.15), doorFrameMat);
+    pillar.position.set(xOff, 2.0, officeZ + officeD / 2 + 0.01);
+    state.scene.add(pillar);
+  });
+  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.15), doorFrameMat);
+  topFrame.position.set(0, 4.0, officeZ + officeD / 2 + 0.01);
+  state.scene.add(topFrame);
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.18), goldMat);
+  lintel.position.set(0, 4.15, officeZ + officeD / 2 + 0.02);
+  state.scene.add(lintel);
+
+  // Double doors (slightly ajar)
+  for (let side = -1; side <= 1; side += 2) {
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.6, 3.2, 0.04), darkWoodMat);
+    door.position.set(side * 0.35, 1.6, officeZ + officeD / 2 + 0.03);
+    door.rotation.y = side * 0.2;
+    state.scene.add(door);
+    // Gold handle
+    const handle = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), goldMat);
+    handle.position.set(side * 0.25, 1.3, officeZ + officeD / 2 + 0.07);
+    state.scene.add(handle);
+  }
+
+  // Floor
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(officeW, officeD), officeFloorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, 0.016, officeZ);
+  floor.receiveShadow = true;
+  state.scene.add(floor);
+
+  // Back wall
+  const bWall = new THREE.Mesh(new THREE.BoxGeometry(officeW, 5.5, 0.2), officeWallMat);
+  bWall.position.set(0, 2.75, officeZ - officeD/2);
+  bWall.castShadow = true;
+  state.scene.add(bWall);
+
+  // Side walls
+  [-officeW/2, officeW/2].forEach(xOff => {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5.5, officeD), officeWallMat);
+    sw.position.set(xOff, 2.75, officeZ);
+    sw.castShadow = true;
+    state.scene.add(sw);
+  });
+
+  // Crown molding
+  const molding = new THREE.Mesh(new THREE.BoxGeometry(officeW + 0.1, 0.08, officeD + 0.1), goldMat);
+  molding.position.set(0, 5.5, officeZ);
+  state.scene.add(molding);
+
+  // Chandelier
+  const chainMat = new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.7 });
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12 + i*0.08, 0.02, 6, 12), goldMat);
+    ring.position.set(0, 5.0 + i * 0.25, officeZ);
+    state.scene.add(ring);
+  }
+  const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.12, 6), new THREE.MeshBasicMaterial({ color: '#fef08a' }));
+  candle.position.set(0, 4.65, officeZ);
+  state.scene.add(candle);
+
+  // Executive desk
+  const deskMat = new THREE.MeshStandardMaterial({ color: '#2a1508', roughness: 0.3, metalness: 0.1 });
+  const deskT = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 1.4), deskMat);
+  deskT.position.set(0, 0.84, officeZ + 0.8);
+  deskT.castShadow = true;
+  state.scene.add(deskT);
+  for (let lx = -1.1; lx <= 1.1; lx += 2.2) {
+    for (let lz = -0.55; lz <= 0.55; lz += 1.1) {
+      const dLeg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.76, 0.06), darkWoodMat);
+      dLeg.position.set(lx, 0.42, officeZ + 0.8 + lz);
+      state.scene.add(dLeg);
+    }
+  }
+
+  // High-back executive chair
+  const chairMat = new THREE.MeshStandardMaterial({ color: '#1c1008', roughness: 0.6, metalness: 0.05 });
+  const chSeat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.7), chairMat);
+  chSeat.position.set(0, 0.06, officeZ + 2.0);
+  state.scene.add(chSeat);
+  const chBack = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.06), chairMat);
+  chBack.position.set(0, 0.6, officeZ + 2.38);
+  state.scene.add(chBack);
+  for (let armOff = -0.3; armOff <= 0.3; armOff += 0.6) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.06), chairMat);
+    arm.position.set(armOff, 0.4, officeZ + 2.0);
+    state.scene.add(arm);
+  }
+
+  // Bookshelf
+  const shelfMat = new THREE.MeshStandardMaterial({ color: '#3a1f0a', roughness: 0.45, metalness: 0.06 });
+  const bookCase = new THREE.Mesh(new THREE.BoxGeometry(0.8, 4.5, 0.4), shelfMat);
+  bookCase.position.set(officeW/2 - 0.5, 2.25, officeZ + 0.5);
+  bookCase.castShadow = true;
+  state.scene.add(bookCase);
+  for (let si = 0; si < 5; si++) {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.04, 0.38), shelfMat);
+    shelf.position.set(officeW/2 - 0.5, 0.4 + si * 0.85, officeZ + 0.5);
+    state.scene.add(shelf);
+  }
+
+  // Painting
+  const paintMat = new THREE.MeshStandardMaterial({ color: '#1e3a5f', roughness: 0.4 });
+  const painting = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.02), paintMat);
+  painting.position.set(0, 2.5, officeZ - officeD/2 + 0.01);
+  state.scene.add(painting);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 0.04), goldMat);
+  frame.position.set(0, 3.0, officeZ - officeD/2 + 0.02);
+  state.scene.add(frame);
+
+  // Fancy rug
+  const rugMat = new THREE.MeshStandardMaterial({ color: '#6b0f1a', roughness: 0.7, side: THREE.DoubleSide });
+  const rugOuter = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.6), rugMat);
+  rugOuter.rotation.x = -Math.PI/2;
+  rugOuter.position.set(0, 0.019, officeZ + 1.0);
+  state.scene.add(rugOuter);
+  const rugInner = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.2),
+    new THREE.MeshStandardMaterial({ color: '#8b1a2b', roughness: 0.7, side: THREE.DoubleSide }));
+  rugInner.rotation.x = -Math.PI/2;
+  rugInner.position.set(0, 0.02, officeZ + 1.0);
+  state.scene.add(rugInner);
+
+  // Decorative globe
+  const globeMat = new THREE.MeshStandardMaterial({ color: '#3b82f6', roughness: 0.2, metalness: 0.3 });
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), globeMat);
+  globe.position.set(-1.8, 0.85, officeZ + 1.2);
+  state.scene.add(globe);
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.015, 0.4, 4), new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.8 }));
+  stand.position.set(-1.8, 0.2, officeZ + 1.2);
+  state.scene.add(stand);
+
+  // Potted plant
+  const plantMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.8 });
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.3, 6), new THREE.MeshStandardMaterial({ color: '#5c3a1e', roughness: 0.7 }));
+  pot.position.set(1.8, 0.15, officeZ - 1.5);
+  state.scene.add(pot);
+  const plant = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 6), plantMat);
+  plant.position.set(1.8, 0.5, officeZ - 1.5);
+  state.scene.add(plant);
+
+  // ── Staircase to 2nd floor ──────────────────────────────────────────────
+  const stairMat = new THREE.MeshStandardMaterial({ color: '#78716c', roughness: 0.6 });
+  const stairRise = 0.25, stairRun = 0.3, stairWidth = 1.2;
+  const stairStartX = -officeW / 2 + 1.0;
+  const stairSteps = 22;
+  const stairGroup = new THREE.Group();
+  for (let i = 0; i < stairSteps; i++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(stairWidth, stairRise, stairRun), stairMat);
+    s.position.set(stairStartX, i * stairRise + stairRise / 2, officeZ - officeD / 2 + 0.3 + i * stairRun);
+    s.castShadow = true;
+    s.receiveShadow = true;
+    stairGroup.add(s);
+  }
+  // Handrails
+  const railMat = new THREE.MeshStandardMaterial({ color: '#3a2510', roughness: 0.4, metalness: 0.1 });
+  for (let side = -1; side <= 1; side += 2) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, stairRise * stairSteps + 0.3, 0.05), railMat);
+    rail.position.set(stairStartX + side * stairWidth / 2, (stairRise * stairSteps + 0.3) / 2, officeZ - officeD / 2 + 0.3 + stairSteps * stairRun / 2);
+    state.scene.add(rail);
+    state.upperFloor.push(rail);
+  }
+
+  state.scene.add(stairGroup);
+
+  // Staircase clickable trigger — teleport to second floor level
+  const teleportTrigger = new THREE.Mesh(
+    new THREE.BoxGeometry(stairWidth, stairRise * stairSteps, stairSteps * stairRun),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+  );
+  teleportTrigger.position.set(stairStartX, stairRise * stairSteps / 2, officeZ - officeD / 2 + 0.3 + stairSteps * stairRun / 2);
+  teleportTrigger.userData = { teleport: true, x: 0, y: 7.5, z: -30 };
+  state.clickableRoomMarkers.push(teleportTrigger);
+  state.scene.add(teleportTrigger);
+
+  // ── Second floor mezzanine ────────────────────────────────────────────
+  const mezzY = 7.5;
+  const mezzFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.35, metalness: 0.08 });
+  // Floor spanning the corridor area between the upper walls
+  const mezzFloor = new THREE.Mesh(new THREE.PlaneGeometry(9, 36), mezzFloorMat);
+  mezzFloor.rotation.x = -Math.PI / 2;
+  mezzFloor.position.set(0, mezzY, -2);
+  mezzFloor.receiveShadow = true;
+  state.scene.add(mezzFloor);
+  state.upperFloor.push(mezzFloor);
+
+  // Glass railing along the open (south) edge so you can see the lobby below
+  const glassRailMat = new THREE.MeshStandardMaterial({
+    color: '#38bdf8', roughness: 0.05, metalness: 0.6,
+    transparent: true, opacity: 0.25, side: THREE.DoubleSide
+  });
+  const mezzRailMat = new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.5, metalness: 0.05 });
+  const railEdgeZ = 15; // south edge of the mezzanine floor
+  // Glass panel
+  const glassRail = new THREE.Mesh(new THREE.BoxGeometry(7.5, 1.0, 0.06), glassRailMat);
+  glassRail.position.set(0, mezzY + 0.5, railEdgeZ);
+  state.scene.add(glassRail);
+  state.upperFloor.push(glassRail);
+  // Top rail
+  const topRail = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.08, 0.12), mezzRailMat);
+  topRail.position.set(0, mezzY + 1.0, railEdgeZ);
+  state.scene.add(topRail);
+  state.upperFloor.push(topRail);
+  // Bottom rail
+  const botRail = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.08, 0.12), mezzRailMat);
+  botRail.position.set(0, mezzY, railEdgeZ);
+  state.scene.add(botRail);
+  state.upperFloor.push(botRail);
+  // Posts
+  for (let xOff = -3.5; xOff <= 3.5; xOff += 3.5) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.0, 6), mezzRailMat);
+    post.position.set(xOff, mezzY + 0.5, railEdgeZ);
+    state.scene.add(post);
+    state.upperFloor.push(post);
+  }
+
+  // Return teleport (back down to the director's office)
+  const returnTrigger = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 0.1, 2),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+  );
+  returnTrigger.position.set(1, mezzY + 0.05, -10);
+  returnTrigger.userData = { teleport: true, x: 0, y: 0.1, z: -34 };
+  state.clickableRoomMarkers.push(returnTrigger);
+  state.scene.add(returnTrigger);
 
   buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY });
 }

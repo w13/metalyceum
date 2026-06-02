@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { state } from './state.js';
+import { initDevTools } from './dev-tools.js';
+import { LANDMARK_REGISTRY } from './config.js';
 import {
   CAMERA_DEFAULT_DISTANCE,
   CAMERA_DEFAULT_POLAR_ANGLE,
@@ -130,6 +132,44 @@ export function initDebugTweaks() {
     gui.domElement.style.display = '';
     guiVisible = true;
   }
+
+  // ── Landmarks folder ─────────────────────────────────────────────────
+  const landmarks = gui.addFolder('Landmarks');
+
+  Object.entries(LANDMARK_REGISTRY).forEach(([key, def]) => {
+    const sub = landmarks.addFolder(def.label);
+
+    const proxy = { x: 0, y: 0, z: 0, rotY: 0 };
+
+    const applyProxy = () => {
+      const lmGroup = state.landmarkGroups.get(key);
+      if (!lmGroup) return;
+      lmGroup.position.set(proxy.x, proxy.y, proxy.z);
+      lmGroup.rotation.y = proxy.rotY;
+    };
+
+    sub.add(proxy, 'x', -50, 50, 0.1).name('X Offset').onChange(applyProxy);
+    sub.add(proxy, 'y', -20, 20, 0.1).name('Y Offset').onChange(applyProxy);
+    sub.add(proxy, 'z', -50, 50, 0.1).name('Z Offset').onChange(applyProxy);
+    sub.add(proxy, 'rotY', -Math.PI, Math.PI, 0.01).name('Rot Y').onChange(applyProxy);
+
+    sub.add({
+      copy: () => {
+        const lmGroup = state.landmarkGroups.get(key);
+        const vals = lmGroup
+          ? { x: +lmGroup.position.x.toFixed(3), y: +lmGroup.position.y.toFixed(3), z: +lmGroup.position.z.toFixed(3), rotY: +lmGroup.rotation.y.toFixed(5) }
+          : { x: 0, y: 0, z: 0, rotY: 0 };
+        console.log(`[Landmark: ${key}] ${JSON.stringify(vals)}`);
+      }
+    }, 'copy').name('Copy Values');
+
+    sub.close();
+  });
+
+  landmarks.close();
+
+  // Initialize AI/Developer helpers
+  initDevTools(gui);
 }
 
 // Polled each frame from the animation loop — syncs state and toggles visibility

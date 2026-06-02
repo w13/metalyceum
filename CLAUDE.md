@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Metalyceum** — a 3D social event world with room-based YouTube Live and Google Meet sessions. Players navigate a Three.js scene on the client; the server is a Cloudflare Worker routing to two Durable Objects: `MetalyceumWorld` (live game state) and `AdminDO` (user accounts, auth).
+**Metalyceum** — a 3D social event world with room-based YouTube Live and Google Meet sessions. Players navigate a Three.js r184 ESM scene on the client; the server is a Cloudflare Worker routing to two Durable Objects: `MetalyceumWorld` (live game state) and `AdminDO` (user accounts, auth).
 
 ## Commands
 
@@ -12,7 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev        # wrangler dev — local development server
 npm run deploy     # wrangler deploy — publish to Cloudflare
 npm run typecheck  # tsc --noEmit — type-check TypeScript sources in src/
+npm run typecheck:test # tsc --noEmit -p test/tsconfig.json — type-check test sources
 npm run test       # vitest run — run all tests
+npm run test:e2e   # playwright test — run browser/e2e tests
 ```
 
 No lint/format scripts. Tests live in `src/**/*.test.ts` and `test/client/*.test.ts`.
@@ -72,6 +74,7 @@ No lint/format scripts. Tests live in `src/**/*.test.ts` and `test/client/*.test
   - **`js/scenery/foliage.js`** — Trees, bushes, flowers.
   - **`js/scenery/interiors.js`** — Room interior sets.
   - **`js/scenery/plaza.js`** — Plazas, fountains, room indicators.
+  - **`js/scenery/airport.js`**, **`amphitheater.js`**, **`castle.js`**, **`concert-venue.js`**, **`river.js`**, **`roads.js`**, **`underground-city.js`** — Large outdoor landmarks and routes.
   - **`js/scenery/utils.js`** — Terrain deformation, terrain-aware collider helpers.
   - **`js/scenery/venues.js`** — Amphitheater, concert hall geometry.
   - **`js/scenery/visibility.js`** — Frustum/distance culling, sprite disposal.
@@ -88,9 +91,10 @@ No lint/format scripts. Tests live in `src/**/*.test.ts` and `test/client/*.test
 **Standalone modules**
 - **`js/multiplayer.js`** — WebSocket connection, reconnection logic, message dispatch, network profiles (8–50 Hz position update rate, configurable via `localStorage['metalyceum:netProfile']`).
 - **`js/physics.js`** — Terrain height sampling, collision detection (sphere vs AABB), room-id lookup for a position, roof detection.
-- **`js/physics-engine.js`** — Cannon-es physics wrapper loaded from CDN. **Currently unused** — not imported by any module. Kept for future integration.
+- **`js/physics-engine.js`** — Cannon-es XZ collision proxy loaded from CDN in production and from the npm package in tests. Owns wall/asset collision resolution only; Y movement stays manual in `engine/movement.js`.
 - **`js/audio.js`** — Ambient MIDI soundtrack, audio context management.
 - **`js/chat.js`** — Chat log, chat bubble display, scope (global vs. room).
+- **`js/dev-tools.js`** — Runtime development tools and scene/object inspection helpers.
 - **`js/theater.js`** — In-world screen/theater rendering.
 - **`js/characters.js`** — Character/avatar model helpers.
 - **`js/textures.js`** — Texture loading and caching.
@@ -104,9 +108,124 @@ No lint/format scripts. Tests live in `src/**/*.test.ts` and `test/client/*.test
 - **`js/utils.js`** — Shared helpers (e.g., `applyRoomData`).
 - **`js/debug-tweaks.js`** — Runtime debug toggles.
 
+## LLM world-building tools
+
+When building or adjusting world geometry, use the `window.metalyceumDev` API available in the browser dev mode (toggle the debug panel with the backtick key). **Never do coordinate math manually** — use these tools instead.
+
+### Before writing any new geometry
+
+```js
+// What's the terrain height at my build site? (replaces writing getTerrainHeight manually)
+metalyceumDev.terrainAt(130, -80)               // → 2.847
+
+// Full site check: terrain, room, river proximity, collisions, nearest landmarks
+metalyceumDev.worldQuery(130, -80)
+
+// Terrain profile across a new build area (understand the landscape before coding)
+metalyceumDev.sampleTerrain(130, -80, 40, 7)    // cx, cz, radius, grid steps
+
+// Find a clear spot for a new structure of given radius
+metalyceumDev.findClearSpace(25)                // → [{x, z, terrainHeight, distFromCentre}, ...]
+```
+
+### Auditing and fixing clipping/z-fighting
+
+```js
+metalyceumDev.audit()                           // → issues array; also updates 2D map overlays
+metalyceumDev.getAuditIssues()                  // → same issues array without re-running
+metalyceumDev.suggestFix(0)                     // for issue at index 0: returns {action, newPos/delta/newY}
+```
+
+`suggestFix` returns concrete values to paste back into source:
+- **clipping / z-fighting** → `{assetIdToMove, delta: {x,z}, newPos: {x,z}}`
+- **floating / buried** → `{assetId, newY, delta}`
+- **river encroachment** → `{assetId, delta, newPos}`
+
+### Generating collision geometry
+
+```js
+// PLACED_ASSET_COLLIDERS entry for a box footprint
+metalyceumDev.colliderBox(130, -80, 60, 60, 'castle')
+// → {minX, maxX, minZ, maxZ, assetId} — paste into state.PLACED_ASSET_COLLIDERS.push(...)
+
+// state.WALLS Box3 entry
+metalyceumDev.wallBox(-85, 140, 46, 34, 10, baseY)
+// → {min, max, jsCode} — jsCode is a ready-to-paste new THREE.Box3(...) call
+```
+
+### Landmark positioning (no reload needed)
+
+```js
+// Move a landmark group live — see result immediately
+metalyceumDev.setLandmark('castle', {x: 5, y: 0, z: -2, rotY: 0.1})
+
+// Read back the current offset to paste into source
+metalyceumDev.getLandmark('castle')             // → {x, y, z, rotY}
+
+// Warp to a landmark to inspect it
+metalyceumDev.teleportTo('castle')
+
+// List all landmarks
+metalyceumDev.listLandmarks()  // ['castle','airport','amphitheater','concertVenue','undergroundCity']
+```
+
+The **lil-gui Landmarks folder** (debug panel → Landmarks) provides the same live-slider experience for manual adjustment. "Copy Values" button logs `JSON.stringify({x,y,z,rotY})` to the console.
+
+### World state snapshot
+
+```js
+// Full JSON: landmarks (with live offsets), rooms, walls, placed assets, player position
+metalyceumDev.snapshot()
+
+// Road/ramp planning: XZ distance, terrain heights at endpoints, slope %
+metalyceumDev.measure(65, 150, -85, 140)
+
+// Placed asset inventory by type
+metalyceumDev.listAssets()
+```
+
+### Object inspection and positioning
+
+```js
+// Scan all state.STATIC_SCENERY for Y misalignment and unexpected tilt
+metalyceumDev.auditStaticScenery(0.4)
+// → [{index, kind, worldPos, terrainY, diff, severity, type, message}, ...]
+// Toggle "Show Misalign Markers" in the lil-gui panel to see 3D markers
+
+// Detailed world-transform for objects within radius of player
+metalyceumDev.inspectNearby(30)
+// → [{source, worldPos, worldRotDeg, scale, terrainY, yAboveTerrain, dist}, ...]
+
+// Alt+click any mesh (debug panel open) → logs world transform to console
+metalyceumDev.getLastInspected()       // → {geometry, worldPos, worldRotDeg, worldScale, yAboveTerrain, parentChain}
+metalyceumDev.clearInspected()
+```
+
+### Proximity and intersection
+
+```js
+// Pairwise edge distances for all objects near a point
+metalyceumDev.proximity()              // within 60u of player
+metalyceumDev.proximity(130, -80, 80)  // within 80u of (130, -80)
+// → [{a, b, centreDist, edgeDist, status}] sorted by edgeDist
+// status: 'INTERSECTING' (edgeDist<0), 'touching' (<0.3u), 'close' (<2u), 'clear'
+
+// Top N nearest objects to a point, with edge-to-edge distance
+metalyceumDev.nearestObjects()         // top 10 nearest to player
+metalyceumDev.nearestObjects(130, -80, 15)
+// → [{label, id, x, z, r, centreDist, edgeDist}, ...]
+```
+
+### Key data sources
+
+- **`LANDMARK_REGISTRY`** in `public/js/config.js` — authoritative landmark names, center coords, radii. All landmark-aware code reads from here; never hardcode these values elsewhere.
+- **`state.landmarkGroups`** — `Map<string, THREE.Group>` holding each landmark's root group. All 5 landmark scenery files register their group here after building.
+- **Scenery files** (`public/js/scenery/castle.js` etc.) use a root `THREE.Group` that is both added to `state.scene` and registered in `state.landmarkGroups`. Moving the group offsets all child meshes.
+
 ## Conventions and constraints
 
-- **Three.js r128 via CDN** — client code uses `THREE.*` globals loaded by `<script>` tags. Never `import * as THREE` or install Three.js as an npm dep.
+- **Three.js r184 via CDN import map** — browser code imports `three`, `three/addons/*`, and `lil-gui` through the import map in `public/index.html`. Files that reference Three.js should import it explicitly with `import * as THREE from 'three'`; controls use named imports from `three/addons/...`.
+- **npm `three` is test-only legacy support** — `package.json` still carries `three@0.128.x` and `@types/three@0.128.x` for existing test/runtime shims. Do not treat those package versions as the browser runtime version.
 - **`src/validation.ts`, `src/realtime.ts`, `src/session_source.ts`, `src/http/*`, `src/admin/pagination.ts`, `src/admin/schemas.ts`, `src/internal/*` must stay free of `cloudflare:workers` imports** — this is what makes them testable with plain Vitest outside the Workers runtime.
 - **Coordinator/barrel pattern** — `engine.js`, `building.js`, `scenery.js`, `room-panel.js`, `ui.js` are the public API for their domain. Callers always import from the top-level file, never from the subdirectory directly (except within the same domain).
 - **`public/_headers`** — the only way to set headers on static asset responses. The Worker doesn't run for asset requests; adding header logic to `index.ts` won't affect them.

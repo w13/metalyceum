@@ -307,8 +307,12 @@ export function connectMultiplayer() {
           // On reconnect, server sends join for all players — reconcile instead of respawn
           state.disconnectedPlayerIds.delete(data.player.id);
           if (!state.remotePlayers.has(data.player.id)) {
+            const wasKnown = state._knownPlayers?.has(data.player.username);
             spawnRemotePlayer(data.player);
-            addChatLog("System", `${data.player.username} entered Metalyceum!`, "system-msg");
+            (state._knownPlayers ??= new Set()).add(data.player.username);
+            if (!wasKnown) {
+              addChatLog("System", `${data.player.username} entered Metalyceum!`, "system-msg");
+            }
           }
           if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
           break;

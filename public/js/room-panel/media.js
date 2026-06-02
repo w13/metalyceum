@@ -10,8 +10,6 @@ const roomScreenTextureCache = new Map();
 const roomScreenTextureLoads = new Map();
 const ROOM_MEDIA_SYNC_DELAY_MS = 60;
 const ROOM_MEDIA_LAZY_LOAD_DELAY_MS = 180;
-const roomScreenTextureLoader = new THREE.TextureLoader();
-roomScreenTextureLoader.setCrossOrigin('anonymous');
 
 function createElement(tagName, { className = '', textContent = '', styleText = '' } = {}) {
   const el = document.createElement(tagName);
@@ -284,27 +282,52 @@ function applyRoomScreenFallback(roomId) {
 /** Fallback thumbnail sizes for videos missing hqdefault.jpg */
 const THUMBNAIL_SIZES = ['hqdefault', 'mqdefault', 'default'];
 
-function loadThumbnailSize(videoId, sizes, index) {
-  return new Promise((resolve) => {
-    roomScreenTextureLoader.load(
-      `https://i.ytimg.com/vi/${videoId}/${sizes[index]}.jpg`,
-      (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        resolve(texture);
-      },
-      undefined,
-      () => {
-        // Try next size, or null if none left
-        if (index + 1 < sizes.length) {
-          resolve(loadThumbnailSize(videoId, sizes, index + 1));
-        } else {
-          resolve(null);
-        }
-      }
-    );
+function createTextureFromImage(image) {
+  const texture = new THREE.Texture(image);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createTextureFromBlob(blob) {
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(blob).then(createTextureFromImage);
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(createTextureFromImage(image));
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to decode room screen thumbnail'));
+    };
+    image.src = url;
   });
+}
+
+async function loadThumbnailSize(videoId, sizes, index) {
+  const url = `https://i.ytimg.com/vi/${videoId}/${sizes[index]}.jpg`;
+
+  try {
+    const response = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+    if (response.ok) {
+      return await createTextureFromBlob(await response.blob());
+    }
+  } catch (e) {
+    // Network/CORS failures should fall through to the next candidate or fallback material.
+  }
+
+  if (index + 1 < sizes.length) {
+    return loadThumbnailSize(videoId, sizes, index + 1);
+  }
+
+  return null;
 }
 
 function loadRoomScreenThumbnail(videoId) {

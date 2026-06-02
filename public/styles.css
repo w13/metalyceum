@@ -1697,3 +1697,215 @@ body, html {
   font-size: 1.1rem;
   text-align: center;
 }
+
+/* ── AI & Developer Tools (2D Dev Map & Placement Auditor) ──────────────── */
+.dev-map-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(95vw, 960px);
+  height: min(90vh, 680px);
+  z-index: 1050;
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.dev-map-header {
+  padding: 1.2rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dev-map-header h3 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #ffffff 0%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dev-map-header p {
+  font-size: 0.78rem;
+  color: hsl(var(--text-muted));
+  margin-top: 0.15rem;
+}
+
+.dev-map-body {
+  flex: 1;
+  display: flex;
+  min-height: 0; /* Important for scrollable children in flexboxes */
+}
+
+.dev-map-canvas-container {
+  flex: 1;
+  position: relative;
+  background: #020617;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#dev-map-canvas {
+  cursor: grab;
+  display: block;
+}
+
+#dev-map-canvas:active {
+  cursor: grabbing;
+}
+
+.dev-map-tooltip {
+  position: absolute;
+  display: none;
+  background: rgba(8, 12, 24, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  color: #fff;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  max-width: 240px;
+  line-height: 1.45;
+}
+
+.dev-map-auditor {
+  width: 340px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 15, 30, 0.4);
+  display: flex;
+  flex-direction: column;
+  padding: 1.2rem;
+  min-width: 0;
+}
+
+.auditor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.auditor-header h4 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.badge {
+  padding: 0.18rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-warn {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.dev-auditor-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding-right: 0.25rem;
+}
+
+.dev-auditor-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.dev-auditor-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dev-auditor-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+}
+
+.auditor-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+  color: hsl(var(--text-muted));
+  font-size: 0.8rem;
+  padding: 2rem;
+  border: 1.5px dashed rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+}
+
+.auditor-item {
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: var(--transition);
+}
+
+.auditor-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.auditor-item.severity-critical {
+  border-left: 3.5px solid #ef4444;
+  background: rgba(239, 68, 68, 0.03);
+}
+
+.auditor-item.severity-high {
+  border-left: 3.5px solid #f97316;
+  background: rgba(249, 115, 22, 0.03);
+}
+
+.auditor-item.severity-medium {
+  border-left: 3.5px solid #eab308;
+  background: rgba(234, 179, 8, 0.03);
+}
+
+.auditor-info {
+  flex: 1;
+  min-width: 0;
+  color: #cbd5e1;
+}
+
+.auditor-warp-btn {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  font-size: 0.68rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+

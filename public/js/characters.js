@@ -209,9 +209,19 @@ const NPC_SPAWNS = [
   { x: 11,  z: -12, room: 5, name: 'Taylor', color: '#ec4899', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b' },
   { x: 17,  z: 8,   room: 6, name: 'Quinn',  color: '#06b6d4', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#155e75', shoes: '#18181b' },
   { x: 14,  z: 28,  room: 7, name: 'Avery',  color: '#f97316', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#d4a574' },
-  // Outdoor NPCs
+  // Lobby NPCs (walking the main corridor / atrium)
+  { x: -3,  z: 20,  room: -1, name: 'Drew',  color: '#f43f5e', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#fcd9b6' },
+  { x: 0,   z: -5,  room: -1, name: 'Blake', color: '#10b981', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#064e3b', shoes: '#18181b' },
+  { x: 4,   z: 15,  room: -1, name: 'Skyler',color: '#f59e0b', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#f5d6b8' },
+  { x: -3,  z: 35,  room: -1, name: 'Jay',   color: '#3b82f6', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 0,   z: -35, room: -1, name: 'River', color: '#22c55e', hat: 'none',        noBackpack: false, glasses: false, pants: '#064e3b', shoes: '#18181b', skin: '#fcd9b6' },
+  // Outdoor / Venue NPCs
   { x: -3,  z: -35, room: -1, name: 'Sam',   color: '#8b5cf6', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
   { x: 3,   z: 38,  room: -1, name: 'Parker', color: '#14b8a6', hat: 'none',        noBackpack: true,  glasses: false, pants: '#115e59', shoes: '#18181b', skin: '#f5d6b8' },
+  { x: 60,  z: 148, room: 8,  name: 'Ember', color: '#f97316', hat: 'none',        noBackpack: true,  glasses: false, pants: '#1e293b', shoes: '#18181b' },
+  { x: 70,  z: 155, room: 8,  name: 'Vale',  color: '#a855f7', hat: 'none',        noBackpack: false, glasses: true,  pants: '#4c1d95', shoes: '#2e1065', skin: '#fcd9b6' },
+  { x: -80, z: 142, room: 9,  name: 'Lyric', color: '#06b6d4', hat: 'none',        noBackpack: false, glasses: false, pants: '#155e75', shoes: '#18181b' },
+  { x: -90, z: 136, room: 9,  name: 'Echo',  color: '#ec4899', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#831843', shoes: '#18181b', skin: '#fcd9b6' },
 ];
 
 export function spawnNpcs() {
@@ -376,7 +386,7 @@ export function updateNpcs(dt) {
   });
 }
 
-export function animateAvatarWalk(playerObj, dt, now) {
+export function animateAvatarWalk(playerObj, dt, now, isSprinting = false) {
   const isMoving = playerObj.isMoving;
   const leftLeg = playerObj.leftLeg;
   const rightLeg = playerObj.rightLeg;
@@ -386,20 +396,34 @@ export function animateAvatarWalk(playerObj, dt, now) {
   if (!leftLeg || !rightLeg) return;
 
   if (isMoving && playerObj.isGrounded) {
-    const time = now * 0.012;
-    const swingRange = 0.6;
-    
-    leftLeg.rotation.x = Math.sin(time) * swingRange;
-    rightLeg.rotation.x = -Math.sin(time) * swingRange;
-    
-    if (leftArm && rightArm) {
-      leftArm.rotation.x = -Math.sin(time) * swingRange;
-      rightArm.rotation.x = Math.sin(time) * swingRange;
+    if (isSprinting) {
+      // Bunny hop — both legs move together, arms up
+      const st = now * 0.014;
+      const hop = Math.abs(Math.sin(st));
+      leftLeg.rotation.x = Math.sin(st) * 0.5;
+      rightLeg.rotation.x = Math.sin(st) * 0.5;
+      leftLeg.position.y = 0.6 + hop * 0.06;
+      rightLeg.position.y = 0.6 + hop * 0.06;
+      if (leftArm && rightArm) {
+        leftArm.rotation.x = -hop * 0.5;
+        rightArm.rotation.x = -hop * 0.5;
+      }
+    } else {
+      const time = now * 0.012;
+      const swingRange = 0.6;
+      leftLeg.rotation.x = Math.sin(time) * swingRange;
+      rightLeg.rotation.x = -Math.sin(time) * swingRange;
+      if (leftArm && rightArm) {
+        leftArm.rotation.x = -Math.sin(time) * swingRange;
+        rightArm.rotation.x = Math.sin(time) * swingRange;
+      }
     }
   } else {
     const lerpSpeed = 10 * dt;
     leftLeg.rotation.x = THREE.MathUtils.lerp(leftLeg.rotation.x, 0, lerpSpeed);
     rightLeg.rotation.x = THREE.MathUtils.lerp(rightLeg.rotation.x, 0, lerpSpeed);
+    leftLeg.position.y = THREE.MathUtils.lerp(leftLeg.position.y || 0.6, 0.6, lerpSpeed);
+    rightLeg.position.y = THREE.MathUtils.lerp(rightLeg.position.y || 0.6, 0.6, lerpSpeed);
     
     if (leftArm && rightArm) {
       leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, 0, lerpSpeed);

@@ -2,6 +2,8 @@
 
 The migration from CDN script tags to ESM import maps is done. See the diff in `public/index.html` for the import map configuration and individual files for `import * as THREE from 'three'` additions.
 
+Current browser runtime: `three@0.184.0` and `lil-gui@0.21.0` are loaded from the import map in `public/index.html`. The npm `three@0.128.x` packages are retained for existing tests/shims and are not the browser runtime source.
+
 ## Summary
 
 | Library | Before | After |

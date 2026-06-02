@@ -6,8 +6,9 @@
   <!-- Content Security Policy: scripts load from self + known CDNs.
        'unsafe-inline' is needed for the static <script type="importmap"> block.
        All other scripts are external files — no dynamic inline scripts exist.
-       Embeds limited to YouTube/Google Meet; WebSocket uses connect-src 'self'. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.youtube.com https://dl.polyhaven.org; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://meet.google.com https://accounts.google.com; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+       Embeds limited to YouTube/Google Meet; connect-src includes CDN sourcemaps,
+       HDRI loads, YouTube metadata, and WebSocket self connections. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://cdn.jsdelivr.net https://www.youtube.com https://i.ytimg.com https://dl.polyhaven.org; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://meet.google.com https://accounts.google.com; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
   <title>Metalyceum | 3D Social Event World</title>
   <meta name="description" content="A real-time 3D social world for chatting together in rooms and joining shared YouTube Live or Google Meet events.">
   <!-- Inline SVG favicon (avoids a 404 on /favicon.ico without shipping a binary) -->

@@ -20,6 +20,8 @@ export function updateRoomIndicatorAnimations(now) {
       item.object.rotation.z = Math.sin(time * item.speed + item.seed) * item.amplitude;
     } else if (item.type === 'spark') {
       item.object.position.y = item.baseY + Math.sin(time * item.speed + item.seed) * item.amplitude;
+    } else if (item.type === 'river' && item.update) {
+      item.update(now);
     } else if (item.type === 'fountain') {
       // Skip all fountain work when camera is far away (fountain is never registered
       // as static scenery so its visible flag stays true — gate manually here)
@@ -30,7 +32,7 @@ export function updateRoomIndicatorAnimations(now) {
       const upperPulse = Math.sin(time * 2.4 + item.seed * 1.3) * 0.012;
       const jetPulse = (Math.sin(time * 6 + item.seed) + 1) * 0.5;
 
-      item.object.rotation.y = time * 0.1;
+      // item.object.rotation.y = time * 0.1; -- removed: made the fountain spin disorientingly
 
       // ── Basin + upper water volume pulse ──────────────────────────────────
       if (data.basinWater) {

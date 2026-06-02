@@ -36,6 +36,10 @@ export const state = {
   ROOM_INDICATORS: new Map(),
   ROOM_SIGN_SPRITES: new Map(),
   STATIC_SCENERY: [],
+  /** @type {Map<string, any>} */
+  landmarkGroups: new Map(),
+  /** Second-floor meshes — faded only when player is on the ground floor. */
+  upperFloor: [],
   /** @type {any[]} */
   WALLS: [],
   /** @type {any[]} */
@@ -70,7 +74,7 @@ export const state = {
   npcs: [], // Ambient simulated NPCs
 
   // --- Input States ---
-  keys: { w: false, a: false, s: false, d: false, space: false },
+  keys: { w: false, a: false, s: false, d: false, space: false, shift: false },
   cameraKeys: { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false },
   cameraRig: {
     followYaw: Math.PI,
@@ -209,7 +213,35 @@ export const state = {
     { id: 5, name: "Crit Room", x: 11, z: -12, width: 12, depth: 12, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
     { id: 6, name: "Screening Room", x: 17, z: 8, width: 24, depth: 20, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
     { id: 7, name: "Commons", x: 14, z: 28, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 8, name: "Outdoor Amphitheater", x: 65, z: 150, width: 40, depth: 36, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 9, name: "Concert Venue", x: -85, z: 140, width: 46, depth: 34, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 }
+    {
+      id: 8,
+      name: "Outdoor Amphitheater",
+      x: 65,
+      z: 150,
+      width: 40,
+      depth: 36,
+      bounds: { minX: 39, maxX: 91, minZ: 131, maxZ: 171 },
+      video: "",
+      sourceValue: "",
+      sourceType: "none",
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0
+    },
+    {
+      id: 9,
+      name: "Concert Venue",
+      x: -85,
+      z: 140,
+      width: 46,
+      depth: 34,
+      bounds: { minX: -108.5, maxX: -60.5, minZ: 122, maxZ: 158 },
+      video: "",
+      sourceValue: "",
+      sourceType: "none",
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0
+    }
   ]
 };

@@ -278,6 +278,8 @@ export function isWorldPlacementAllowed(x, z) {
     isVenueRoadFootprint(x, z, 2.5) ||
     (Math.abs(x - 65) < 40 && Math.abs(z - 150) < 40) || // amphitheater (65, 150)
     (z > 115 && z < 160 && x > -110 && x < -60) ||    // concert venue (-85, 140)
+    (Math.abs(x - 160) < 60 && Math.abs(z - 220) < 55) || // airport (160, 220)
+    (Math.abs(x - 120) < 30 && Math.abs(z - 80) < 30) ||   // cave & underground city
     (z > 60 && z < 130 && x > 0 && x < 70) ||         // road to amphitheater
     (z > 60 && z < 115 && x > -90 && x < 0) ||        // road to concert venue
     (z > 42 && z < 60 && Math.abs(x) < 3)             // road to main building

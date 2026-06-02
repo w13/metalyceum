@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { addChatLog } from './chat.js';
-import { resetCameraFollow } from './engine.js';
+import { resetCameraFollow, detectRoomEntry } from './engine.js';
+import { getTerrainHeight } from './physics.js';
 import { restoreSoundtrackAfterRoomMedia, suppressSoundtrackForRoomMedia } from './audio.js';
 import { closeModal, isModalRegistered, openModal, registerModal } from './modals.js';
 import { syncActiveRoomMediaState } from './room-panel.js';
@@ -147,17 +148,28 @@ export function onCanvasClick(event) {
 
   _clickRaycaster.setFromCamera(_clickMouse, state.camera);
 
-  if (state.localPlayer.currentRoom === -1) {
-    const markerIntersects = _clickRaycaster.intersectObjects(state.clickableRoomMarkers);
-    if (markerIntersects.length > 0) {
-      const targetRoom = markerIntersects[0].object.userData?.roomId;
-      if (targetRoom !== undefined) {
-        focusRoomFromLobbyMarker(targetRoom);
+  // Check for teleport triggers (staircase, etc.)
+  const markerIntersects = _clickRaycaster.intersectObjects(state.clickableRoomMarkers);
+  if (markerIntersects.length > 0) {
+    const ud = markerIntersects[0].object.userData;
+    if (ud && ud.teleport) {
+      state.localPlayer.x = ud.x;
+      state.localPlayer.y = ud.y;
+      state.localPlayer.z = ud.z;
+      if (state.localPlayer.mesh) {
+        state.localPlayer.mesh.position.set(ud.x, ud.y, ud.z);
+      }
+      detectRoomEntry();
+      return;
+    }
+    if (state.localPlayer.currentRoom === -1) {
+      if (ud && ud.roomId !== undefined) {
+        focusRoomFromLobbyMarker(ud.roomId);
         return;
       }
     }
-    return;
   }
+  if (state.localPlayer.currentRoom === -1) return;
 
   const intersects = _clickRaycaster.intersectObjects(state.clickableScreens);
   if (intersects.length > 0) {

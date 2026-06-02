@@ -22,7 +22,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/ws", "/debug", "/api/v1/*"]
+    "run_worker_first": ["/ws*", "/debug*", "/api/v1/*"]
   },
 
   // Durable Object bindings for real-time state and admin

@@ -13,10 +13,10 @@ The entire backend infrastructure is powered by a single, high-performance Cloud
 
 ## 🌟 Key Features
 
-*   **Interactive 3D Scene**: Custom rendering with Three.js (r184 ESM) containing a physical lobby, distinct virtual rooms, bounds/physics, dynamic camera controls (first/third-person orbit controls), and avatar customization (shirt colors and display names).
+*   **Interactive 3D Scene**: Custom rendering with Three.js (r184 ESM) containing a physical lobby, outdoor venues, bounds/physics, dynamic camera controls (first/third-person orbit controls), and avatar customization (shirt colors and display names).
 *   **Real-time Multiplayer**: Powered by WebSockets via Cloudflare Durable Objects (`MetalyceumWorld`). Implements player proximity relevance calculations, location-scoped chat, and network profile adjustment (8–50 Hz position updates).
 *   **Virtual Rooms & Event Streams**:
-    *   **8 Synchronized Rooms**: North Hall, East Studio, Open Workshop, Broadcast Room, South Lounge, Crit Room, Screening Room, and Commons.
+    *   **10 Synchronized Rooms**: North Hall, East Studio, Open Workshop, Broadcast Room, South Lounge, Crit Room, Screening Room, Commons, Outdoor Amphitheater, and Concert Venue.
     *   **Live Stream/Conference Integrations**: Embedded room sidebars featuring YouTube Live watch streams or Google Meet conference URLs.
     *   **Theater Mode**: A distraction-free, maximized widescreen viewport overlay for media consumption and virtual collaboration.
 *   **Collaborative World Editor**: An admin-locked in-world layout editor utilizing Three.js `TransformControls` for placing, moving, scaling, rotating, duplicating, and deleting custom geometry meshes in real-time.
@@ -36,7 +36,8 @@ The entire backend infrastructure is powered by a single, high-performance Cloud
 | **Client Core** | **Vanilla ES6 Javascript** | Client-side game loop, coordinator modules, and WebSocket handlers. |
 | **Graphics Engine** | **Three.js (r184)** | Render loop, OrbitControls, and TransformControls loaded via ESM import map. |
 | **Type Check** | **TypeScript** | Static typing across server-side code and shared contracts. |
-| **Testing Frame** | **Vitest** | Fast, runner-based unit tests for pure domain helpers. |
+| **Physics Proxy** | **cannon-es** | XZ-only wall and asset collision resolution while terrain-follow and jump remain manual. |
+| **Test Runners** | **Vitest + Playwright** | Unit/client tests plus browser/e2e coverage. |
 
 ---
 
@@ -45,23 +46,25 @@ The entire backend infrastructure is powered by a single, high-performance Cloud
 The project separates server logic (`src/`) from static client-side resources (`public/`):
 
 ### 📂 Server-Side Components (`src/`)
-*   [src/index.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/index.ts): Main Worker entry point. Directly handles routes `/ws`, `/debug`, and proxies admin endpoints, serving static assets for everything else.
-*   [src/durable_object.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/durable_object.ts): Defines `MetalyceumWorld`. Manages WebSocket attachments, serializes player state on hibernation, boots/seeds database, and handles WebSocket messages.
-*   [src/realtime.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/realtime.ts): Pure utility math determining proximity relevance, chat scoping, and visibility. Free of Cloudflare context, enabling local unit tests.
-*   [src/validation.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/validation.ts): Pure validators for asset coordinates, colors, usernames, and chat limits.
-*   [src/constants.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/constants.ts): Holds game state limits (e.g., `MAX_PLAYERS = 10`, `WORLD_LIMIT = 80`), default room configurations, and types.
-*   [src/admin/do.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/admin/do.ts): Defines `AdminDO`. Oversees administration metrics, audits, and configuration synchronizations.
-*   [src/admin/schemas.ts](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/src/admin/schemas.ts): Zod-based inputs validation schemas for admin actions.
+*   [src/index.ts](src/index.ts): Main Worker entry point. Directly handles routes `/ws`, `/debug`, and proxies admin endpoints, serving static assets for everything else.
+*   [src/durable_object.ts](src/durable_object.ts): Defines `MetalyceumWorld`. Manages WebSocket attachments, serializes player state on hibernation, boots/seeds database, and handles WebSocket messages.
+*   [src/realtime.ts](src/realtime.ts): Pure utility math determining proximity relevance, chat scoping, and visibility. Free of Cloudflare context, enabling local unit tests.
+*   [src/validation.ts](src/validation.ts): Pure validators for asset coordinates, colors, usernames, and chat limits.
+*   [src/constants.ts](src/constants.ts): Holds game state limits (e.g., `MAX_PLAYERS = 10`, `WORLD_LIMIT = 80`), default room configurations, and types.
+*   [src/admin/do.ts](src/admin/do.ts): Defines `AdminDO`. Oversees administration metrics, audits, and configuration synchronizations.
+*   [src/admin/schemas.ts](src/admin/schemas.ts): Validation schemas, crypto helpers, rate limit constants, and admin domain types.
 
 ### 📂 Client-Side Components (`public/`)
-*   [public/index.html](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/index.html): HTML UI HUD, overlays, login panels, controls, and script loads. Includes strict CSP settings.
-*   [public/styles.css](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/styles.css): Complete style sheet containing glassmorphic styling, responsive layout, controls, and visual effects.
-*   [public/app.js](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/app.js): Application boot coordinator that manages system hooks, timing, and setup logic.
-*   [public/js/engine.js](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/js/engine.js): Manages Three.js WebGL rendering, lighting, camera orbits, and game loops.
-*   [public/js/multiplayer.js](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/js/multiplayer.js): Orchestrates WebSocket connections, data frame messaging, and client serialization.
-*   [public/js/physics.js](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/js/physics.js): Character physics, coordinate limits, jump gravity, and collider offsets.
-*   [public/js/editor.js](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/js/editor.js): UI and manipulation code for placing and altering objects in the 3D grid.
-*   [public/js/state.js](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/js/state.js): Shared mutable state accessible by all front-end subcomponents.
+*   [public/index.html](public/index.html): HTML UI HUD, overlays, login panels, controls, CSP, and the Three.js/lil-gui import map.
+*   [public/styles.css](public/styles.css): Complete style sheet containing glassmorphic styling, responsive layout, controls, and visual effects.
+*   [public/app.js](public/app.js): Application boot coordinator that manages system hooks, timing, and setup logic.
+*   [public/js/engine.js](public/js/engine.js): Manages Three.js WebGL rendering, camera orbits, Cannon initialization, and game loops.
+*   [public/js/multiplayer.js](public/js/multiplayer.js): Orchestrates WebSocket connections, data frame messaging, and client serialization.
+*   [public/js/physics.js](public/js/physics.js): Terrain height sampling, collision checks, room lookup, and roof detection.
+*   [public/js/physics-engine.js](public/js/physics-engine.js): Cannon-es XZ collision proxy for walls and placed assets.
+*   [public/js/editor.js](public/js/editor.js): UI and manipulation code for placing and altering objects in the 3D grid.
+*   [public/js/dev-tools.js](public/js/dev-tools.js): Runtime scene and object inspection tools.
+*   [public/js/state.js](public/js/state.js): Shared mutable state accessible by all front-end subcomponents.
 
 ---
 
@@ -70,7 +73,7 @@ The project separates server logic (`src/`) from static client-side resources (`
 Inside `MetalyceumWorld`, local storage is backed by Cloudflare SQLite database capabilities. The following tables are managed dynamically:
 
 ### `room_events`
-Stores metadata and source URLs for the 8 virtual rooms:
+Stores metadata and source URLs for the 10 virtual rooms:
 ```sql
 CREATE TABLE IF NOT EXISTS room_events (
   room_id INTEGER PRIMARY KEY,
@@ -138,12 +141,24 @@ npm run dev
 Open [http://localhost:8787](http://localhost:8787) in your browser.
 
 ### 3. Verify System Tests
-Execute unit tests validating validation and coordinates routing behavior:
+Execute unit tests validating validation, coordinates routing, and client physics behavior:
 ```bash
 npm run test
 ```
 
-### 4. Deploy to Cloudflare
+For browser/e2e coverage, run:
+```bash
+npm run test:e2e
+```
+
+### 4. Type Check
+Validate Worker and test TypeScript:
+```bash
+npm run typecheck
+npm run typecheck:test
+```
+
+### 5. Deploy to Cloudflare
 Deploy the application to the edge. This automatically validates typechecking prior to deploying a minified production bundle:
 ```bash
 npm run deploy
@@ -154,7 +169,7 @@ npm run deploy
 ## 🔒 Configuration & Administration
 
 *   **World Editor Authorization**: World modification tools require a valid `WORLD_EDITOR_TOKEN` to be specified inside the server bindings. Setting the `ADMIN_INIT_TOKEN` environment variable bootstraps authorization controls.
-*   **Static Resource Caches**: Custom cache and security headers on static asset responses (avoiding Workers execution costs) are configured via [public/_headers](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/public/_headers).
+*   **Static Resource Caches**: Custom cache and security headers on static asset responses (avoiding Workers execution costs) are configured via [public/_headers](public/_headers).
 *   **Additional Project Contexts**:
-    *   Refer to [CLAUDE.md](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/CLAUDE.md) for development requirements and guidelines.
-    *   Refer to [REASONIX.md](file:///Users/waqqashanafi/Documents/antigravity/zealous-hawking/REASONIX.md) for tech stack constraints and conventions.
+    *   Refer to [CLAUDE.md](CLAUDE.md) for development requirements and guidelines.
+    *   Refer to [REASONIX.md](REASONIX.md) for tech stack constraints and conventions.

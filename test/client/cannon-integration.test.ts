@@ -151,24 +151,26 @@ describe('Cannon XZ collision proxy', () => {
 
     it('displayVelocity matches velocity after fallback move', () => {
       // Simulate what the fallback branch does at end of XZ block
-      state.localPlayer.velocity.x = 4.2;
-      state.localPlayer.velocity.z = -1.8;
+      const lp = state.localPlayer as any;
+      lp.velocity.x = 4.2;
+      lp.velocity.z = -1.8;
 
-      state.localPlayer.displayVelocity.x = state.localPlayer.velocity.x;
-      state.localPlayer.displayVelocity.z = state.localPlayer.velocity.z;
+      lp.displayVelocity.x = lp.velocity.x;
+      lp.displayVelocity.z = lp.velocity.z;
 
-      expect(state.localPlayer.displayVelocity.x).toBe(4.2);
-      expect(state.localPlayer.displayVelocity.z).toBe(-1.8);
+      expect(lp.displayVelocity.x).toBe(4.2);
+      expect(lp.displayVelocity.z).toBe(-1.8);
     });
 
     it('displayVelocity is zero when velocity is zero on fallback', () => {
-      state.localPlayer.velocity.x = 0;
-      state.localPlayer.velocity.z = 0;
-      state.localPlayer.displayVelocity.x = state.localPlayer.velocity.x;
-      state.localPlayer.displayVelocity.z = state.localPlayer.velocity.z;
+      const lp = state.localPlayer as any;
+      lp.velocity.x = 0;
+      lp.velocity.z = 0;
+      lp.displayVelocity.x = lp.velocity.x;
+      lp.displayVelocity.z = lp.velocity.z;
 
-      expect(state.localPlayer.displayVelocity.x).toBe(0);
-      expect(state.localPlayer.displayVelocity.z).toBe(0);
+      expect(lp.displayVelocity.x).toBe(0);
+      expect(lp.displayVelocity.z).toBe(0);
     });
   });
 

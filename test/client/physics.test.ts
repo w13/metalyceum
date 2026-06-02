@@ -36,6 +36,11 @@ describe('Client Physics & Room Queries', () => {
       expect(roomId).toBe(8);
     });
 
+    it('treats the concert venue entrance threshold as part of the room', () => {
+      const roomId = getRoomIdForPosition(-61, 140);
+      expect(roomId).toBe(9);
+    });
+
     it('returns -1 for outdoor points', () => {
       // Outside the building and amphitheater/concert venue
       const roomId = getRoomIdForPosition(0, 44);
@@ -52,6 +57,12 @@ describe('Client Physics & Room Queries', () => {
     it('returns false when outside a specific room bounds', () => {
       const room = state.ROOMS[0]; // North Hall
       expect(isPointInsideRoom(0, 0, room)).toBe(false);
+    });
+
+    it('uses explicit bounds when a room defines them', () => {
+      const room = state.ROOMS[9]; // Concert Venue
+      expect(isPointInsideRoom(-61, 140, room)).toBe(true);
+      expect(isPointInsideRoom(-58, 140, room)).toBe(false);
     });
   });
 
@@ -104,6 +115,11 @@ describe('Client Physics & Room Queries', () => {
     it('returns 0 in the flat zone for the fountain plaza', () => {
       // z > 38 && Math.abs(x) < 18 is flat (0)
       expect(getTerrainHeight(10, 42)).toBe(0);
+    });
+
+    it('returns 0 on the road to the concert venue (specifically at the clipping coordinate -17.98, 68.60)', () => {
+      // Road 2 path points include (-18, 68) which should be fully flattened (0)
+      expect(getTerrainHeight(-17.98, 68.60)).toBeCloseTo(0, 4);
     });
 
     it('calculates hilly height outside the flat safety zones', () => {

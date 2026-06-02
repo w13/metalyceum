@@ -40,6 +40,105 @@ The client is a browser app served from `public/`. `public/app.js` is the module
 - World asset support is split across server validation/persistence and client rendering/editor code. Adding or changing asset types usually requires coordinated updates in `src/validation.ts`, `src/durable_object.ts`, and `public/js/config.js` / `public/js/editor.js`.
 - `src/index.ts` has explicit CORS allowlist handling for `/api/v1/*` (`ALLOWED_ORIGINS`). Update this list when admin UI origins change.
 
+## LLM world-building tools
+
+`window.metalyceumDev` is available in the browser when the debug panel is open (backtick key). Use it — **never do coordinate math manually**.
+
+### Essential calls for writing new scenery
+
+```js
+// Terrain height at a point — use this as your baseY
+metalyceumDev.terrainAt(130, -80)                   // → number
+
+// Full site analysis before placing anything
+metalyceumDev.worldQuery(130, -80)
+// → {terrainHeight, roomId, roomName, riverDist, isInRiver, wallCollision, nearestLandmark, ...}
+
+// Terrain profile to understand slope across a new build area
+metalyceumDev.sampleTerrain(130, -80, 40, 7)
+// → {points: [{x,z,y}], min, max, avg, maxSlope, isFlat}
+
+// Find a clear spot on the map for a new structure of given radius
+metalyceumDev.findClearSpace(25)
+// → [{x, z, terrainHeight, distFromCentre}, ...]
+```
+
+### Auditing clipping and z-fighting
+
+```js
+metalyceumDev.audit()                               // runs full audit, returns issues array
+metalyceumDev.suggestFix(0)                         // concrete fix for issue[0]: delta / newPos / newY
+```
+
+### Generating collision box code
+
+```js
+metalyceumDev.colliderBox(130, -80, 60, 60, 'castle')
+// → {minX, maxX, minZ, maxZ, assetId} — paste into PLACED_ASSET_COLLIDERS.push(...)
+
+metalyceumDev.wallBox(-85, 140, 46, 34, 10, baseY)
+// → {min, max, jsCode} — jsCode is the ready-to-paste new THREE.Box3(...) call
+```
+
+### Moving landmarks without a reload
+
+```js
+metalyceumDev.setLandmark('castle', {x: 5, y: 0, z: -2, rotY: 0.1})  // live update
+metalyceumDev.getLandmark('castle')    // read current offset → paste into source
+metalyceumDev.teleportTo('castle')     // warp player there to inspect
+metalyceumDev.listLandmarks()          // ['castle','airport','amphitheater','concertVenue','undergroundCity']
+```
+
+### Snapshot and measurement
+
+```js
+metalyceumDev.snapshot()               // full JSON: landmarks, rooms, walls, placed assets, player
+metalyceumDev.measure(x1, z1, x2, z2) // XZ distance, terrain heights, slope %
+metalyceumDev.listAssets()             // placed assets grouped by type
+```
+
+### Inspecting object positions and orientations
+
+```js
+// Scan all state.STATIC_SCENERY for terrain misalignment and unexpected tilt
+metalyceumDev.auditStaticScenery(0.4)
+// → [{index, kind, worldPos, terrainY, diff, severity, type:'floating'|'buried'|'tilted', message}]
+// 3D markers (sphere + gap line / axes helper) appear when "Show Misalign Markers" is toggled on
+
+metalyceumDev.getStaticAuditIssues()   // re-read results without re-scanning
+
+// Full world-transform for all objects within radius units of the player
+metalyceumDev.inspectNearby(30)
+// → [{source, worldPos, worldRotDeg, scale, terrainY, yAboveTerrain, dist}, ...]
+
+// Alt+click any mesh (while debug panel is open) to log its world transform + terrain delta to console
+metalyceumDev.getLastInspected()
+// → {geometry, worldPos, worldRotDeg, worldScale, terrainY, yAboveTerrain, parentChain, userData}
+metalyceumDev.clearInspected()         // remove result and 3D marker
+```
+
+### Proximity and intersection detection
+
+```js
+// Pairwise edge-to-edge distances for all objects near a point
+metalyceumDev.proximity()              // within 60u of player
+metalyceumDev.proximity(130, -80, 80)  // within 80u of world coordinate (130, -80)
+// Returns [{a, b, centreDist, edgeDist, status}] sorted by edgeDist ascending
+// status values: 'INTERSECTING' (edgeDist < 0), 'touching' (< 0.3u), 'close' (< 2u), 'clear'
+// Covers placed assets, landmark groups, and static scenery
+// Also logs all INTERSECTING/touching pairs to the console immediately
+
+// Nearest N objects to a point with edge-to-edge distance
+metalyceumDev.nearestObjects()         // top 10 nearest to player
+metalyceumDev.nearestObjects(130, -80, 15)
+// → [{label, id, x, z, r, centreDist, edgeDist}, ...]
+```
+
+### Data sources
+- `LANDMARK_REGISTRY` in `public/js/config.js` — authoritative landmark keys, centers, radii
+- `state.landmarkGroups` (`Map<string, THREE.Group>`) — live group references for all 5 landmarks
+- Landmark scenery files (`scenery/castle.js`, etc.) wrap all meshes in a root `THREE.Group` registered in `state.landmarkGroups`; moving the group offsets the whole structure
+
 ## MCP servers
 
 For browser-level debugging and UI verification, use a Playwright MCP server.

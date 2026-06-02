@@ -27,19 +27,26 @@ export function createBannerStand(x, z, rotationY, color, texture) {
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.4, 6), poleMat);
   pole.position.y = 3.2;
   pole.castShadow = true;
+  pole.receiveShadow = true;
   group.add(pole);
 
   const topper = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 6), poleMat);
   topper.position.y = 6.7;
+  topper.castShadow = true;
+  topper.receiveShadow = true;
   group.add(topper);
 
   const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 2.6), clothMat);
   cloth.position.set(0.95, 4.7, 0);
   cloth.rotation.y = Math.PI / 2;
+  cloth.castShadow = true;
+  cloth.receiveShadow = true;
   group.add(cloth);
 
   const trim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.8, 0.12), poleMat);
   trim.position.set(0.05, 4.7, 0);
+  trim.castShadow = true;
+  trim.receiveShadow = true;
   group.add(trim);
 
   group.position.set(x, getTerrainHeight(x, z), z);
@@ -70,6 +77,8 @@ export function createRoomIndicator(room) {
   );
   base.position.y = 0.08;
   base.userData.roomId = room.id;
+  base.castShadow = true;
+  base.receiveShadow = true;
   group.add(base);
 
   const ring = new THREE.Mesh(
@@ -283,6 +292,7 @@ export function buildFrontFountain() {
   );
   capRing.position.set(fx, fountainBaseY + 0.8, fz);
   capRing.rotation.x = Math.PI / 2;
+  capRing.castShadow = true;
   capRing.receiveShadow = true;
   state.scene.add(capRing);
 
@@ -293,6 +303,7 @@ export function buildFrontFountain() {
   );
   basinFloor.rotation.x = -Math.PI / 2;
   basinFloor.position.set(fx, fountainBaseY + 0.03, fz);
+  basinFloor.castShadow = true;
   basinFloor.receiveShadow = true;
   state.scene.add(basinFloor);
 
@@ -307,12 +318,12 @@ export function buildFrontFountain() {
       metalness: 0.55,
       transparent: true,
       opacity: 0.70,
-      side: THREE.DoubleSide,
       side: THREE.DoubleSide
     })
   );
   waterPool.position.set(fx, fountainBaseY + 0.39, fz);
   waterPool.userData.baseY = waterPool.position.y;
+  waterPool.receiveShadow = true;
   state.scene.add(waterPool);
 
 
@@ -324,6 +335,7 @@ export function buildFrontFountain() {
   );
   baseStep.position.set(fx, fountainBaseY + 0.8 + 0.175, fz);
   baseStep.castShadow = true;
+  baseStep.receiveShadow = true;
   state.scene.add(baseStep);
 
   const midStep = new THREE.Mesh(
@@ -332,6 +344,7 @@ export function buildFrontFountain() {
   );
   midStep.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.25, fz);
   midStep.castShadow = true;
+  midStep.receiveShadow = true;
   state.scene.add(midStep);
 
   const column = new THREE.Mesh(
@@ -340,6 +353,7 @@ export function buildFrontFountain() {
   );
   column.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 0.6, fz);
   column.castShadow = true;
+  column.receiveShadow = true;
   state.scene.add(column);
 
   // Decorative ring mid-column
@@ -349,6 +363,8 @@ export function buildFrontFountain() {
   );
   midRing.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 0.4, fz);
   midRing.rotation.x = Math.PI / 2;
+  midRing.castShadow = true;
+  midRing.receiveShadow = true;
   state.scene.add(midRing);
 
   // ── Upper basin ────────────────────────────────────────────────────────
@@ -359,6 +375,7 @@ export function buildFrontFountain() {
   upperBowl.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 1.2 + 0.55, fz);
   upperBowl.scale.y = 0.6;
   upperBowl.castShadow = true;
+  upperBowl.receiveShadow = true;
   state.scene.add(upperBowl);
 
   // Brick trim on upper bowl rim
@@ -368,6 +385,8 @@ export function buildFrontFountain() {
   );
   bowlRim.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 1.2 + 0.55 - 0.02, fz);
   bowlRim.rotation.x = Math.PI / 2;
+  bowlRim.castShadow = true;
+  bowlRim.receiveShadow = true;
   state.scene.add(bowlRim);
 
   // ── Upper basin water fill ─────────────────────────────────────────
@@ -480,7 +499,7 @@ export function buildFrontFountain() {
         transparent: true, opacity: 0.48, side: THREE.DoubleSide
       })
     );
-    bigApple.position.set(fx, (colTopY + colBotY) / 2, fz);
+    bigApple.position.set(0, (colTopY + colBotY) / 2, 0);
     waterAnimGroup.add(bigApple);
   }
 

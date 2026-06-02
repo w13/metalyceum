@@ -8,7 +8,8 @@ import {
   CAMERA_TARGET_DECAY,
   CAMERA_TARGET_LOOK_HEIGHT,
   REMOTE_PLAYER_SMOOTHING,
-  WORLD_CONFIG
+  WORLD_CONFIG,
+  ROOM_HEIGHT
 } from './config.js';
 import { getRoomIdForPosition, isLocalPlayerUnderRoof } from './physics.js';
 import { initCannon } from './physics-engine.js';
@@ -36,6 +37,7 @@ import { buildMap } from './building.js';
 import { renderMinimap } from './minimap.js';
 import { animateAvatarWalk } from './characters.js';
 import { initTransformControls } from './editor.js';
+import { updateDevTools } from './dev-tools.js';
 
 // Camera & Movement Sub-modules
 import {
@@ -211,40 +213,69 @@ export function animate() {
     state.ceilingMat.opacity = THREE.MathUtils.lerp(state.ceilingMat.opacity, targetOpacity, 8 * dt);
     state.ceilingMesh.visible = state.ceilingMat.opacity > 0.02;
   }
-  
   if (state.upperWallMat) {
     state.upperWallMat.opacity = THREE.MathUtils.lerp(state.upperWallMat.opacity, targetOpacity, 8 * dt);
-    
-    if (state.signFrontMat) state.signFrontMat.opacity = state.upperWallMat.opacity;
-    if (state.signSideMat) state.signSideMat.opacity = state.upperWallMat.opacity;
-    
-    state.upperWalls.forEach(w => {
-      w.visible = state.upperWallMat.opacity > 0.02;
-    });
   }
-
+  
   state.upperWalls.forEach(w => {
+    if (!w || !w.isObject3D) return;
+    // Walls using the shared upperWallMat (corridor walls) follow its opacity
+    if (w.material === state.upperWallMat) {
+      w.visible = state.upperWallMat.opacity > 0.02;
+      return;
+    }
+    // Other transparent walls (concert venue upper halves) fade individually
     if (w.material && w.material.transparent) {
-      w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, isInside ? 0.0 : 1.0, 8 * dt);
+      try { w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, isInside ? 0.0 : 1.0, 8 * dt); }
+      catch(e) {}
       w.visible = w.material.opacity > 0.02;
     } else {
       w.visible = !isInside;
     }
   });
   state.roofMeshes.forEach((roof) => {
-    if (roof.material.transparent) {
-      roof.material.opacity = THREE.MathUtils.lerp(roof.material.opacity, isInside ? 0.0 : 1.0, 6 * dt);
+    if (!roof || !roof.isObject3D) return;
+    if (roof.material && roof.material.transparent) {
+      roof.material.opacity = THREE.MathUtils.lerp(roof.material.opacity, isInside ? 0.0 : 1.0, 8 * dt);
+      roof.material.needsUpdate = true;
       roof.visible = roof.material.opacity > 0.02;
     } else {
       roof.visible = !isInside;
     }
   });
 
+  // Second-floor elements: only fade when player is on the ground floor (below
+  // the mezzanine level). When the player is on the second floor they stay visible.
+  const isOnGroundFloor = isInside && state.localPlayer.y < ROOM_HEIGHT;
+  state.upperFloor.forEach((mesh) => {
+    if (!mesh || !mesh.isObject3D) return;
+    if (mesh.material && mesh.material.transparent) {
+      mesh.material.opacity = THREE.MathUtils.lerp(mesh.material.opacity, isOnGroundFloor ? 0.0 : 1.0, 8 * dt);
+      mesh.material.needsUpdate = true;
+      mesh.visible = mesh.material.opacity > 0.02;
+    } else {
+      mesh.visible = !isOnGroundFloor;
+    }
+  });
+
   if (state.sceneSunLight) {
-    state.sceneSunLight.intensity = isInside ? 0.70 : 1.0;
+    state.sceneSunLight.intensity = isInside ? 0.20 : 1.0;
+    if (state.localPlayer && state.localPlayer.mesh) {
+      const px = state.localPlayer.x;
+      const pz = state.localPlayer.z;
+      state.sceneSunLight.position.set(24 + px, 48, 12 + pz);
+      state.sceneSunLight.target.position.set(px, 0, pz);
+      // Shadow camera follows the player so shadow detail is always where the player is
+      const d = 52;
+      state.sceneSunLight.shadow.camera.left = px - d;
+      state.sceneSunLight.shadow.camera.right = px + d;
+      state.sceneSunLight.shadow.camera.top = pz - d;
+      state.sceneSunLight.shadow.camera.bottom = pz + d;
+      state.sceneSunLight.shadow.camera.updateProjectionMatrix();
+    }
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = isInside ? 0.50 : 0.35;
+    state.sceneHemisphereLight.intensity = isInside ? 0.06 : 0.10;
   }
   if (state.sceneIndoorLight) {
     state.sceneIndoorLight.intensity = isInside ? 1.2 : 0;
@@ -253,6 +284,7 @@ export function animate() {
   state.controls.update();
   updateCameraFollow(dt, _now);
   updateDebugPanel(_now);
+  updateDevTools(_now);
 
   try {
     state.renderer.render(state.scene, state.camera);
@@ -350,7 +382,7 @@ export function initEngine() {
   state.renderer.setSize(window.innerWidth, window.innerHeight);
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   state.renderer.shadowMap.enabled = true;
-  state.renderer.shadowMap.type = THREE.PCFShadowMap;
+  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
   state.renderer.toneMappingExposure = 0.85;
 
@@ -369,18 +401,18 @@ export function initEngine() {
   state.controls.maxPolarAngle = Math.PI / 2 - 0.04;
   state.controls.minPolarAngle = 0.1;
 
-  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.08);
+  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.03);
   state.scene.add(state.sceneAmbientLight);
 
-  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.42);
+  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.10);
   state.sceneHemisphereLight.position.set(0, 50, 0);
   state.scene.add(state.sceneHemisphereLight);
 
   state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 1.0);
   state.sceneSunLight.position.set(24, 48, 12);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 2048;
-  state.sceneSunLight.shadow.mapSize.height = 2048;
+  state.sceneSunLight.shadow.mapSize.width = 1024;
+  state.sceneSunLight.shadow.mapSize.height = 1024;
   state.sceneSunLight.shadow.camera.near = 0.5;
   state.sceneSunLight.shadow.camera.far = 180;
   const d = 38;
@@ -391,9 +423,10 @@ export function initEngine() {
   state.sceneSunLight.shadow.bias = -0.0003;
   state.sceneSunLight.shadow.normalBias = 0.005;
   state.scene.add(state.sceneSunLight);
+  state.scene.add(state.sceneSunLight.target);
 
   // Cool fill light from the opposite side — prevents pure-black shadows
-  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.08);
+  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.04);
   fillLight.position.set(-28, 22, -14);
   state.scene.add(fillLight);
 

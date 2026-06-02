@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Status:** Implemented. This file is retained as the historical implementation plan; see the completion summary near the end for the current state.
+
 **Goal:** Wire the already-written `physics-engine.js` into the game loop so Cannon-es handles XZ wall/asset collision, eliminating the tunneling and terrain-clipping that the manual axis-split system produced.
 
 **Architecture:** Cannon-es acts as a pure XZ collision proxy — it resolves contacts, returns a corrected position, and contributes nothing to dynamics. All drag, acceleration, speed-capping, and Y physics stay in the manual system unchanged. A new `displayVelocity` field carries post-collision velocity to animation/rotation, keeping the control velocity uncorrupted by wall contacts.
 
-**Tech Stack:** cannon-es@0.20.0 (devDependency for tests; CDN in browser), Three.js r128, Vitest for headless Node tests.
+**Tech Stack:** cannon-es@0.20.0 (devDependency for tests; CDN in browser), Three.js r184 via browser import map, Vitest for headless Node tests.
 
 ---
 

@@ -115,6 +115,17 @@ export function buildRoomInteriorSet(room) {
   spark.position.set(stripX, 0.08, 0);
   group.add(spark);
 
+  group.traverse((child) => {
+    if (child.isMesh) {
+      if (child === rug) {
+        child.receiveShadow = true;
+      } else if (child !== spark) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    }
+  });
+
   registerStaticScenery(group, { kind: 'room', roomId: room.id });
   state.scene.add(group);
 }

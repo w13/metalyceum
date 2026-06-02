@@ -1,14 +1,14 @@
 # Cannon-es Integration Design
 
-**Date:** 2026-05-31  
-**Status:** Approved for implementation  
+**Date:** 2026-05-31
+**Status:** Implemented
 **Problem:** Players clip through terrain and thin obstacles. The manual axis-split collision in `movement.js` tunnels at speed and the Y terrain-follow lerp lags one frame behind on slope edges.
 
 ---
 
 ## Decision
 
-Use Cannon-es as a **pure XZ collision proxy**. It resolves wall/asset contacts; the manual system keeps full ownership of Y (terrain-follow, jump, gravity). The hybrid was already architected in `physics-engine.js` and partially wired into `movement.js` — this completes the integration.
+Use Cannon-es as a **pure XZ collision proxy**. It resolves wall/asset contacts; the manual system keeps full ownership of Y (terrain-follow, jump, gravity). The hybrid is implemented through `physics-engine.js`, `engine/movement.js`, and the focused client tests in `test/client/cannon-integration.test.ts`.
 
 ---
 

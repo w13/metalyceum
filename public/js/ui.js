@@ -185,6 +185,7 @@ function initKeyboardHandlers() {
       const k = e.key.toLowerCase();
       setMovementKeyState(k, true);
       if (e.key === ' ') state.keys.space = true;
+      if (e.key === 'Shift') state.keys.shift = true;
       setCameraKeyState(e.key, true);
     }
 
@@ -227,6 +228,7 @@ function initKeyboardHandlers() {
     const k = e.key.toLowerCase();
     setMovementKeyState(k, false);
     if (e.key === ' ') state.keys.space = false;
+    if (e.key === 'Shift') state.keys.shift = false;
     setCameraKeyState(e.key, false);
   });
 }

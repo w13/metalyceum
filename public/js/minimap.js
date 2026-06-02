@@ -195,7 +195,7 @@ export function renderMinimap() {
     ctx.fill();
   });
 
-  // Remote players
+  // Remote players (within range)
   state.remotePlayers.forEach((p) => {
     const pos = worldToMap(p.x, p.z, px, pz);
     const dx = p.x - px, dz = p.z - pz;
@@ -204,6 +204,30 @@ export function renderMinimap() {
     ctx.beginPath();
     ctx.arc(pos.sx, pos.sy, 3, 0, Math.PI * 2);
     ctx.fill();
+  });
+
+  // Edge arrows for nearby out-of-range players (within 2× WORLD_RADIUS)
+  const edgeRadiusSq = WORLD_RADIUS * WORLD_RADIUS * 4;
+  const mapR = MAP_RADIUS_PX - 4;
+  state.remotePlayers.forEach((p) => {
+    const dx = p.x - px, dz = p.z - pz;
+    const distSq = dx * dx + dz * dz;
+    if (distSq <= worldRadiusSq || distSq > edgeRadiusSq) return;
+    const angle = Math.atan2(dz, dx);
+    const arrowX = cx + Math.cos(angle) * mapR;
+    const arrowY = cy + Math.sin(angle) * mapR;
+    ctx.save();
+    ctx.translate(arrowX, arrowY);
+    ctx.rotate(angle + Math.PI / 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(0, -5);
+    ctx.lineTo(-3, 4);
+    ctx.lineTo(0, 2);
+    ctx.lineTo(3, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   });
 
   // Local player arrow (at center, rotated to face direction)

@@ -14,17 +14,17 @@
 /index.html
   Cache-Control: no-cache
 
-# JS modules and stylesheet — content-hashed filenames would be ideal, but in the
-# meantime a short max-age avoids 28 conditional-GET roundtrips on each page load.
-# must-revalidate ensures the browser still checks for updates at the end of the TTL.
+# JS modules and stylesheet — no-cache so deploys are visible immediately on next
+# page load without a hard-refresh. The browser still reuses the cached response if
+# the ETag/Last-Modified hasn't changed (conditional GET), so it stays fast.
 /app.js
-  Cache-Control: public, max-age=3600, must-revalidate
+  Cache-Control: no-cache
 
 /js/*
-  Cache-Control: public, max-age=3600, must-revalidate
+  Cache-Control: no-cache
 
 /styles.css
-  Cache-Control: public, max-age=3600, must-revalidate
+  Cache-Control: no-cache
 
 # MIDI files are large and change rarely — cache for a week.
 /midi/*

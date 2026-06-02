@@ -68,6 +68,14 @@ export const ROOM_LAYOUTS = {
   9: { themeColor: '#a855f7', label: 'Concert venue' }
 };
 
+export const LANDMARK_REGISTRY = {
+  castle:          { label: 'Castle',           approxCenter: [130, -80],  approxRadius: 40 },
+  airport:         { label: 'Airport',          approxCenter: [160, 220],  approxRadius: 50 },
+  amphitheater:    { label: 'Amphitheater',     approxCenter: [65, 150],   approxRadius: 22 },
+  concertVenue:    { label: 'Concert Venue',    approxCenter: [-85, 140],  approxRadius: 23 },
+  undergroundCity: { label: 'Underground City', approxCenter: [120, 80],   approxRadius: 20 },
+};
+
 export const WORLD_ASSET_CATALOG = {
   tree: { label: 'Tree', defaultScale: 1, collidable: true, footprint: 1.2 },
   boulder: { label: 'Boulder', defaultScale: 1, collidable: true, footprint: 1.1 },

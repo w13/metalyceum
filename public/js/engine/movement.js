@@ -49,7 +49,7 @@ export function updateLocalPlayer(dt, now) {
     state.localPlayer.isMoving = false;
     state.localPlayer.velocity.x = 0;
     state.localPlayer.velocity.z = 0;
-    animateAvatarWalk(state.localPlayer, dt, now);
+    animateAvatarWalk(state.localPlayer, dt, now, state.keys.shift);
     return;
   }
 
@@ -57,6 +57,7 @@ export function updateLocalPlayer(dt, now) {
 
   const acceleration = 55.0;
   const maxSpeed = 9.5;
+  const sprintSpeed = 24.0;
   const drag = 8.5;
   const gravity = 25.0;
   const jumpForce = 10.0;
@@ -109,10 +110,12 @@ export function updateLocalPlayer(dt, now) {
     state.localPlayer.velocity.z += targetDir.z * acceleration * dt;
   }
 
+  const isSprinting = state.keys.shift;
+  const speedLimit = isSprinting ? sprintSpeed : maxSpeed;
   let speedXZ = Math.sqrt(state.localPlayer.velocity.x * state.localPlayer.velocity.x + state.localPlayer.velocity.z * state.localPlayer.velocity.z);
-  if (speedXZ > maxSpeed) {
-    state.localPlayer.velocity.x = (state.localPlayer.velocity.x / speedXZ) * maxSpeed;
-    state.localPlayer.velocity.z = (state.localPlayer.velocity.z / speedXZ) * maxSpeed;
+  if (speedXZ > speedLimit) {
+    state.localPlayer.velocity.x = (state.localPlayer.velocity.x / speedXZ) * speedLimit;
+    state.localPlayer.velocity.z = (state.localPlayer.velocity.z / speedXZ) * speedLimit;
   }
 
   const body = isCannonReady() ? getPlayerBodyRef() : null;
@@ -246,5 +249,5 @@ export function updateLocalPlayer(dt, now) {
   const camLerpFactor = 1 - Math.pow(CAMERA_TARGET_DECAY, dt);
   state.controls.target.lerp(_desiredCameraTarget, camLerpFactor);
 
-  animateAvatarWalk(state.localPlayer, dt, now);
+  animateAvatarWalk(state.localPlayer, dt, now, state.keys.shift);
 }
