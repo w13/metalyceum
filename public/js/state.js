@@ -243,6 +243,21 @@ export const state = {
       startTime: null,
       durationMinutes: 0,
       updatedAt: 0
+    },
+    {
+      id: 10,
+      name: "Upper Gallery",
+      x: 17.5,
+      z: 8,
+      width: 25,
+      depth: 30,
+      floor: 2,
+      video: "",
+      sourceValue: "",
+      sourceType: "none",
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0
     }
   ]
 };

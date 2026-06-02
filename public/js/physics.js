@@ -40,6 +40,15 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
       const rawTerrainY = getTerrainHeight(73, 8, true);
       return rawTerrainY + 3.6; // Top of road deck
     }
+    // 3. Second-floor mezzanine deck inside the main building
+    // Only active when the player is already elevated (above ROOM_HEIGHT / 2),
+    // so ground-floor players are not affected.
+    if (
+      Math.abs(x) <= 29.5 && z >= -40 && z <= 40 &&
+      state.localPlayer && state.localPlayer.y > 3.0
+    ) {
+      return 7.5; // Mezzanine deck surface
+    }
   }
 
   // Base rolling hills — two overlapping sine octaves, amplitude ≈ ±3.7 u
@@ -225,4 +234,42 @@ export function checkCollisionLoose(targetX, targetZ) {
     if (_cBox.intersectsSphere(_sphereLoose)) return true;
   }
   return false;
+}
+
+// Returns the water surface Y at (x,z) if the point is within the river channel, or null if dry land.
+const _riverPts = [
+  [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
+  [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
+  [62, 47], [50, 70], [30, 90], [10, 110], [-10, 130],
+  [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
+];
+
+function _ptSegDist2(px, pz, ax, az, bx, bz) {
+  const dax = bx - ax, daz = bz - az;
+  const l2 = dax * dax + daz * daz;
+  if (l2 < 0.001) return Math.sqrt((px - ax) * (px - ax) + (pz - az) * (pz - az));
+  const tt = Math.max(0, Math.min(1, ((px - ax) * dax + (pz - az) * daz) / l2));
+  return Math.sqrt((px - ax - tt * dax) * (px - ax - tt * dax) + (pz - az - tt * daz) * (pz - az - tt * daz));
+}
+
+export function getWaterSurfaceHeight(x, z) {
+  let riverDist = Infinity;
+  for (let i = 0; i < _riverPts.length - 1; i++) {
+    const d = _ptSegDist2(x, z, _riverPts[i][0], _riverPts[i][1], _riverPts[i + 1][0], _riverPts[i + 1][1]);
+    if (d < riverDist) riverDist = d;
+  }
+  // River channel extends about 4 units from centerline
+  if (riverDist > 4.5) return null;
+  // Water surface is ~2.8 units below the reference terrain at the closest river point
+  // Find the closest river control point to estimate surface height (use local vars, don't mutate _riverPts)
+  let closestX = _riverPts[0][0], closestZ = _riverPts[0][1];
+  let minDist2 = Infinity;
+  for (let i = 0; i < _riverPts.length; i++) {
+    const dx = x - _riverPts[i][0], dz = z - _riverPts[i][1];
+    const d2 = dx * dx + dz * dz;
+    if (d2 < minDist2) { minDist2 = d2; closestX = _riverPts[i][0]; closestZ = _riverPts[i][1]; }
+  }
+  // Sample terrain at the closest point to get the reference (non-channel) height
+  const ref = getTerrainHeight(closestX, closestZ, true);
+  return ref - 2.8;
 }

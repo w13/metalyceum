@@ -98,11 +98,11 @@ export function buildWorldDetails() {
   const pondDefs = [
     { x: 132, z: -32, r: 7 },
     { x: -136, z: -26, r: 6 },
-    { x: 14, z: -122, r: 9 },
+    { x: 14, z: -110, r: 7 },       // shifted north, shrunk — clear of tree cluster (0,-145)
     { x: 172, z: 55, r: 6 },
-    { x: -172, z: 50, r: 6 },
-    { x: 65, z: 204, r: 7 },
-    { x: -92, z: 198, r: 7 },
+    { x: -150, z: 72, r: 5 },       // moved — clear of tree cluster (-158,36) and venue road
+    { x: 30, z: 215, r: 5 },        // moved — clear of tree cluster (64,198), north of amphitheater
+    { x: -50, z: 215, r: 5 },       // moved — east of river (river at z=215 is at x≈-122)
   ];
 
   // Batch all reeds across all ponds into one InstancedMesh
@@ -136,20 +136,57 @@ export function buildWorldDetails() {
     gravel.receiveShadow = true;
     state.scene.add(gravel);
 
-    // Water surface
-    const water = new THREE.Mesh(
-      new THREE.CircleGeometry(r * 0.82, 48),
-      new THREE.MeshStandardMaterial({
-        color: '#0c4a6e', roughness: 0.04, metalness: 0.72,
-        transparent: true, opacity: 0.84
-      })
-    );
+    // Water surface — ShaderMaterial with vertex waves
+    const waterUniforms = { uTime: { value: 0 } };
+    const waterMat = new THREE.ShaderMaterial({
+      uniforms: waterUniforms,
+      vertexShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+        varying float vElevation;
+        void main() {
+          vUv = uv;
+          vec3 pos = position;
+          float wave = sin(pos.x * 0.5 + uTime * 1.2) * 0.04
+                     + sin(pos.y * 0.3 + uTime * 0.8 + 1.7) * 0.025
+                     + sin((pos.x + pos.y) * 0.2 + uTime * 0.6) * 0.02;
+          pos.z += wave;
+          vElevation = wave;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        varying vec2 vUv;
+        varying float vElevation;
+        void main() {
+          vec3 deep = vec3(0.02, 0.12, 0.28);
+          vec3 shallow = vec3(0.05, 0.25, 0.45);
+          vec3 highlight = vec3(0.15, 0.50, 0.75);
+          float depthFactor = 0.5 + vElevation * 4.0;
+          depthFactor = clamp(depthFactor, 0.0, 1.0);
+          vec3 color = mix(deep, shallow, depthFactor);
+          float spec = pow(max(0.0, 0.5 + vElevation * 6.0), 8.0) * 0.3;
+          color += highlight * spec;
+          float shimmer2 = sin(vUv.x * 25.0 + uTime * 1.8) * sin(vUv.y * 18.0 - uTime * 1.2) * 0.04;
+          color += shimmer2;
+          float edgeDist = min(vUv.x, 1.0 - vUv.x);
+          float darkFactor = clamp(edgeDist * 4.0, 0.0, 1.0);
+          color *= (0.85 + darkFactor * 0.15);
+          gl_FragColor = vec4(color, 0.84);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide,
+    });
+    const water = new THREE.Mesh(new THREE.CircleGeometry(r * 0.82, 48), waterMat);
     water.rotation.x = -Math.PI / 2;
     water.position.set(cx, by + 0.03, cz);
     water.receiveShadow = true;
+    water.userData.waterUniforms = waterUniforms;
     state.scene.add(water);
 
-    // Bright shimmer overlay
+    // Bright shimmer overlay — still a static decorative ring
     const shimmer = new THREE.Mesh(
       new THREE.RingGeometry(r * 0.08, r * 0.48, 32),
       new THREE.MeshStandardMaterial({
@@ -173,6 +210,64 @@ export function buildWorldDetails() {
       rock.castShadow = true;
       state.scene.add(rock);
     }
+
+    // ── Daffodils at the water's edge (10 per pond) ─────────────────────
+    for (let i = 0; i < 10; i++) {
+      const ang = (Math.PI * 2 * i) / 10 + (Math.random() - 0.5) * 0.6;
+      const dx = cx + Math.cos(ang) * (r * 0.82 + Math.random() * 0.3);
+      const dz = cz + Math.sin(ang) * (r * 0.82 + Math.random() * 0.3);
+      const dy = getTerrainHeight(dx, dz);
+      const stemH = 0.3 + Math.random() * 0.15;
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.02, stemH, 4),
+        state.sharedScenery.flowerStemMat
+      );
+      stem.position.set(dx, dy + stemH / 2, dz);
+      state.scene.add(stem);
+      const petal = new THREE.Mesh(
+        new THREE.SphereGeometry(0.035, 6, 6),
+        new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.7 })
+      );
+      petal.position.set(dx, dy + stemH + 0.02, dz);
+      state.scene.add(petal);
+    }
+
+    // ── Turbulence rocks (2 large, partially submerged) ─────────────────
+    const rockRipples = [];
+    for (let i = 0; i < 2; i++) {
+      const ang = (Math.PI * 2 * i) / 2 + (Math.random() - 0.5) * 0.8;
+      const rockR = 0.4 + Math.random() * 0.3;
+      const rockDist = r * 0.35;
+      const rx = cx + Math.cos(ang) * rockDist;
+      const rz = cz + Math.sin(ang) * rockDist;
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(rockR, 0),
+        state.sharedScenery.boulderMat
+      );
+      rock.position.set(rx, by + 0.03 + rockR * 0.35, rz);
+      rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+      rock.scale.set(1, 0.5 + Math.random() * 0.3, 1);
+      rock.castShadow = true;
+      state.scene.add(rock);
+
+      // Ripple ring around the rock
+      const rippleMat = new THREE.MeshBasicMaterial({
+        color: '#7dd3fc', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false
+      });
+      const ripple = new THREE.Mesh(new THREE.RingGeometry(rockR * 0.6, rockR * 1.2, 24), rippleMat);
+      ripple.rotation.x = -Math.PI / 2;
+      ripple.position.set(rx, by + 0.035, rz);
+      ripple.userData = {
+        baseOpacity: 0.12 + Math.random() * 0.10,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.8 + Math.random() * 0.6,
+        scaleSpeed: 0.5 + Math.random() * 0.4,
+      };
+      state.scene.add(ripple);
+      rockRipples.push(ripple);
+    }
+    // Store ripple data for animation
+    water.userData.ripples = rockRipples;
 
     // Reeds
     for (let i = 0; i < REEDS_PER_POND; i++) {
@@ -228,10 +323,64 @@ export function buildWorldDetails() {
   });
 
   if (mPts.length > 0) {
-    const mStem = new THREE.InstancedMesh(state.sharedScenery.flowerStemGeo, state.sharedScenery.flowerStemMat, mPts.length);
-    const mCenter = new THREE.InstancedMesh(state.sharedScenery.flowerCenterGeo, state.sharedScenery.flowerCenterMat, mPts.length);
+    // Wind-animated ShaderMaterial for stems
+    const stemWindUniforms = { uTime: { value: 0 }, uColor: { value: new THREE.Color('#22c55e') } };
+    const stemWindMat = new THREE.ShaderMaterial({
+      uniforms: stemWindUniforms,
+      vertexShader: `
+        uniform float uTime;
+        void main() {
+          vec3 pos = position;
+          float h = pos.y * 2.0;
+          float wind = sin(pos.x * 1.2 + uTime * 1.5 + pos.z * 0.8) * 0.12
+                     + sin(pos.x * 0.6 + uTime * 0.9 + pos.z * 0.4) * 0.06;
+          pos.x += wind * h;
+          pos.z += wind * 0.4 * h;
+          vec4 worldPos = instanceMatrix * vec4(pos, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        void main() {
+          float light = 0.55 + 0.45 * max(0.0, dot(vec3(0.5, 0.8, 0.3), vec3(0, 1, 0)));
+          gl_FragColor = vec4(uColor * light, 1.0);
+        }
+      `,
+    });
+    // Wind-animated ShaderMaterial for flower centers (with vertex color for per-flower tint)
+    const centerWindMat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: `
+        uniform float uTime;
+        attribute vec3 instanceColor;
+        varying vec3 vColor;
+        void main() {
+          vColor = instanceColor;
+          vec3 pos = position;
+          float wind = sin(pos.x * 1.2 + uTime * 1.5 + pos.z * 0.8) * 0.08
+                     + sin(pos.x * 0.6 + uTime * 0.9 + pos.z * 0.4) * 0.04;
+          pos.x += wind;
+          pos.z += wind * 0.4;
+          vec4 worldPos = instanceMatrix * vec4(pos, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        void main() {
+          float light = 0.55 + 0.45 * max(0.0, dot(vec3(0.5, 0.8, 0.3), vec3(0, 1, 0)));
+          gl_FragColor = vec4(vColor * light, 1.0);
+        }
+      `,
+    });
+
+    const mStem = new THREE.InstancedMesh(state.sharedScenery.flowerStemGeo, stemWindMat, mPts.length);
+    const mCenter = new THREE.InstancedMesh(state.sharedScenery.flowerCenterGeo, centerWindMat, mPts.length);
     mStem.castShadow = true;
     mCenter.castShadow = true;
+    mStem.userData.windUniforms = stemWindUniforms;
+    mCenter.userData.windUniforms = { uTime: { value: 0 } };
 
     mPts.forEach(({ x, z, s, c }, i) => {
       const gy = getTerrainHeight(x, z);
@@ -247,6 +396,15 @@ export function buildWorldDetails() {
     if (mCenter.instanceColor) mCenter.instanceColor.needsUpdate = true;
     state.scene.add(mStem);
     state.scene.add(mCenter);
+    state.animatedScenery.push({
+      object: { userData: {} },
+      type: 'river',
+      update: function (time) {
+        const t = time * 0.001;
+        stemWindUniforms.uTime.value = t;
+        centerWindMat.uniforms.uTime.value = t;
+      },
+    });
   }
 
   // ── 4. EXTRA GRASS PATCHES (InstancedMesh) ────────────────────────────────
@@ -296,5 +454,42 @@ export function buildWorldDetails() {
     });
     gInst.instanceMatrix.needsUpdate = true;
     state.scene.add(gInst);
+  }
+
+  // ── Pond water + ripple animation ───────────────────────────────────────
+  // Collect all pond water meshes and their ripple data from the scene
+  const pondWaterMeshes = [];
+  state.scene.traverse((child) => {
+    if (child.isMesh && child.userData && child.userData.waterUniforms && child.userData.ripples) {
+      pondWaterMeshes.push(child);
+    }
+  });
+  if (pondWaterMeshes.length > 0) {
+    state.animatedScenery.push({
+      object: { userData: {} },
+      type: 'river',
+      update: function (time) {
+        const t = time * 0.001;
+        for (let p = 0; p < pondWaterMeshes.length; p++) {
+          const water = pondWaterMeshes[p];
+          // Update water shader time
+          if (water.userData.waterUniforms) {
+            water.userData.waterUniforms.uTime.value = t;
+          }
+          // Animate ripple rings around turbulence rocks
+          const ripples = water.userData.ripples;
+          if (ripples) {
+            for (let r = 0; r < ripples.length; r++) {
+              const ring = ripples[r];
+              const ud = ring.userData;
+              const pulse = Math.sin(t * ud.speed + ud.phase) * 0.5 + 0.5;
+              const scalePulse = 0.96 + Math.sin(t * ud.scaleSpeed + ud.phase * 1.3) * 0.06;
+              ring.scale.setScalar(scalePulse);
+              ring.material.opacity = ud.baseOpacity * (0.5 + pulse * 0.5);
+            }
+          }
+        }
+      },
+    });
   }
 }

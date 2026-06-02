@@ -46,6 +46,7 @@ import {
   updateCameraFollow
 } from './engine/camera.js';
 import { updateLocalPlayer } from './engine/movement.js';
+import { updateJetpack } from './engine/jetpack.js';
 import { updateTorches } from './lighting.js';
 
 const _desiredCameraTarget = new THREE.Vector3();
@@ -260,14 +261,14 @@ export function animate() {
   });
 
   if (state.sceneSunLight) {
-    state.sceneSunLight.intensity = isInside ? 0.05 : 1.0;
+    state.sceneSunLight.intensity = isInside ? 0.1 : 4.5;
     if (state.localPlayer && state.localPlayer.mesh) {
       const px = state.localPlayer.x;
       const pz = state.localPlayer.z;
-      state.sceneSunLight.position.set(24 + px, 48, 12 + pz);
+      state.sceneSunLight.position.set(30 + px, 40, 8 + pz);
       state.sceneSunLight.target.position.set(px, 0, pz);
-      // Shadow camera follows the player so shadow detail is always where the player is
-      const d = 52;
+      // Tight shadow frustum keeps texel density high (2048px over 56u = ~2.7cm/texel)
+      const d = 28;
       state.sceneSunLight.shadow.camera.left = px - d;
       state.sceneSunLight.shadow.camera.right = px + d;
       state.sceneSunLight.shadow.camera.top = pz - d;
@@ -276,7 +277,7 @@ export function animate() {
     }
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = isInside ? 0.02 : 0.10;
+    state.sceneHemisphereLight.intensity = isInside ? 0.02 : 0.04;
   }
   if (state.sceneIndoorLight) {
     state.sceneIndoorLight.intensity = isInside ? 0.25 : 0;
@@ -349,7 +350,7 @@ export function animate() {
     refreshStaticSceneryVisibility();
     renderMinimap();
   }
-  if (state._elevatorCheck) state._elevatorCheck();
+  if (state._elevatorTick) state._elevatorTick(dt);
 }
 
 // Log startup diagnostics
@@ -437,7 +438,7 @@ export function initEngine() {
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  state.renderer.toneMappingExposure = 0.85;
+  state.renderer.toneMappingExposure = 1.15;
 
   state.localPlayer.velocity = new THREE.Vector3();
   state.localPlayer.displayVelocity = new THREE.Vector3();
@@ -454,32 +455,32 @@ export function initEngine() {
   state.controls.maxPolarAngle = Math.PI / 2 - 0.04;
   state.controls.minPolarAngle = 0.1;
 
-  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.03);
+  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.015);
   state.scene.add(state.sceneAmbientLight);
 
-  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.10);
+  state.sceneHemisphereLight = new THREE.HemisphereLight('#b0d4f0', '#080820', 0.04);
   state.sceneHemisphereLight.position.set(0, 50, 0);
   state.scene.add(state.sceneHemisphereLight);
 
-  state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 1.0);
-  state.sceneSunLight.position.set(24, 48, 12);
+  state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 4.5);
+  state.sceneSunLight.position.set(30, 40, 8);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 1024;
-  state.sceneSunLight.shadow.mapSize.height = 1024;
+  state.sceneSunLight.shadow.mapSize.width = 2048;
+  state.sceneSunLight.shadow.mapSize.height = 2048;
   state.sceneSunLight.shadow.camera.near = 0.5;
   state.sceneSunLight.shadow.camera.far = 180;
-  const d = 38;
+  const d = 24;
   state.sceneSunLight.shadow.camera.left = -d;
   state.sceneSunLight.shadow.camera.right = d;
   state.sceneSunLight.shadow.camera.top = d;
   state.sceneSunLight.shadow.camera.bottom = -d;
-  state.sceneSunLight.shadow.bias = -0.0003;
-  state.sceneSunLight.shadow.normalBias = 0.005;
+  state.sceneSunLight.shadow.bias = -0.0008;
+  state.sceneSunLight.shadow.normalBias = 0.02;
   state.scene.add(state.sceneSunLight);
   state.scene.add(state.sceneSunLight.target);
 
   // Cool fill light from the opposite side — prevents pure-black shadows
-  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.04);
+  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.06);
   fillLight.position.set(-28, 22, -14);
   state.scene.add(fillLight);
 
@@ -492,8 +493,8 @@ export function initEngine() {
     new THREE.SphereGeometry(450, 16, 16),
     new THREE.ShaderMaterial({
       uniforms: {
-        topColor: { value: new THREE.Color('#030712') },
-        bottomColor: { value: new THREE.Color('#080f25') },
+        topColor: { value: new THREE.Color('#0a1628') },
+        bottomColor: { value: new THREE.Color('#101c38') },
         offset: { value: 33 },
         exponent: { value: 0.6 }
       },

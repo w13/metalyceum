@@ -37,6 +37,11 @@ export async function loadHdriEnvironment() {
 
             const envMap = pmremGenerator.fromEquirectangular(texture).texture;
             state.scene.environment = envMap;
+            // Cap IBL ambient so it doesn't flatten shadow contrast
+            // (environmentIntensity is Three.js r159+; silently ignored on older builds)
+            if ('environmentIntensity' in state.scene) {
+              state.scene.environmentIntensity = 0.15;
+            }
 
             pmremGenerator.dispose();
             texture.dispose();

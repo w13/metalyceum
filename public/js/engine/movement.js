@@ -11,9 +11,10 @@ import {
   CAMERA_EXIT_WATCH_YAW,
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET
 } from '../config.js';
-import { getTerrainHeight, checkCollision } from '../physics.js';
+import { getTerrainHeight, checkCollision, getWaterSurfaceHeight } from '../physics.js';
 import { isCannonReady, getPlayerBodyRef, teleportPlayer, syncBodyY, stepCannon } from '../physics-engine.js';
 import { animateAvatarWalk } from '../characters.js';
+import { animateAvatarSwim } from '../animations.js';
 import { toggleJetpackTakeoff, toggleJetpackLand, updateJetpack } from './jetpack.js';
 import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
 import {
@@ -50,7 +51,7 @@ export function updateLocalPlayer(dt, now) {
     state.localPlayer.isMoving = false;
     state.localPlayer.velocity.x = 0;
     state.localPlayer.velocity.z = 0;
-    animateAvatarWalk(state.localPlayer, dt, now, state.keys.shift);
+    state.localPlayer.swimming ? animateAvatarSwim(state.localPlayer, dt, now) : animateAvatarWalk(state.localPlayer, dt, now, state.keys.shift);
     return;
   }
 
@@ -74,6 +75,11 @@ export function updateLocalPlayer(dt, now) {
     toggleJetpackLand();
   }
 
+  // ── Swimming check ──
+  const waterY = getWaterSurfaceHeight(state.localPlayer.x, state.localPlayer.z);
+  const inWater = waterY !== null;
+  state.localPlayer.swimming = inWater && state.localPlayer.y < waterY - 0.2;
+
   if (state.localPlayer.flying) {
     // Flight mode — no gravity, W/S controls vertical speed
     const flySpeed = 12.0;
@@ -96,9 +102,15 @@ export function updateLocalPlayer(dt, now) {
       state.localPlayer.isGrounded = true;
     }
   } else {
-    state.localPlayer.y += (targetGroundY - state.localPlayer.y) *
-      Math.min(1, _TERRAIN_FOLLOW_RATE * dt);
-
+    // Swimming: float at chest-depth on water instead of walking on riverbed
+    if (inWater && waterY !== null && targetGroundY < waterY - 0.5) {
+      const floatY = waterY + 0.5; // chest-deep
+      state.localPlayer.y += (floatY - state.localPlayer.y) * Math.min(1, 4 * dt);
+      state.localPlayer.velocity.y = 0;
+    } else {
+      state.localPlayer.y += (targetGroundY - state.localPlayer.y) *
+        Math.min(1, _TERRAIN_FOLLOW_RATE * dt);
+    }
     if (state.keys.space) {
       state.localPlayer.velocity.y = jumpForce;
       state.localPlayer.isGrounded = false;
@@ -271,5 +283,5 @@ export function updateLocalPlayer(dt, now) {
   const camLerpFactor = 1 - Math.pow(CAMERA_TARGET_DECAY, dt);
   state.controls.target.lerp(_desiredCameraTarget, camLerpFactor);
 
-  animateAvatarWalk(state.localPlayer, dt, now, state.keys.shift);
+  state.localPlayer.swimming ? animateAvatarSwim(state.localPlayer, dt, now) : animateAvatarWalk(state.localPlayer, dt, now, state.keys.shift);
 }

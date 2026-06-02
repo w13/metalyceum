@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 
-export function createDoorFrame(cx, cz, dir, width) {
+export function createDoorFrame(cx, cz, dir, width, yBase = 0) {
   const frameMat = new THREE.MeshStandardMaterial({ color: '#5c4033', roughness: 0.9 });
   const trimMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.95 });
 
@@ -87,6 +87,6 @@ export function createDoorFrame(cx, cz, dir, width) {
     group.add(braceSouth);
   }
 
-  group.position.set(cx, 0, cz);
+  group.position.set(cx, yBase, cz);
   state.scene.add(group);
 }

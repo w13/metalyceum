@@ -65,7 +65,8 @@ export const ROOM_LAYOUTS = {
   6: { themeColor: '#38bdf8', label: 'Screening room' },
   7: { themeColor: '#f97316', label: 'Commons room' },
   8: { themeColor: '#22c55e', label: 'Open-air amphitheater' },
-  9: { themeColor: '#a855f7', label: 'Concert venue' }
+  9: { themeColor: '#a855f7', label: 'Concert venue' },
+  10: { themeColor: '#f59e0b', label: 'Upper Gallery' }
 };
 
 export const LANDMARK_REGISTRY = {

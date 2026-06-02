@@ -217,8 +217,12 @@ export function buildRiver() {
   const upperPts = RIVER_PTS.slice(0, 14);
   const lowerPts = RIVER_PTS.slice(13);
 
-  buildRiverRibbon(upperPts, RIVER_WIDTH, waterMat.clone(), true);
-  buildRiverRibbon(lowerPts, RIVER_WIDTH, waterMat.clone(), false);
+  const upperMat = waterMat.clone();
+  const lowerMat = waterMat.clone();
+  waterMaterials.push(upperMat.uniforms.uTime);
+  waterMaterials.push(lowerMat.uniforms.uTime);
+  buildRiverRibbon(upperPts, RIVER_WIDTH, upperMat, true);
+  buildRiverRibbon(lowerPts, RIVER_WIDTH, lowerMat, false);
 
   // ── Waterfall ────────────────────────────────────────────────────────
   buildWaterfall();
@@ -276,14 +280,13 @@ export function buildRiver() {
   buildStoneArchBridge();
 
   // Animate water and foam shaders each frame
+  // Collect all water materials at build time — no scene traverse needed per frame
+  const waterMaterials = [];
   function animateRiver(time) {
     const t = time * 0.001;
-    // Update all water and waterfall material uniforms
-    state.scene.traverse((child) => {
-      if (child.isMesh && child.material && child.material.uniforms && child.material.uniforms.uTime) {
-        child.material.uniforms.uTime.value = t;
-      }
-    });
+    for (let i = 0; i < waterMaterials.length; i++) {
+      waterMaterials[i].value = t;
+    }
   }
 
   state.animatedScenery.push({
