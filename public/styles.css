@@ -1264,20 +1264,37 @@ body, html {
   gap: 0.75rem;
 }
 
-/* Controls Legend */
-.controls-legend {
+/* Controls Panel (collapsed by default, toggled via ⌨ icon) */
+.controls-card {
   position: absolute;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  padding: 0.8rem 1.2rem;
-  border-radius: var(--radius-md);
-  display: flex;
+  top: 1.5rem;
+  right: calc(1.5rem + 72px + 0.75rem);
+  width: min(260px, calc(100vw - 3rem));
+  display: none;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
+  z-index: 15;
+  padding: 1rem 1.2rem;
   font-size: 0.75rem;
   color: hsl(var(--text-muted));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.controls-card.panel-open {
+  display: flex;
+}
+
+.controls-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.controls-card-header h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
 }
 
 .debug-card {
@@ -1402,10 +1419,7 @@ body, html {
   gap: 2px;
 }
 
-/* Slide left when room panel is visible to avoid collision */
-#room-panel.room-panel-visible ~ .controls-legend {
-  transform: translateX(-415px);
-}
+/* Controls panel sits alongside other HUD cards — no room-panel slide needed */
 
 .legend-item {
   display: flex;
@@ -1564,8 +1578,11 @@ body, html {
 
   /* Old debug panel styling removed */
 
-  #room-panel.room-panel-visible ~ .controls-legend {
-    display: none; /* Hide controls legend on small screens when panel is open */
+  .controls-card {
+    right: 1rem;
+    width: min(260px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
   }
 }
 
@@ -1950,6 +1967,7 @@ body, html {
 .elevator-arrow-btn { flex: 1; background: linear-gradient(180deg, #3a2510 0%, #2a1a0a 100%); border: 2px solid #b8860b; border-radius: 3px; padding: 6px 0; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
 .elevator-arrow-btn:hover { background: linear-gradient(180deg, #4a3520 0%, #3a2510 100%); border-color: #d4a030; }
 .elevator-arrow-btn:active { background: #1a0f05; }
+.elevator-arrow-btn.elevator-active { background: linear-gradient(180deg, #1a3a10 0%, #0f2a08 100%); border-color: #22c55e; box-shadow: 0 0 12px rgba(34,197,94,0.3); }
 .elevator-arrow { font-size: 1.2rem; color: #b8860b; display: block; line-height: 1; }
 .elevator-arrow.up { color: #22c55e; }
 .elevator-arrow.down { color: #ef4444; }

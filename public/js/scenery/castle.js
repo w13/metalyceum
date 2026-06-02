@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export const CASTLE_CENTER = [130, -80];
 
@@ -211,7 +212,7 @@ export function buildCastle() {
   // ── Inner courtyard ────────────────────────────────────────────────
   const paveMat = new THREE.MeshStandardMaterial({ color: '#5a4a3a', roughness: 0.9 });
   const pave = new THREE.Mesh(new THREE.PlaneGeometry(keepW + 4 * S, keepD + 4 * S), paveMat);
-  pave.rotation.x = -Math.PI / 2;
+  pave.rotation.x = FLAT;
   pave.position.set(CX, baseY + 0.015, CZ);
   pave.receiveShadow = true;
   group.add(pave);
@@ -258,7 +259,7 @@ export function buildCastle() {
   // Runner rug
   const rugMat = new THREE.MeshStandardMaterial({ color: '#7a1a1a', roughness: 0.8, side: THREE.DoubleSide });
   const rugLong = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 5.0), rugMat);
-  rugLong.rotation.x = -Math.PI / 2;
+  rugLong.rotation.x = FLAT;
   rugLong.position.set(CX + 2 * S, baseY + 0.015, CZ);
   group.add(rugLong);
 

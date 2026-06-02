@@ -1,7 +1,6 @@
 // Game Engine, Camera, Rendering Loop, and Physics Update Scheduler for Metalyceum
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { orbitCamera } from './engine/camera.js';
 import { state } from './state.js';
 import {
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
@@ -19,11 +18,8 @@ import {
   updateNpcs,
   refreshStaticSceneryVisibility
 } from './scenery.js';
-
 import { syncPosition } from './multiplayer.js';
-import {
-  updateDebugPanel
-} from './ui.js';
+import { updateDebugPanel } from './ui.js';
 import {
   closeRoomEventModal,
   scheduleRoomPlayersListRefresh,
@@ -39,8 +35,9 @@ import { animateAvatarWalk } from './characters.js';
 import { initTransformControls } from './editor.js';
 import { updateDevTools } from './dev-tools.js';
 
-// Camera & Movement Sub-modules
+// Camera & Movement Sub-modules — orbitCamera imported once; no duplicate import below.
 import {
+  orbitCamera,
   isExitCameraWatchActive,
   startExitCameraWatch,
   updateCameraFollow
@@ -49,7 +46,31 @@ import { updateLocalPlayer } from './engine/movement.js';
 import { updateJetpack } from './engine/jetpack.js';
 import { updateTorches } from './lighting.js';
 
+// Fade an array of Object3Ds toward a target opacity each frame.
+// Transparent materials lerp; opaque materials switch at 0.5 threshold.
+function fadeMeshArray(arr, target, dt) {
+  for (let i = 0; i < arr.length; i++) {
+    const m = arr[i];
+    if (!m || !m.isObject3D) continue;
+    if (m.material && m.material.transparent) {
+      m.material.opacity = THREE.MathUtils.lerp(m.material.opacity, target, 8 * dt);
+      m.material.needsUpdate = true;
+      m.visible = m.material.opacity > 0.02;
+    } else {
+      m.visible = target > 0.5;
+    }
+  }
+}
+
 const _desiredCameraTarget = new THREE.Vector3();
+
+// Lighting transition colors (outdoor → indoor)
+const _hemiOutColor = new THREE.Color('#dcc878');
+const _hemiInColor = new THREE.Color('#b89050');
+const _hemiGndOut = new THREE.Color('#5a4030');
+const _hemiGndIn = new THREE.Color('#3a2510');
+const _ambOutColor = new THREE.Color('#f5d4a0');
+const _ambInColor = new THREE.Color('#e8a040');
 
 // Arrow-key camera angular velocity (RuneScape-style smooth orbit)
 let _camVelTheta = 0;
@@ -219,55 +240,52 @@ export function animate() {
     state.upperWallMat.opacity = THREE.MathUtils.lerp(state.upperWallMat.opacity, targetOpacity, 8 * dt);
   }
   
-  state.upperWalls.forEach(w => {
-    if (!w || !w.isObject3D) return;
-    // Walls using the shared upperWallMat (corridor walls) follow its opacity
-    if (w.material === state.upperWallMat) {
-      w.visible = state.upperWallMat.opacity > 0.02;
-      return;
-    }
-    // Other transparent walls (concert venue upper halves) fade individually
-    if (w.material && w.material.transparent) {
-      try { w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, isInside ? 0.0 : 1.0, 8 * dt); }
-      catch(e) {}
-      w.visible = w.material.opacity > 0.02;
-    } else {
-      w.visible = !isInside;
-    }
-  });
-  state.roofMeshes.forEach((roof) => {
-    if (!roof || !roof.isObject3D) return;
-    if (roof.material && roof.material.transparent) {
-      roof.material.opacity = THREE.MathUtils.lerp(roof.material.opacity, isInside ? 0.0 : 1.0, 8 * dt);
-      roof.material.needsUpdate = true;
-      roof.visible = roof.material.opacity > 0.02;
-    } else {
-      roof.visible = !isInside;
-    }
-  });
+  // Upper floor fade target — follows elevator ride progress when active
+  const _rp = state.elevatorRideProgress || 0;
+  const _rideFade = _rp > 0 ? _rp : (isInside ? 0.0 : 1.0);
 
-  // Second-floor elements: only fade when player is on the ground floor (below
-  // the mezzanine level). When the player is on the second floor they stay visible.
-  const isOnGroundFloor = isInside && state.localPlayer.y < ROOM_HEIGHT;
-  state.upperFloor.forEach((mesh) => {
-    if (!mesh || !mesh.isObject3D) return;
-    if (mesh.material && mesh.material.transparent) {
-      mesh.material.opacity = THREE.MathUtils.lerp(mesh.material.opacity, isOnGroundFloor ? 0.0 : 1.0, 8 * dt);
-      mesh.material.needsUpdate = true;
-      mesh.visible = mesh.material.opacity > 0.02;
-    } else {
-      mesh.visible = !isOnGroundFloor;
-    }
-  });
+  // Skip fade loops when far from the building (saves ~140 mesh iterations per frame outdoors)
+  const px = state.localPlayer && state.localPlayer.x;
+  const pz = state.localPlayer && state.localPlayer.z;
+  const nearBuilding = px !== undefined && Math.abs(px) < 45 && Math.abs(pz) < 55;
+
+  if (nearBuilding) {
+    // Upper walls — use shared material where present, otherwise fadeMeshArray
+    state.upperWalls.forEach(w => {
+      if (!w || !w.isObject3D) return;
+      if (w.material === state.upperWallMat) {
+        w.visible = state.upperWallMat.opacity > 0.02;
+        return;
+      }
+      if (w.material && w.material.transparent) {
+        try { w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, _rideFade, 8 * dt); }
+        catch(e) {}
+        w.visible = w.material.opacity > 0.02;
+      } else {
+        w.visible = _rideFade > 0.5;
+      }
+    });
+
+    fadeMeshArray(state.roofMeshes, _rideFade, dt);
+  }
+
+  // Second-floor elements: fade in during elevator ride, or based on floor level
+  if (nearBuilding) {
+    fadeMeshArray(state.upperFloor, _rideFade, dt);
+  }
+
+  // ── Smooth indoor/outdoor lighting transition (RuneScape-style) ─────
+  const targetMix = isInside ? 1 : 0;
+  state._indoorMix += (targetMix - state._indoorMix) * Math.min(1, 2.2 * dt);
+  const mix = state._indoorMix;
 
   if (state.sceneSunLight) {
-    state.sceneSunLight.intensity = isInside ? 0.1 : 4.5;
+    state.sceneSunLight.intensity = THREE.MathUtils.lerp(3.2, 0.12, mix);
     if (state.localPlayer && state.localPlayer.mesh) {
       const px = state.localPlayer.x;
       const pz = state.localPlayer.z;
-      state.sceneSunLight.position.set(30 + px, 40, 8 + pz);
+      state.sceneSunLight.position.set(38 + px, 22, 12 + pz);
       state.sceneSunLight.target.position.set(px, 0, pz);
-      // Tight shadow frustum keeps texel density high (2048px over 56u = ~2.7cm/texel)
       const d = 28;
       state.sceneSunLight.shadow.camera.left = px - d;
       state.sceneSunLight.shadow.camera.right = px + d;
@@ -277,10 +295,16 @@ export function animate() {
     }
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = isInside ? 0.02 : 0.04;
+    state.sceneHemisphereLight.intensity = THREE.MathUtils.lerp(0.12, 0.05, mix);
+    state.sceneHemisphereLight.color.lerpColors(_hemiOutColor, _hemiInColor, mix);
+    state.sceneHemisphereLight.groundColor.lerpColors(_hemiGndOut, _hemiGndIn, mix);
   }
   if (state.sceneIndoorLight) {
-    state.sceneIndoorLight.intensity = isInside ? 0.25 : 0;
+    state.sceneIndoorLight.intensity = THREE.MathUtils.lerp(0, 0.4, mix);
+  }
+  if (state.sceneAmbientLight) {
+    state.sceneAmbientLight.intensity = THREE.MathUtils.lerp(0.045, 0.09, mix);
+    state.sceneAmbientLight.color.lerpColors(_ambOutColor, _ambInColor, mix);
   }
 
   state.controls.update();
@@ -289,53 +313,21 @@ export function animate() {
   updateDevTools(_now);
 
   try {
-    // ── Elevator proximity door open ───────────────────────────────────────
-    if (!state._elevatorMoving && state._elevatorTargetY === 0) {
-      const dist = state.localPlayer
-        ? Math.sqrt(state.localPlayer.x ** 2 + (state.localPlayer.z + 36) ** 2)
-        : 99;
-      const shouldOpen = dist < 5.0;
-      state._elevatorDoorTarget = shouldOpen ? 0 : 1;
-      if (state._elevatorDoorCollider) {
-        state._elevatorDoorCollider.visible = !shouldOpen;
+    // ── Elevator door collider sync ───────────────────────────────────────
+    if (state._elevatorDoorCollider) {
+      const dc = state._elevatorDoorCollider;
+      if (state._elevatorCar) {
+        dc.position.y = state._elevatorCar.position.y;
       }
-    }
-
-    // ── Elevator animation ────────────────────────────────────────────────
-    if (state._elevatorMoving) {
-      const car = state._elevatorCar;
-      const targetY = state._elevatorTargetY;
-      const speed = 2.5 * dt;
-      state._elevatorY = THREE.MathUtils.lerp(state._elevatorY, targetY, speed);
-      car.position.y = state._elevatorY;
-
-      // Door close/open
-      const doorTarget = state._elevatorDoorTarget;
-      state._elevatorDoorState = THREE.MathUtils.lerp(state._elevatorDoorState, doorTarget, 4 * dt);
-      const doorAngle = state._elevatorDoorState * 0.4;
-      state._elevatorDoorPanels.forEach((panel) => {
-        const side = panel.userData._side || 1;
-        const base = panel.userData._baseRY || 0;
-        panel.rotation.y = base + side * doorAngle;
-      });
-
-      // Move player with the car
-      if (state._elevatorRiding && state.localPlayer) {
-        state.localPlayer.y = state._elevatorY;
-        if (state.localPlayer.mesh) {
-          state.localPlayer.mesh.position.y = state._elevatorY;
-        }
-      }
-
-      // Check if arrived
-      if (Math.abs(state._elevatorY - targetY) < 0.05) {
-        state._elevatorY = targetY;
-        car.position.y = targetY;
-        state._elevatorMoving = false;
-        state._elevatorDoorTarget = 0;
-        state._elevatorRiding = false;
-        if (targetY > 0) {
-          state.localPlayer.currentRoom = -1; // force room re-detection
+      // Sync the physics Box3 so WALLS collision follows the car.
+      // When visible=false (doors open or riding), collapse the Box3 to zero
+      // so the player can walk through.
+      if (state._elevatorDoorBox) {
+        if (dc.visible) {
+          state._elevatorDoorBox.copy(new THREE.Box3().setFromObject(dc));
+        } else {
+          state._elevatorDoorBox.min.set(0, 0, 0);
+          state._elevatorDoorBox.max.set(0, 0, 0);
         }
       }
     }
@@ -427,8 +419,8 @@ export function onWindowResize() {
 
 export function initEngine() {
   state.scene = new THREE.Scene();
-  state.scene.background = new THREE.Color('#030712');
-  state.scene.fog = new THREE.FogExp2('#030712', 0.0075);
+  state.scene.background = new THREE.Color('#6b7a8a');
+  state.scene.fog = new THREE.FogExp2('#b8a888', 0.0028);
 
   state.camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -438,7 +430,7 @@ export function initEngine() {
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  state.renderer.toneMappingExposure = 1.15;
+  state.renderer.toneMappingExposure = 1.3;
 
   state.localPlayer.velocity = new THREE.Vector3();
   state.localPlayer.displayVelocity = new THREE.Vector3();
@@ -455,18 +447,18 @@ export function initEngine() {
   state.controls.maxPolarAngle = Math.PI / 2 - 0.04;
   state.controls.minPolarAngle = 0.1;
 
-  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.015);
+  state.sceneAmbientLight = new THREE.AmbientLight('#f5d4a0', 0.045);
   state.scene.add(state.sceneAmbientLight);
 
-  state.sceneHemisphereLight = new THREE.HemisphereLight('#b0d4f0', '#080820', 0.04);
+  state.sceneHemisphereLight = new THREE.HemisphereLight('#dcc878', '#5a4030', 0.12);
   state.sceneHemisphereLight.position.set(0, 50, 0);
   state.scene.add(state.sceneHemisphereLight);
 
-  state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 4.5);
-  state.sceneSunLight.position.set(30, 40, 8);
+  state.sceneSunLight = new THREE.DirectionalLight('#f0c878', 3.2);
+  state.sceneSunLight.position.set(38, 22, 12);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 2048;
-  state.sceneSunLight.shadow.mapSize.height = 2048;
+  state.sceneSunLight.shadow.mapSize.width = 1024;
+  state.sceneSunLight.shadow.mapSize.height = 1024;
   state.sceneSunLight.shadow.camera.near = 0.5;
   state.sceneSunLight.shadow.camera.far = 180;
   const d = 24;
@@ -479,22 +471,23 @@ export function initEngine() {
   state.scene.add(state.sceneSunLight);
   state.scene.add(state.sceneSunLight.target);
 
-  // Cool fill light from the opposite side — prevents pure-black shadows
-  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.06);
+  // Warm fill light from the opposite side — prevents pure-black shadows
+  const fillLight = new THREE.DirectionalLight('#d4a060', 0.10);
   fillLight.position.set(-28, 22, -14);
   state.scene.add(fillLight);
 
   // Warm indoor ambient light — activated when the player enters the building
-  state.sceneIndoorLight = new THREE.PointLight('#fbbf24', 0, 60);
+  state.sceneIndoorLight = new THREE.PointLight('#fbd14b', 0, 60);
   state.sceneIndoorLight.position.set(0, 8, 0);
   state.scene.add(state.sceneIndoorLight);
+  state._indoorMix = 0; // 0=fully outdoor, 1=fully indoor — smooth transition
 
   state.skyDome = new THREE.Mesh(
     new THREE.SphereGeometry(450, 16, 16),
     new THREE.ShaderMaterial({
       uniforms: {
-        topColor: { value: new THREE.Color('#0a1628') },
-        bottomColor: { value: new THREE.Color('#101c38') },
+        topColor: { value: new THREE.Color('#5070a0') },
+        bottomColor: { value: new THREE.Color('#d4b888') },
         offset: { value: 33 },
         exponent: { value: 0.6 }
       },

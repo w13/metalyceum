@@ -1,119 +1,193 @@
-// 1920s-style elevator control panel with animated doors and car ascent/descent
+// Elevator state machine: folding doors, ride sequence, and 2nd floor reveal
 import { state } from '../state.js';
 
 const ELEVATOR_Z = -36;
-const PROXIMITY_SQ = 16;
+const ELEVATOR_FRONT_Z = ELEVATOR_Z + 1.6; // front of the car
+const DOOR_SWING_ANGLE = Math.PI / 2.2; // ~82° — open enough to walk through
+const PROXIMITY_DIST_SQ = 25; // 5 units
+const RIDE_DURATION = 1.8; // seconds for ascent
 
-let doorAnimTarget = 0;   // 0 = closed, 1 = open, -1 = no animation
-let doorAnimProgress = 0; // 0..1
-let wasNear = false;
-let animating = false;
-let rideProgress = 0;
+let doorProgress = 0;   // 0=closed, 1=open
+let doorTarget = 0;     // target doorProgress
+let rideProgress = 0;   // 0..1 during ride
 let rideStartY = 0;
-let rideEndY = 0;
-let rideTargetX = 0;
-let rideTargetZ = 0;
-let rideFloor = 'L';
-let ridePhase = 'idle'; // idle | closing | riding | opening
+let rideEndY = 7.5;
+let wasNear = false;
+let phase = 'idle';     // idle | opening | open | waiting | closing | riding | arrival
+let floorNum = 'L';
+let panel = null;
+let floorDisplay = null;
+
+function animateDoors(openRatio) {
+  // Fold/swing each door pivot: 0=closed (0°), 1=open (~82°)
+  const angle = openRatio * DOOR_SWING_ANGLE;
+  const pivots = state._elevatorDoorPivots;
+  if (!pivots) return;
+  pivots.forEach((pivot) => {
+    const side = pivot.userData._side || 1;
+    pivot.rotation.y = side * angle;
+  });
+}
+
+function startRide(targetX, targetY, targetZ, floor) {
+  if (phase !== 'waiting' || !state.localPlayer) return;
+  rideStartY = state.localPlayer.y;
+  rideEndY = targetY;
+  rideProgress = 0;
+  floorNum = floor;
+  if (floorDisplay) floorDisplay.textContent = floor;
+  phase = 'closing';
+  doorTarget = 0;
+  state.elevatorRideProgress = 0;
+  // Disable the door collider, enable the door blocker
+  if (state._elevatorDoorCollider) state._elevatorDoorCollider.visible = false;
+}
 
 export function initElevatorUI() {
-  const panel = document.getElementById('elevator-panel');
-  const floorDisplay = document.getElementById('elevator-floor-display');
+  panel = document.getElementById('elevator-panel');
+  floorDisplay = document.getElementById('elevator-floor-num');
   const upBtn = document.getElementById('elevator-up-btn');
   const downBtn = document.getElementById('elevator-down-btn');
   if (!panel || !floorDisplay || !upBtn || !downBtn) return;
 
-  function setDoors(openRatio) {
-    const panels = state._elevatorDoorPanels;
-    if (!panels) return;
-    const slide = openRatio * 0.5;
-    panels.forEach((p) => {
-      const side = p.userData._side || 1;
-      p.position.z = -34.58 + side * slide;
-    });
-  }
+  upBtn.addEventListener('click', () => {
+    startRide(0, 7.5, ELEVATOR_Z, '2');
+  });
+  downBtn.addEventListener('click', () => {
+    startRide(0, 0.1, ELEVATOR_Z, 'L');
+  });
 
-  function startRide(targetX, targetY, targetZ, floor) {
-    if (animating || !state.localPlayer) return;
-    animating = true;
-    rideStartY = state.localPlayer.y;
-    rideEndY = targetY;
-    rideTargetX = targetX;
-    rideTargetZ = targetZ;
-    rideFloor = floor;
-    rideProgress = 0;
-    ridePhase = 'closing';
-    doorAnimTarget = 0;
-    doorAnimProgress = 1; // start from open
-    floorDisplay.textContent = floor;
-  }
-
-  upBtn.addEventListener('click', () => startRide(0, 7.5, -30, '2'));
-  downBtn.addEventListener('click', () => startRide(0, 0.1, -34, 'L'));
-
-  // Called from main animation loop every frame
+  // ── Per-frame tick ─────────────────────────────────────────────────────
   state._elevatorTick = (dt) => {
-    // ── Door animation ──
-    if (doorAnimTarget >= 0) {
-      const speed = doorAnimTarget > doorAnimProgress ? 4 : 5;
-      doorAnimProgress += (doorAnimTarget - doorAnimProgress) * Math.min(1, speed * dt);
-      if (Math.abs(doorAnimTarget - doorAnimProgress) < 0.001) doorAnimProgress = doorAnimTarget;
-      setDoors(doorAnimProgress);
+    // ── Door animation ────────────────────────────────────────────────────
+    if (doorTarget !== doorProgress) {
+      const speed = doorTarget > doorProgress ? 3.5 : 4.5;
+      const diff = doorTarget - doorProgress;
+      doorProgress += diff * Math.min(1, speed * dt);
+      if (Math.abs(diff) < 0.002) doorProgress = doorTarget;
+      animateDoors(doorProgress);
     }
 
-    // ── Ride state machine ──
-    if (ridePhase === 'closing') {
-      if (doorAnimProgress < 0.01) {
-        ridePhase = 'riding';
+    // Door collider blocks only when idle with closed doors, not during a ride
+    if (state._elevatorDoorCollider) {
+      state._elevatorDoorCollider.visible = phase === 'idle';
+    }
+
+    // ── Ride state machine ────────────────────────────────────────────────
+    if (phase === 'closing') {
+      // Wait for doors to close fully
+      if (doorProgress < 0.005) {
+        phase = 'riding';
         rideProgress = 0;
+        state.elevatorRideProgress = 0;
       }
-    } else if (ridePhase === 'riding') {
-      rideProgress += dt * 1.2; // ~0.83s ride
+    } else if (phase === 'riding') {
+      rideProgress += dt / RIDE_DURATION;
       const t = Math.min(rideProgress, 1);
+      // Smooth ease-in-out
       const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       const currentY = rideStartY + (rideEndY - rideStartY) * ease;
+
+      // Move the car
       const car = state._elevatorCar;
       if (car) car.position.y = currentY;
-      if (state.localPlayer && state.localPlayer.mesh) {
-        state.localPlayer.mesh.position.y = currentY + 0.1;
-        state.localPlayer.y = currentY + 0.1;
-      }
-      if (t >= 1) {
-        ridePhase = 'opening';
-        doorAnimTarget = 1;
-        // Snap final position
-        if (state.localPlayer) {
-          state.localPlayer.x = rideTargetX;
-          state.localPlayer.z = rideTargetZ;
-          if (state.localPlayer.mesh) {
-            state.localPlayer.mesh.position.x = rideTargetX;
-            state.localPlayer.mesh.position.z = rideTargetZ;
-          }
+
+      // Move the player with the car
+      if (state.localPlayer) {
+        state.localPlayer.y = currentY;
+        if (state.localPlayer.mesh) {
+          state.localPlayer.mesh.position.y = currentY;
         }
       }
-    } else if (ridePhase === 'opening') {
-      if (doorAnimProgress > 0.99) {
-        ridePhase = 'idle';
-        animating = false;
+
+      // Set ride progress for 2nd floor fade (used in engine.js)
+      // Going up: 0→1, going down: 1→0
+      state.elevatorRideProgress = rideEndY > rideStartY ? ease : 1 - ease;
+
+      if (t >= 1) {
+        phase = 'arrival';
+        doorTarget = 1; // start opening doors
+        // Snap player to final position
+        if (state.localPlayer) {
+          state.localPlayer.y = rideEndY;
+          if (state.localPlayer.mesh) {
+            state.localPlayer.mesh.position.y = rideEndY;
+          }
+        }
+        // Force room re-detection on 2nd floor
+        if (rideEndY > 5) {
+          state.localPlayer.currentRoom = -1;
+        }
+      }
+    } else if (phase === 'arrival') {
+      if (doorProgress > 0.995) {
+        phase = 'open';
+        // Re-enable the door collider for the new floor level
+        const dc = state._elevatorDoorCollider;
+        if (dc) {
+          dc.position.y = rideEndY;
+          dc.visible = false;
+        }
       }
     }
 
-    // ── Proximity check ──
-    if (!animating && state.localPlayer) {
-      const dz = state.localPlayer.z - ELEVATOR_Z;
+    // ── Proximity + idle door logic ───────────────────────────────────────
+    if (phase === 'idle' || phase === 'open' || phase === 'waiting') {
+      if (!state.localPlayer) return;
+
       const dx = state.localPlayer.x;
-      const near = dx * dx + dz * dz < PROXIMITY_SQ;
+      const dz = state.localPlayer.z - ELEVATOR_FRONT_Z;
+      const near = dx * dx + dz * dz < PROXIMITY_DIST_SQ;
+
       if (near && !wasNear) {
-        panel.classList.add('elevator-visible');
-        panel.setAttribute('aria-hidden', 'false');
+        // Player approaching — open doors, show panel
         wasNear = true;
-        doorAnimTarget = 1;
-        floorDisplay.textContent = state.localPlayer.y > 5 ? '2' : 'L';
+        doorTarget = 1;
+        if (panel) {
+          panel.classList.add('elevator-visible');
+          panel.setAttribute('aria-hidden', 'false');
+        }
+        floorNum = state.localPlayer.y > 5 ? '2' : 'L';
+        if (floorDisplay) floorDisplay.textContent = floorNum;
+        phase = 'opening';
       } else if (!near && wasNear) {
-        panel.classList.remove('elevator-visible');
-        panel.setAttribute('aria-hidden', 'true');
+        // Player leaving — close doors, hide panel
         wasNear = false;
-        doorAnimTarget = 0;
+        doorTarget = 0;
+        if (panel) {
+          panel.classList.remove('elevator-visible');
+          panel.setAttribute('aria-hidden', 'true');
+        }
+        phase = 'idle';
+      } else if (near && wasNear && phase === 'opening' && doorProgress > 0.995) {
+        // Doors fully open — ready for player to walk in
+        phase = 'open';
+      } else if (near && wasNear && phase === 'open') {
+        // Player is near with doors open — check if they're inside the car
+        const inside = Math.abs(state.localPlayer.x) < 1.2
+          && state.localPlayer.z > ELEVATOR_Z - 1.2
+          && state.localPlayer.z < ELEVATOR_FRONT_Z - 0.2;
+        if (inside) {
+          phase = 'waiting';
+          // Show only the relevant button based on current floor
+          const onGround = state.localPlayer.y < 5;
+          upBtn.style.display = onGround ? '' : 'none';
+          downBtn.style.display = onGround ? 'none' : '';
+          if (onGround) upBtn.classList.add('elevator-active');
+          else downBtn.classList.add('elevator-active');
+        }
+      } else if (phase === 'waiting') {
+        // Check if player left the car
+        const inside = Math.abs(state.localPlayer.x) < 1.2
+          && state.localPlayer.z > ELEVATOR_Z - 1.2
+          && state.localPlayer.z < ELEVATOR_FRONT_Z - 0.2;
+        if (!inside) {
+          phase = 'open';
+          upBtn.classList.remove('elevator-active');
+          downBtn.classList.remove('elevator-active');
+          upBtn.style.display = '';
+          downBtn.style.display = '';
+        }
       }
     }
   };

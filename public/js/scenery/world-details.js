@@ -2,9 +2,10 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
-import { isFrontPlazaFootprint, isVenueRoadFootprint } from '../utils.js';
+import { isFrontPlazaFootprint, isVenueRoadFootprint, AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from '../utils.js';
 import { registerStaticScenery } from './visibility.js';
 import { deformGroundGeometry, addSceneryCollider } from './utils.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export function buildWorldDetails() {
   const _t = new THREE.Object3D();
@@ -121,7 +122,7 @@ export function buildWorldDetails() {
       new THREE.RingGeometry(r * 0.80, r * 1.30, 48),
       new THREE.MeshStandardMaterial({ color: '#3b2618', roughness: 0.97 })
     );
-    mud.rotation.x = -Math.PI / 2;
+    mud.rotation.x = FLAT;
     mud.position.set(cx, by + 0.01, cz);
     mud.receiveShadow = true;
     state.scene.add(mud);
@@ -131,7 +132,7 @@ export function buildWorldDetails() {
       new THREE.RingGeometry(r * 1.28, r * 1.62, 48),
       new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.82 })
     );
-    gravel.rotation.x = -Math.PI / 2;
+    gravel.rotation.x = FLAT;
     gravel.position.set(cx, by + 0.009, cz);
     gravel.receiveShadow = true;
     state.scene.add(gravel);
@@ -180,7 +181,7 @@ export function buildWorldDetails() {
       side: THREE.DoubleSide,
     });
     const water = new THREE.Mesh(new THREE.CircleGeometry(r * 0.82, 48), waterMat);
-    water.rotation.x = -Math.PI / 2;
+    water.rotation.x = FLAT;
     water.position.set(cx, by + 0.03, cz);
     water.receiveShadow = true;
     water.userData.waterUniforms = waterUniforms;
@@ -194,7 +195,7 @@ export function buildWorldDetails() {
         transparent: true, opacity: 0.25, side: THREE.DoubleSide
       })
     );
-    shimmer.rotation.x = -Math.PI / 2;
+    shimmer.rotation.x = FLAT;
     shimmer.position.set(cx, by + 0.04, cz);
     state.scene.add(shimmer);
 
@@ -255,7 +256,7 @@ export function buildWorldDetails() {
         color: '#7dd3fc', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false
       });
       const ripple = new THREE.Mesh(new THREE.RingGeometry(rockR * 0.6, rockR * 1.2, 24), rippleMat);
-      ripple.rotation.x = -Math.PI / 2;
+      ripple.rotation.x = FLAT;
       ripple.position.set(rx, by + 0.035, rz);
       ripple.userData = {
         baseOpacity: 0.12 + Math.random() * 0.10,
@@ -353,7 +354,6 @@ export function buildWorldDetails() {
       uniforms: { uTime: { value: 0 } },
       vertexShader: `
         uniform float uTime;
-        attribute vec3 instanceColor;
         varying vec3 vColor;
         void main() {
           vColor = instanceColor;

@@ -2,17 +2,26 @@
 import { state } from './state.js';
 
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+// Exported flat segment arrays for physics terrain flattening (without width)
+export const AMP_ROAD_SEGMENTS = [
+  [4.3, 62.7, 14, 78],
+  [14, 78, 27, 97],
+  [27, 97, 42, 118],
+  [42, 118, 56, 137],
+  [56, 137, 65, 150]
+];
+export const CV_ROAD_SEGMENTS = [
+  [-5.3, 61.8, -18, 68],
+  [-18, 68, -26, 86],
+  [-26, 86, -38, 104],
+  [-38, 104, -48, 122],
+  [-48, 122, -60, 140]
+];
+
+// Built from the exported segment arrays to keep a single source of truth.
 const VENUE_ROAD_SEGMENTS = [
-  { x1: 4.3, z1: 62.7, x2: 14, z2: 78, width: 5.0 },
-  { x1: 14, z1: 78, x2: 27, z2: 97, width: 5.0 },
-  { x1: 27, z1: 97, x2: 42, z2: 118, width: 5.0 },
-  { x1: 42, z1: 118, x2: 56, z2: 137, width: 5.0 },
-  { x1: 56, z1: 137, x2: 65, z2: 150, width: 5.0 },
-  { x1: -5.3, z1: 61.8, x2: -18, z2: 68, width: 4.5 },
-  { x1: -18, z1: 68, x2: -26, z2: 86, width: 4.5 },
-  { x1: -26, z1: 86, x2: -38, z2: 104, width: 4.5 },
-  { x1: -38, z1: 104, x2: -48, z2: 122, width: 4.5 },
-  { x1: -48, z1: 122, x2: -60, z2: 140, width: 4.5 }
+  ...AMP_ROAD_SEGMENTS.map(([x1, z1, x2, z2]) => ({ x1, z1, x2, z2, width: 5.0 })),
+  ...CV_ROAD_SEGMENTS.map(([x1, z1, x2, z2]) => ({ x1, z1, x2, z2, width: 4.5 })),
 ];
 
 function pointToSegmentDistanceSquared(px, pz, x1, z1, x2, z2) {

@@ -78,16 +78,24 @@ export function updateLocalPlayer(dt, now) {
   // ── Swimming check ──
   const waterY = getWaterSurfaceHeight(state.localPlayer.x, state.localPlayer.z);
   const inWater = waterY !== null;
-  state.localPlayer.swimming = inWater && state.localPlayer.y < waterY - 0.2;
+  state.localPlayer.swimming = inWater && state.localPlayer.y < waterY + 0.1; // swim at surface level
 
   if (state.localPlayer.flying) {
-    // Flight mode — no gravity, W/S controls vertical speed
-    const flySpeed = 12.0;
-    const vDir = (state.keys.w ? 1 : 0) - (state.keys.s ? 1 : 0);
-    state.localPlayer.velocity.y += vDir * flySpeed * dt;
-    // Clamp vertical speed so you don't rocket off
-    state.localPlayer.velocity.y = Math.max(-flySpeed, Math.min(flySpeed, state.localPlayer.velocity.y));
+    // Flight mode — WASD moves you at high speed relative to camera,
+    // Space=up, Shift=down. Arrow keys orbit camera normally (no conflict).
+    const flySpeed = 22.0;
+    const ascendSpeed = 12.0;
+    const vDir = (state.keys.space ? 1 : 0) - (state.keys.shift ? 1 : 0);
+    state.localPlayer.velocity.y += vDir * ascendSpeed * dt;
+    state.localPlayer.velocity.y = Math.max(-ascendSpeed * 0.7, Math.min(ascendSpeed * 0.7, state.localPlayer.velocity.y));
     state.localPlayer.y += state.localPlayer.velocity.y * dt;
+
+    const terrainY = getTerrainHeight(state.localPlayer.x, state.localPlayer.z);
+    const maxAlt = terrainY + 30;
+    if (state.localPlayer.y > maxAlt) {
+      state.localPlayer.y = maxAlt;
+      state.localPlayer.velocity.y = Math.min(state.localPlayer.velocity.y, 0);
+    }
 
   } else if (!state.localPlayer.isGrounded) {
     // Free-fall or landing after pressing Y
@@ -103,8 +111,8 @@ export function updateLocalPlayer(dt, now) {
     }
   } else {
     // Swimming: float at chest-depth on water instead of walking on riverbed
-    if (inWater && waterY !== null && targetGroundY < waterY - 0.5) {
-      const floatY = waterY + 0.5; // chest-deep
+    if (inWater && waterY !== null && targetGroundY < waterY + 0.3) {
+      const floatY = waterY + 0.2; // waist-deep — float higher
       state.localPlayer.y += (floatY - state.localPlayer.y) * Math.min(1, 4 * dt);
       state.localPlayer.velocity.y = 0;
     } else {
@@ -128,6 +136,8 @@ export function updateLocalPlayer(dt, now) {
   state.localPlayer.velocity.x -= state.localPlayer.velocity.x * drag * dt;
   state.localPlayer.velocity.z -= state.localPlayer.velocity.z * drag * dt;
 
+  const isSprinting = state.localPlayer.flying ? false : state.keys.shift;
+
   if (moveDirection.lengthSq() > 0) {
     state.camera.getWorldDirection(_camDir);
     _camDir.y = 0;
@@ -139,13 +149,12 @@ export function updateLocalPlayer(dt, now) {
       .addScaledVector(_camRight, moveDirection.x)
       .normalize();
 
-    const accel = isSprinting ? acceleration * 1.8 : acceleration;
+    const accel = state.localPlayer.flying ? 180 : (isSprinting ? acceleration * 1.8 : acceleration);
     state.localPlayer.velocity.x += targetDir.x * accel * dt;
     state.localPlayer.velocity.z += targetDir.z * accel * dt;
   }
 
-  const isSprinting = state.keys.shift;
-  const speedLimit = isSprinting ? sprintSpeed : maxSpeed;
+  const speedLimit = state.localPlayer.flying ? 22.0 : (isSprinting ? sprintSpeed : maxSpeed);
   let speedXZ = Math.sqrt(state.localPlayer.velocity.x * state.localPlayer.velocity.x + state.localPlayer.velocity.z * state.localPlayer.velocity.z);
   if (speedXZ > speedLimit) {
     state.localPlayer.velocity.x = (state.localPlayer.velocity.x / speedXZ) * speedLimit;

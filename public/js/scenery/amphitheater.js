@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export function buildAmphitheater() {
   const ax = 65, az = 150;
@@ -41,7 +42,7 @@ export function buildAmphitheater() {
   // ── Unified amphitheater ──────────────────────────────────────────────
   // Orchestra: flat marble circle at center
   const orch = new THREE.Mesh(new THREE.CircleGeometry(8, 36), marbleMat);
-  orch.rotation.x = -Math.PI / 2;
+  orch.rotation.x = FLAT;
   orch.position.set(ax, baseY + 0.03, az);
   orch.receiveShadow = true;
   group.add(orch);
@@ -49,7 +50,7 @@ export function buildAmphitheater() {
   // Orchestra border
   const ob = new THREE.Mesh(new THREE.RingGeometry(7.8, 8.2, 36),
     new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.5 }));
-  ob.rotation.x = -Math.PI / 2;
+  ob.rotation.x = FLAT;
   ob.position.set(ax, baseY + 0.035, az);
   group.add(ob);
 
@@ -61,7 +62,7 @@ export function buildAmphitheater() {
     const sg = new THREE.Mesh(
       new THREE.RingGeometry(r - 0.5, r + 0.5, segs, 1, -arcAngle / 2, arcAngle),
       seatMat);
-    sg.rotation.x = -Math.PI / 2;
+    sg.rotation.x = FLAT;
     sg.position.set(ax, y, az);
     sg.rotation.z = Math.PI * 0.25;
     sg.castShadow = true;
@@ -121,7 +122,7 @@ export function buildAmphitheater() {
   const cap = new THREE.Mesh(
     new THREE.RingGeometry(outerRadius + 0.1, outerRadius + 0.6, 48, 1, -arcAngle / 2, arcAngle),
     warmStoneMat);
-  cap.rotation.x = -Math.PI / 2;
+  cap.rotation.x = FLAT;
   cap.position.set(ax, outerY + 0.5, az);
   cap.rotation.z = Math.PI * 0.25;
   cap.castShadow = true;

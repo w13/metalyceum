@@ -47,7 +47,7 @@ export const tweaks = {
   sunIntensity: 0.92,
   hemiIntensity: 0.78,
   fogDensity: 0.012,
-  fogColor: WORLD_CONFIG.fogColor
+  fogColor: '#b8a888'
 };
 
 // ── Apply knobs that touch scene objects (called once per frame when changed) ──

@@ -106,6 +106,10 @@
         <span class="hud-icon-glyph">🐞</span>
         <span class="hud-icon-label">Debug</span>
       </button>
+      <button id="controls-icon-btn" class="hud-icon-square glass" type="button" aria-label="Keyboard controls" title="Controls">
+        <span class="hud-icon-glyph">⌨</span>
+        <span class="hud-icon-label">Controls</span>
+      </button>
     </div>
 
     <!-- Music popup panel -->
@@ -292,8 +296,12 @@
     </div>
   </div>
 
-  <!-- Instruction Legend -->
-  <div class="controls-legend glass">
+  <!-- Controls Legend Panel (collapsed by default) -->
+  <div id="controls-panel" class="hud-card controls-card glass" aria-hidden="true">
+    <div class="controls-card-header">
+      <h3>Keyboard Controls</h3>
+      <button type="button" class="modal-close-btn" id="close-controls-btn" aria-label="Close controls">✕</button>
+    </div>
     <div class="legend-item"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Move</span></div>
     <div class="legend-item"><kbd>Space</kbd><span>Jump</span></div>
     <div class="legend-item"><kbd>▲</kbd><kbd>▼</kbd><kbd>◀</kbd><kbd>▶</kbd><span>Orbit Camera</span></div>

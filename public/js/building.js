@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { ROOM_HEIGHT, MAP_SIZE, WORLD_CONFIG, ROOM_LAYOUTS } from './config.js';
 import { getTerrainHeight } from './physics.js';
-import { vec2LengthAngle, samplePosition } from './scenery/utils.js';
+import { vec2LengthAngle, samplePosition, createFloor } from './scenery/utils.js';
 import {
   initSceneryAssets,
   createBoulder,
@@ -25,10 +25,63 @@ import { createDoorFrame } from './building/doors.js';
 import { buildClassroomAssets } from './building/interiors.js';
 import { createWallTorch } from './building/torches.js';
 import { buildRoof } from './building/roof.js';
+import { FLAT, HALF_PI } from './math.js';
 
-export function syncSelectedAssetFromObject() {
-  const customEvent = new CustomEvent('sync-selected-asset-object');
-  window.dispatchEvent(customEvent);
+// Named building extents — used throughout buildBuilding() for facade, walls, and columns.
+const BLDG_X_MIN = -30;
+const BLDG_X_MAX = 30;
+const BLDG_Z_MIN = -40;
+const BLDG_Z_MAX = 40;
+
+/**
+ * Creates and registers a standard interactive room screen group.
+ * Used for both ground-floor and upper-floor rooms to avoid duplication.
+ *
+ * @param {object} room        - room definition from state.ROOMS
+ * @param {object} frameMat    - THREE.Material for the outer frame
+ * @param {object} screenMat   - THREE.Material prototype to clone for the screen
+ * @param {number} screenY     - world Y position for the screen center
+ * @param {number} wallOffset  - distance from the inner wall face to the screen
+ * @param {object[]|null} upperFloorArr - if non-null, push group into this array too
+ * @returns {THREE.Group} the screen group (already added to scene)
+ */
+function buildRoomScreen(room, frameMat, screenMat, screenY, wallOffset = 0.22, upperFloorArr = null) {
+  const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent };
+  const screenGroup = new THREE.Group();
+
+  const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(7, 4, 0.2), frameMat);
+  outerFrame.castShadow = true;
+  screenGroup.add(outerFrame);
+
+  const innerGeo = new THREE.BoxGeometry(6.6, 3.6, 0.05);
+  const innerScreenMat = screenMat.clone();
+  const innerScreen = new THREE.Mesh(innerGeo, innerScreenMat);
+  innerScreen.position.z = 0.1;
+  innerScreen.userData = { roomId: room.id };
+  state.clickableScreens.push(innerScreen);
+  state.roomScreens.set(room.id, {
+    material: innerScreenMat,
+    baseColor: innerScreenMat.color.clone(),
+    baseEmissive: innerScreenMat.emissive.clone()
+  });
+  screenGroup.add(innerScreen);
+
+  const screenBorder = new THREE.Mesh(innerGeo, new THREE.MeshBasicMaterial({ color: layout.themeColor, wireframe: true }));
+  screenBorder.position.z = 0.11;
+  screenBorder.scale.set(1.02, 1.02, 1.02);
+  screenGroup.add(screenBorder);
+
+  if (room.x < 0) {
+    screenGroup.position.set(room.x - room.width / 2 + wallOffset, screenY, room.z);
+    screenGroup.rotation.y = Math.PI / 2;
+  } else {
+    screenGroup.position.set(room.x + room.width / 2 - wallOffset, screenY, room.z);
+    screenGroup.rotation.y = -Math.PI / 2;
+  }
+
+  state.scene.add(screenGroup);
+  if (upperFloorArr) upperFloorArr.push(screenGroup);
+  return screenGroup;
 }
 
 export function buildMap() {
@@ -46,7 +99,7 @@ export function buildMap() {
 
   const groundMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.8 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
+  ground.rotation.x = FLAT;
   ground.receiveShadow = true;
   state.scene.add(ground);
   
@@ -311,7 +364,7 @@ export function buildBuilding() {
     const mat = isWood ? woodFloorMat : stoneFloorMat;
     const roomFloorGeo = new THREE.PlaneGeometry(room.width, room.depth);
     const roomFloor = new THREE.Mesh(roomFloorGeo, mat);
-    roomFloor.rotation.x = -Math.PI / 2;
+    roomFloor.rotation.x = FLAT;
     roomFloor.position.set(room.x, 0.005, room.z);
     roomFloor.receiveShadow = true;
     state.scene.add(roomFloor);
@@ -322,7 +375,7 @@ export function buildBuilding() {
   // ── Grand wood-floored atrium ──────────────────────────────────────────
   const lobbyFloorGeo = new THREE.PlaneGeometry(10, 80);
   const lobbyFloor = new THREE.Mesh(lobbyFloorGeo, darkWoodFloorMat);
-  lobbyFloor.rotation.x = -Math.PI / 2;
+  lobbyFloor.rotation.x = FLAT;
   lobbyFloor.position.set(0, 0.015, 0);
   lobbyFloor.receiveShadow = true;
   state.scene.add(lobbyFloor);
@@ -330,14 +383,14 @@ export function buildBuilding() {
   // Decorative border strip around the lobby floor edge
   const lobbyBorderMat = new THREE.MeshStandardMaterial({ color: '#4a2c11', roughness: 0.6, metalness: 0.08 });
   const lobbyBorder = new THREE.Mesh(new THREE.PlaneGeometry(10.2, 80.2), lobbyBorderMat);
-  lobbyBorder.rotation.x = -Math.PI / 2;
+  lobbyBorder.rotation.x = FLAT;
   lobbyBorder.position.set(0, 0.012, 0);
   state.scene.add(lobbyBorder);
 
   // Entrance medallion — a dark circular accent at the main door (z=40)
   const medallionMat = new THREE.MeshStandardMaterial({ color: '#5c3a1e', roughness: 0.7, metalness: 0.05 });
   const medallion = new THREE.Mesh(new THREE.CircleGeometry(1.8, 24), medallionMat);
-  medallion.rotation.x = -Math.PI / 2;
+  medallion.rotation.x = FLAT;
   medallion.position.set(0, 0.018, 38);
   state.scene.add(medallion);
 
@@ -345,7 +398,7 @@ export function buildBuilding() {
     new THREE.RingGeometry(1.75, 2.0, 24),
     new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.5, metalness: 0.1 })
   );
-  medallionRing.rotation.x = -Math.PI / 2;
+  medallionRing.rotation.x = FLAT;
   medallionRing.position.set(0, 0.019, 38);
   state.scene.add(medallionRing);
 
@@ -371,13 +424,13 @@ export function buildBuilding() {
   const marbleMat = new THREE.MeshStandardMaterial({ map: marbleTex, color: '#ede8dc', roughness: 0.12, metalness: 0.08, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 
   const innerFoyer = new THREE.Mesh(new THREE.PlaneGeometry(11.5, 5.2), marbleMat);
-  innerFoyer.rotation.x = -Math.PI / 2;
+  innerFoyer.rotation.x = FLAT;
   innerFoyer.position.set(0, 0.025, 37.4);
   innerFoyer.receiveShadow = true;
   state.scene.add(innerFoyer);
 
   const porticoFoyer = new THREE.Mesh(new THREE.PlaneGeometry(11.5, 5.0), marbleMat);
-  porticoFoyer.rotation.x = -Math.PI / 2;
+  porticoFoyer.rotation.x = FLAT;
   porticoFoyer.position.set(0, 0.125, 42.5);
   porticoFoyer.receiveShadow = true;
   state.scene.add(porticoFoyer);
@@ -386,84 +439,82 @@ export function buildBuilding() {
   const borderMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide });
 
   const carpetExterior = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.0), carpetMat);
-  carpetExterior.rotation.x = -Math.PI / 2;
+  carpetExterior.rotation.x = FLAT;
   carpetExterior.position.set(0, 0.12, 41.0);
   carpetExterior.receiveShadow = true;
   state.scene.add(carpetExterior);
 
   [-1.6, 1.6].forEach((xOff) => {
     const border = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 2.0), borderMat);
-    border.rotation.x = -Math.PI / 2;
+    border.rotation.x = FLAT;
     border.position.set(xOff, 0.121, 41.0);
     state.scene.add(border);
   });
 
   const carpetInterior = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 78), carpetMat);
-  carpetInterior.rotation.x = -Math.PI / 2;
+  carpetInterior.rotation.x = FLAT;
   carpetInterior.position.set(0, 0.03, 0);
   carpetInterior.receiveShadow = true;
   state.scene.add(carpetInterior);
 
   [-1.6, 1.6].forEach((xOff) => {
     const border = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 78), borderMat);
-    border.rotation.x = -Math.PI / 2;
+    border.rotation.x = FLAT;
     border.position.set(xOff, 0.031, 0);
     state.scene.add(border);
   });
 
   [-1, 1].forEach((zOff) => {
     const endCap = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.06), borderMat);
-    endCap.rotation.x = -Math.PI / 2;
+    endCap.rotation.x = FLAT;
     endCap.position.set(0, 0.031, zOff * 39);
     state.scene.add(endCap);
   });
 
+  // Shared wall slab builder — used by both addWallSegment and addUpperWallSegment.
+  // baseY: Y position of the bottom of the slab.
+  // stateArr: the array to push the mesh into (state.upperFloor or nothing for ground floor).
+  function _addWallSlabAt(xStart, zStart, xEnd, zEnd, baseY, height, thickness, material, baseboardMat, stateArr) {
+    const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
+    if (len < 0.01) return;
+    const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(len, height, thickness), material);
+    wallMesh.position.set((xStart + xEnd) / 2, baseY + height / 2, (zStart + zEnd) / 2);
+    wallMesh.rotation.y = -angle;
+    wallMesh.castShadow = true;
+    wallMesh.receiveShadow = true;
+    state.scene.add(wallMesh);
+    if (stateArr) stateArr.push(wallMesh);
+
+    const bbH = 0.3, bbT = 0.07;
+    const bbGeo = new THREE.BoxGeometry(len, bbH, bbT);
+    [thickness / 2 + bbT / 2, -(thickness / 2 + bbT / 2)].forEach((zOff) => {
+      const bb = new THREE.Mesh(bbGeo, baseboardMat);
+      bb.position.set(0, -(height / 2) + bbH / 2, zOff);
+      wallMesh.add(bb);
+    });
+
+    wallMesh.updateWorldMatrix(true, false);
+    state.WALLS.push(new THREE.Box3().setFromObject(wallMesh));
+    return wallMesh;
+  }
+
   function addWallSegment(xStart, zStart, xEnd, zEnd, height = ROOM_HEIGHT) {
     const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
     if (len < 0.01) return;
-    
+
     const thickness = 0.5;
     const lowerHeight = 3.5;
     const upperHeight = height - lowerHeight;
-    
-    const lowerGeo = new THREE.BoxGeometry(len, lowerHeight, thickness);
-    const lowerWall = new THREE.Mesh(lowerGeo, wallMat);
-    lowerWall.position.set((xStart + xEnd) / 2, lowerHeight / 2, (zStart + zEnd) / 2);
-    lowerWall.rotation.y = -angle;
-    lowerWall.castShadow = true;
-    lowerWall.receiveShadow = true;
-    state.scene.add(lowerWall);
-    
+    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
+
+    // Lower wall (always opaque, always visible)
+    const lowerWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, 0, lowerHeight, thickness, wallMat, baseboardMat, null);
+
+    // Upper wall (transparent for indoor/outdoor fade)
     if (upperHeight > 0.05) {
-      const upperGeo = new THREE.BoxGeometry(len, upperHeight, thickness);
-      const upperWall = new THREE.Mesh(upperGeo, state.upperWallMat);
-      upperWall.position.set((xStart + xEnd) / 2, lowerHeight + upperHeight / 2, (zStart + zEnd) / 2);
-      upperWall.rotation.y = -angle;
-      upperWall.castShadow = true;
-      upperWall.receiveShadow = true;
-      state.scene.add(upperWall);
+      const upperWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, lowerHeight, upperHeight, thickness, state.upperWallMat, baseboardMat, null);
       state.upperWalls.push(upperWall);
     }
-    
-    const baseboardHeight = 0.35;
-    const baseboardThickness = 0.08;
-    const baseboardGeo = new THREE.BoxGeometry(len, baseboardHeight, baseboardThickness);
-    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
-    
-    const baseboard1 = new THREE.Mesh(baseboardGeo, baseboardMat);
-    baseboard1.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, thickness / 2 + baseboardThickness / 2);
-    baseboard1.castShadow = true;
-    baseboard1.receiveShadow = true;
-    lowerWall.add(baseboard1);
-    
-    const baseboard2 = new THREE.Mesh(baseboardGeo, baseboardMat);
-    baseboard2.position.set(0, -lowerHeight / 2 + baseboardHeight / 2, -thickness / 2 - baseboardThickness / 2);
-    baseboard2.castShadow = true;
-    baseboard2.receiveShadow = true;
-    lowerWall.add(baseboard2);
-
-    lowerWall.updateWorldMatrix(true, false);
-    state.WALLS.push(new THREE.Box3().setFromObject(lowerWall));
   }
 
   state.ROOMS.forEach((room) => {
@@ -578,46 +629,19 @@ export function buildBuilding() {
 
   state.ROOMS.forEach((room) => {
     if (room.id >= 8) return;
-    const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent };
-    const screenGroup = new THREE.Group();
-    const screenWallOffset = 0.22;
-    const outerGeo = new THREE.BoxGeometry(7, 4, 0.2);
-    const outerFrame = new THREE.Mesh(outerGeo, frameMat);
-    outerFrame.castShadow = true;
-    screenGroup.add(outerFrame);
-    const innerGeo = new THREE.BoxGeometry(6.6, 3.6, 0.05);
-    const innerScreenMat = screenMat.clone();
-    const innerScreen = new THREE.Mesh(innerGeo, innerScreenMat);
-    innerScreen.position.z = 0.1;
-    innerScreen.userData = { roomId: room.id };
-    state.clickableScreens.push(innerScreen);
-    state.roomScreens.set(room.id, {
-      material: innerScreenMat, baseColor: innerScreenMat.color.clone(), baseEmissive: innerScreenMat.emissive.clone()
-    });
-    screenGroup.add(innerScreen);
-    const borderMat = new THREE.MeshBasicMaterial({ color: layout.themeColor, wireframe: true });
-    const screenBorder = new THREE.Mesh(innerGeo, borderMat);
-    screenBorder.position.z = 0.11;
-    screenBorder.scale.set(1.02, 1.02, 1.02);
-    screenGroup.add(screenBorder);
-    if (room.x < 0) {
-      screenGroup.position.set(room.x - room.width / 2 + screenWallOffset, 3.5, room.z);
-      screenGroup.rotation.y = Math.PI / 2;
-    } else {
-      screenGroup.position.set(room.x + room.width / 2 - screenWallOffset, 3.5, room.z);
-      screenGroup.rotation.y = -Math.PI / 2;
-    }
-    state.scene.add(screenGroup);
-    createWallTorch(room.x < 0 ? room.x - room.width / 2 + 0.25 : room.x + room.width / 2 - 0.25, 2.5, room.z - 4, room.x < 0 ? Math.PI / 2 : -Math.PI / 2, room.id, true);
-    createWallTorch(room.x < 0 ? room.x - room.width / 2 + 0.25 : room.x + room.width / 2 - 0.25, 2.5, room.z + 4, room.x < 0 ? Math.PI / 2 : -Math.PI / 2, room.id, false);
+    buildRoomScreen(room, frameMat, screenMat, 3.5);
+    const torchX = room.x < 0 ? room.x - room.width / 2 + 0.25 : room.x + room.width / 2 - 0.25;
+    const torchRy = room.x < 0 ? Math.PI / 2 : -Math.PI / 2;
+    createWallTorch(torchX, 2.5, room.z - 4, torchRy, room.id, true);
+    createWallTorch(torchX, 2.5, room.z + 4, torchRy, room.id, false);
     createRoomIndicator(room);
   });
 
   state.ceilingMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, transparent: true, opacity: 1.0, depthWrite: true });
   state.roofMeshes = [];
-  const ceilingGeo = new THREE.PlaneGeometry(60, 82);
+  const ceilingGeo = new THREE.PlaneGeometry(60, 80);
   state.ceilingMesh = new THREE.Mesh(ceilingGeo, state.ceilingMat);
-  state.ceilingMesh.rotation.x = Math.PI / 2;
+  state.ceilingMesh.rotation.x = HALF_PI;
   state.ceilingMesh.position.set(0, ROOM_HEIGHT + 0.1, 0);
   state.ceilingMesh.castShadow = true;
   state.ceilingMesh.receiveShadow = true;
@@ -699,14 +723,6 @@ export function buildBuilding() {
       addOrientedBox(0.16, windowHeight + 0.12, thickness + 0.18, mx + tangentX * windowWidth * 0.24, secondFloorY + upperFloorHeight * 0.54, mz + tangentZ * windowWidth * 0.24, angle, bronzeMat, normalX, normalZ, 0.2, true);
       addOrientedBox(windowWidth + 0.15, 0.12, thickness + 0.18, mx, secondFloorY + upperFloorHeight * 0.54, mz, angle, bronzeMat, normalX, normalZ, 0.2, true);
 
-      if (decorative && normalZ > 0.9 && Math.abs(mx) < 7.6) {
-        const railZ = mz + normalZ * 0.72;
-        addMesh(new THREE.BoxGeometry(3.8, 0.16, 0.16), bronzeMat, mx, secondFloorY + 0.9, railZ, 0, 0, 0, true);
-        addMesh(new THREE.BoxGeometry(3.8, 0.16, 0.16), bronzeMat, mx, secondFloorY + 1.55, railZ, 0, 0, 0, true);
-        [-1.45, -0.7, 0, 0.7, 1.45].forEach((offset) => {
-          addMesh(new THREE.BoxGeometry(0.12, 0.72, 0.12), bronzeMat, mx + offset, secondFloorY + 1.22, railZ, 0, 0, 0, true);
-        });
-      }
     }
   }
 
@@ -735,18 +751,20 @@ export function buildBuilding() {
     addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, 30, secondFloorY + upperFloorHeight / 2 + 0.2, z, Math.PI / 2, limestoneShadowMat, 1, 0, 0.32, true);
   });
 
-  addBanner(-17.5, 40.62, 0);
-  addBanner(17.5, 40.62, 0);
+  addBanner(-17.5, 40, 0);
+  addBanner(17.5, 40, 0);
 
   const porticoFriezeZ = 41.15;
   addMesh(new THREE.BoxGeometry(13.8, 0.85, 1.55), limestoneMat, 0, ROOM_HEIGHT + 0.55, porticoFriezeZ, 0, 0, 0, true);
   addMesh(new THREE.BoxGeometry(9.6, 0.22, 0.18), bronzeMat, 0, ROOM_HEIGHT + 0.55, porticoFriezeZ + 0.82, 0, 0, 0, true);
   addMesh(new THREE.BoxGeometry(14.6, 0.32, 1.75), limestoneShadowMat, 0, ROOM_HEIGHT + 1.07, porticoFriezeZ, 0, 0, 0, true);
   addMesh(new THREE.BoxGeometry(7.3, 0.28, 1.4), limestoneMat, -2.92, ROOM_HEIGHT + 1.74, porticoFriezeZ - 0.02, 0, 0, 0.34, true);
+  addMesh(new THREE.BoxGeometry(7.3, 0.28, 1.4), limestoneMat, +2.92, ROOM_HEIGHT + 1.74, porticoFriezeZ - 0.02, 0, 0, -0.34, true);
   flushBatches();
 
   // ── Animated Opulent Elevator (north end of lobby) ─────────────────────
   const eZ = -36, eW = 3.2, eD = 3.2, eH = 5.5;
+  const eFrontZ = eZ + eD / 2;
   const goldMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.2, metalness: 0.8 });
   const brassMat = new THREE.MeshStandardMaterial({ color: '#cd7f32', roughness: 0.25, metalness: 0.7 });
   const mahoganyMat = new THREE.MeshStandardMaterial({ color: '#3a1508', roughness: 0.35, metalness: 0.1 });
@@ -757,32 +775,46 @@ export function buildBuilding() {
   const eMarble = new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.1, metalness: 0.05 });
   const eDarkMarble = new THREE.MeshStandardMaterial({ color: '#2a1a0a', roughness: 0.15, metalness: 0.12 });
 
+  // Back wall (z = -eD/2) and side walls
   for (let zOff = -1; zOff <= 1; zOff += 2) {
     const p = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.2, eH - 0.5, 0.08), mahoganyMat);
-    p.position.set(0, (eH - 0.5)/2, zOff * (eD/2 - 0.1)); elevatorCar.add(p);
+    p.position.set(0, (eH - 0.5) / 2, zOff * (eD / 2 - 0.1));
+    elevatorCar.add(p);
     const t1 = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.1, 0.04, 0.1), goldMat);
-    t1.position.set(0, eH - 0.3, zOff * (eD/2 - 0.1)); elevatorCar.add(t1);
+    t1.position.set(0, eH - 0.3, zOff * (eD / 2 - 0.1));
+    elevatorCar.add(t1);
     const t2 = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.1, 0.04, 0.1), goldMat);
-    t2.position.set(0, 0.15, zOff * (eD/2 - 0.1)); elevatorCar.add(t2);
+    t2.position.set(0, 0.15, zOff * (eD / 2 - 0.1));
+    elevatorCar.add(t2);
   }
-  [-eW/2 + 0.1, eW/2 - 0.1].forEach(xOff => {
+  [-eW / 2 + 0.1, eW / 2 - 0.1].forEach(xOff => {
     const p = new THREE.Mesh(new THREE.BoxGeometry(0.08, eH - 0.5, eD - 0.2), mahoganyMat);
-    p.position.set(xOff, (eH - 0.5)/2, 0); elevatorCar.add(p);
+    p.position.set(xOff, (eH - 0.5) / 2, 0);
+    elevatorCar.add(p);
   });
 
-  const ef = new THREE.Mesh(new THREE.PlaneGeometry(eW - 0.1, eD - 0.1), eMarble);
-  ef.rotation.x = -Math.PI/2; ef.position.set(0, 0.015, 0); elevatorCar.add(ef);
-  const eb = new THREE.Mesh(new THREE.RingGeometry(eW/2 - 0.25, eW/2 - 0.05, 24), eDarkMarble);
-  eb.rotation.x = -Math.PI/2; eb.position.set(0, 0.017, 0); elevatorCar.add(eb);
+  // Marble floor
+  const ef = createFloor(eW - 0.1, eD - 0.1, eMarble, 0, 0.015, 0);
+  elevatorCar.add(ef);
+  const eb = new THREE.Mesh(new THREE.RingGeometry(eW / 2 - 0.25, eW / 2 - 0.05, 24), eDarkMarble);
+  eb.rotation.x = FLAT;
+  eb.position.set(0, 0.017, 0);
+  elevatorCar.add(eb);
 
+  // Ceiling + crown molding + chandelier
   const ec = new THREE.Mesh(new THREE.PlaneGeometry(eW - 0.1, eD - 0.1), eMarble);
-  ec.rotation.x = -Math.PI/2; ec.position.set(0, eH, 0); elevatorCar.add(ec);
+  ec.rotation.x = FLAT;
+  ec.position.set(0, eH, 0);
+  elevatorCar.add(ec);
   const cr = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.03, 8, 16), goldMat);
-  cr.position.set(0, eH - 0.01, 0); cr.rotation.x = Math.PI/2; elevatorCar.add(cr);
+  cr.position.set(0, eH - 0.01, 0);
+  cr.rotation.x = HALF_PI;
+  elevatorCar.add(cr);
 
   const chMat = new THREE.MeshStandardMaterial({ color: '#fef08a', emissive: '#fef08a', emissiveIntensity: 0.4 });
   const ch = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), chMat);
-  ch.position.set(0, eH - 0.15, 0); elevatorCar.add(ch);
+  ch.position.set(0, eH - 0.15, 0);
+  elevatorCar.add(ch);
   for (let i = 0; i < 6; i++) {
     const a = (Math.PI * 2 * i) / 6;
     const d = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6),
@@ -792,106 +824,124 @@ export function buildBuilding() {
   }
   state.scene.add(elevatorCar);
 
-  const doorPanels = [];
+  // ── Swing doors (hinged at outer edges, children of car) ──────────────
+  const halfDoorW = (eW - 0.3) / 2; // each door panel width
+  const doorPivots = [];
   for (let side = -1; side <= 1; side += 2) {
-    const md = new THREE.Mesh(new THREE.BoxGeometry(0.06, eH - 0.8, 0.75), mahoganyMat);
-    md.position.set(side * 0.6, (eH - 0.8)/2, eZ + eD/2 + 0.02);
-    md.userData._baseRY = side * 0.15; md.userData._side = side; state.scene.add(md); doorPanels.push(md);
-    const inlay = new THREE.Mesh(new THREE.BoxGeometry(0.07, eH - 1.2, 0.02), goldMat);
-    inlay.position.set(side * 0.6, (eH - 0.8)/2, eZ + eD/2 + 0.05); state.scene.add(inlay);
-    const fd = new THREE.Mesh(new THREE.BoxGeometry(0.04, eH - 1.0, 0.55), mahoganyMat);
-    fd.position.set(side * 1.1, (eH - 1.0)/2, eZ + eD/2 + 0.02);
-    fd.userData._baseRY = side * 0.35; fd.userData._side = side; state.scene.add(fd); doorPanels.push(fd);
-    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.2, 6), brassMat);
-    h.rotation.x = Math.PI/2; h.position.set(side * 0.85, 1.3, eZ + eD/2 + 0.08); state.scene.add(h);
-    const pl = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.04), brassMat);
-    pl.position.set(side * 0.85, 1.3, eZ + eD/2 + 0.06); state.scene.add(pl);
+    // Pivot group at the hinge edge
+    const pivot = new THREE.Group();
+    pivot.position.set(side * (eW / 2 - 0.04), 0, eFrontZ);
+    elevatorCar.add(pivot);
+
+    // Door panel
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(halfDoorW, eH - 0.7, 0.06),
+      mahoganyMat
+    );
+    door.position.set(side * halfDoorW / 2, (eH - 0.7) / 2, 0);
+    pivot.add(door);
+
+    // Gold inlay stripe
+    const inlay = new THREE.Mesh(
+      new THREE.BoxGeometry(halfDoorW - 0.2, eH - 1.0, 0.07),
+      goldMat
+    );
+    inlay.position.set(side * halfDoorW / 2, (eH - 0.7) / 2, 0.035);
+    pivot.add(inlay);
+
+    // Handle (brass pull)
+    const handle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.02, 0.18, 6),
+      brassMat
+    );
+    handle.rotation.x = HALF_PI;
+    handle.position.set(side * halfDoorW / 3, 1.3, 0.05);
+    pivot.add(handle);
+
+    pivot.userData._side = side;
+    doorPivots.push(pivot);
   }
 
+  // Door frame (brass pillars + pediment — static in scene, not on car)
   [-0.9, 0.9].forEach(xOff => {
     const f = new THREE.Mesh(new THREE.BoxGeometry(0.08, eH + 0.2, 0.06), brassMat);
-    f.position.set(xOff, (eH + 0.2)/2 - 0.1, eZ + eD/2 + 0.01); state.scene.add(f);
+    f.position.set(xOff, (eH + 0.2) / 2 - 0.1, eFrontZ + 0.01);
+    state.scene.add(f);
   });
   const ft = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.08), brassMat);
-  ft.position.set(0, eH + 0.05, eZ + eD/2 + 0.01); state.scene.add(ft);
-  const ps = new THREE.Shape(); ps.moveTo(-0.9,0); ps.lineTo(0.9,0); ps.lineTo(0,0.25); ps.closePath();
+  ft.position.set(0, eH + 0.05, eFrontZ + 0.01);
+  state.scene.add(ft);
+  const ps = new THREE.Shape();
+  ps.moveTo(-0.9, 0);
+  ps.lineTo(0.9, 0);
+  ps.lineTo(0, 0.25);
+  ps.closePath();
   const pd = new THREE.Mesh(new THREE.ExtrudeGeometry(ps, { depth: 0.08, bevelEnabled: false }), goldMat);
-  pd.position.set(0, eH + 0.1, eZ + eD/2 + 0.01); state.scene.add(pd);
+  pd.position.set(0, eH + 0.1, eFrontZ + 0.01);
+  state.scene.add(pd);
 
+  // Indicator light (static in scene)
   const ib = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.02), brassMat);
-  ib.position.set(0, eH + 0.5, eZ + eD/2 + 0.03); state.scene.add(ib);
+  ib.position.set(0, eH + 0.5, eFrontZ + 0.03);
+  state.scene.add(ib);
   const il = new THREE.Mesh(new THREE.CircleGeometry(0.04, 8), new THREE.MeshBasicMaterial({ color: '#22c55e' }));
-  il.position.set(0, eH + 0.5, eZ + eD/2 + 0.04); state.scene.add(il);
+  il.position.set(0, eH + 0.5, eFrontZ + 0.04);
+  state.scene.add(il);
   const cb = new THREE.Mesh(new THREE.CircleGeometry(0.04, 8), brassMat);
-  cb.position.set(0.3, 1.3, eZ + eD/2 + 0.04); state.scene.add(cb);
+  cb.position.set(0.3, 1.3, eFrontZ + 0.04);
+  state.scene.add(cb);
   const cl = new THREE.Mesh(new THREE.CircleGeometry(0.02, 6), new THREE.MeshBasicMaterial({ color: '#ef4444' }));
-  cl.position.set(0.3, 1.3, eZ + eD/2 + 0.05); state.scene.add(cl);
+  cl.position.set(0.3, 1.3, eFrontZ + 0.05);
+  state.scene.add(cl);
 
+  // State refs for elevator.js
   state._elevatorCar = elevatorCar;
-  state._elevatorDoorPanels = doorPanels;
-  state._elevatorY = 0;
-  state._elevatorTargetY = 0;
-  state._elevatorMoving = false;
-  state._elevatorDoorTarget = 0;
-  state._elevatorDoorState = 0;
-  state._elevatorRiding = false;
+  state._elevatorDoorPivots = doorPivots;
+  state._elevatorDoorOpen = 0; // 0=closed, 1=open
 
-  const et = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.5, eH - 0.5, eD - 0.5),
-    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
-  et.position.set(0, (eH - 0.5)/2, eZ);
-  et.userData = { isElevator: true };
-  et.userData.onClick = () => {
-    if (state._elevatorMoving) return;
-    state._elevatorTargetY = state._elevatorTargetY === 0 ? 7.5 : 0;
-    state._elevatorMoving = true;
-    state._elevatorDoorTarget = 1;
-    state._elevatorRiding = true;
-  };
-  state.clickableRoomMarkers.push(et);
+  // ── Elevator collision ────────────────────────────────────────────────
+  // Room interior walls (3 sides — back, left, right)
+  const collHalfW = eW / 2 - 0.2;
+  const collHalfD = eD / 2 - 0.2;
+  const collH = eH;
+  // These walls are always active — they define the elevator room boundaries
+  // Back wall
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(-collHalfW, 0, eZ - collHalfD - 0.05),
+    new THREE.Vector3(collHalfW, collH, eZ - collHalfD + 0.05)
+  ));
+  // Left wall
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(-collHalfW - 0.05, 0, eZ - collHalfD),
+    new THREE.Vector3(-collHalfW + 0.05, collH, eZ + collHalfD)
+  ));
+  // Right wall
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(collHalfW - 0.05, 0, eZ - collHalfD),
+    new THREE.Vector3(collHalfW + 0.05, collH, eZ + collHalfD)
+  ));
 
-  // Door collision wall — active when doors are closed (prevents walking through)
-  const doorCollider = new THREE.Mesh(new THREE.BoxGeometry(0.2, eH, eD - 0.2),
-    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
-  doorCollider.position.set(0, eH/2, eZ + eD/2);
+  // Door collision wall (active when closed, disabled when open)
+  const doorCollider = new THREE.Mesh(
+    new THREE.BoxGeometry(eW - 0.3, eH, 0.1),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+  );
+  doorCollider.position.set(0, eH / 2, eFrontZ + 0.05);
   doorCollider.visible = false;
   state.scene.add(doorCollider);
   state._elevatorDoorCollider = doorCollider;
-  state.WALLS.push(new THREE.Box3().setFromObject(doorCollider));
+  state._elevatorDoorBox = new THREE.Box3().setFromObject(doorCollider);
+  state.WALLS.push(state._elevatorDoorBox);
   // ── Second floor ──────────────────────────────────────────────────────
   const mezzY = 7.5;             // deck surface Y
   const f2Height = 3.3;          // interior height of second floor
   const f2Thickness = 0.5;       // wall thickness (matches ground floor)
   const f2BaseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
 
-  // Helper — add a wall slab that starts at mezzY (not ground)
+  // Helper — add a wall slab that starts at mezzY (not ground).
+  // Delegates to the shared _addWallSlabAt builder defined in the outer scope.
   function addUpperWallSegment(xStart, zStart, xEnd, zEnd, height = f2Height) {
-    const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
-    if (len < 0.01) return;
-    const wallGeo = new THREE.BoxGeometry(len, height, f2Thickness);
-    const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-    wallMesh.position.set(
-      (xStart + xEnd) / 2,
-      mezzY + height / 2,
-      (zStart + zEnd) / 2
-    );
-    wallMesh.rotation.y = -angle;
-    wallMesh.castShadow = true;
-    wallMesh.receiveShadow = true;
-    state.scene.add(wallMesh);
-    state.upperFloor.push(wallMesh);
-
-    // Baseboard on each face
-    const bbH = 0.3, bbT = 0.07;
-    const bbGeo = new THREE.BoxGeometry(len, bbH, bbT);
-    [f2Thickness / 2 + bbT / 2, -(f2Thickness / 2 + bbT / 2)].forEach((zOff) => {
-      const bb = new THREE.Mesh(bbGeo, f2BaseboardMat);
-      bb.position.set(0, -(height / 2) + bbH / 2, zOff);
-      wallMesh.add(bb);
-    });
-
-    // Collision box (full height in Y so it works regardless of exact player Y)
-    wallMesh.updateWorldMatrix(true, false);
-    state.WALLS.push(new THREE.Box3().setFromObject(wallMesh));
+    _addWallSlabAt(xStart, zStart, xEnd, zEnd, mezzY, height, f2Thickness, wallMat, f2BaseboardMat, state.upperFloor);
   }
 
   // ── Floor slabs ─────────────────────────────────────────────────────
@@ -899,26 +949,17 @@ export function buildBuilding() {
   const mezzSlateFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
 
   // West wing (gallery side): x -30 → -5, z -40 → +40
-  const westFloor = new THREE.Mesh(new THREE.PlaneGeometry(25, 80), mezzSlateFloorMat);
-  westFloor.rotation.x = -Math.PI / 2;
-  westFloor.position.set(-17.5, mezzY, 0);
-  westFloor.receiveShadow = true;
+  const westFloor = createFloor(25, 80, mezzSlateFloorMat, -17.5, mezzY, 0);
   state.scene.add(westFloor);
   state.upperFloor.push(westFloor);
 
   // East wing (interactive side): x +5 → +30, z -40 → +40
-  const eastFloor = new THREE.Mesh(new THREE.PlaneGeometry(25, 80), mezzFloorMat);
-  eastFloor.rotation.x = -Math.PI / 2;
-  eastFloor.position.set(17.5, mezzY, 0);
-  eastFloor.receiveShadow = true;
+  const eastFloor = createFloor(25, 80, mezzFloorMat, 17.5, mezzY, 0);
   state.scene.add(eastFloor);
   state.upperFloor.push(eastFloor);
 
   // Corridor: x -5 → +5, z -40 → +40
-  const corridorFloor = new THREE.Mesh(new THREE.PlaneGeometry(10, 80), mezzFloorMat);
-  corridorFloor.rotation.x = -Math.PI / 2;
-  corridorFloor.position.set(0, mezzY, 0);
-  corridorFloor.receiveShadow = true;
+  const corridorFloor = createFloor(10, 80, mezzFloorMat, 0, mezzY, 0);
   state.scene.add(corridorFloor);
   state.upperFloor.push(corridorFloor);
 
@@ -926,7 +967,7 @@ export function buildBuilding() {
   const corridorBorderMat = new THREE.MeshStandardMaterial({ color: '#4a2c11', roughness: 0.6, metalness: 0.08 });
   [-5.1, 5.1].forEach((x) => {
     const border = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 80), corridorBorderMat);
-    border.rotation.x = -Math.PI / 2;
+    border.rotation.x = FLAT;
     border.position.set(x, mezzY + 0.002, 0);
     state.scene.add(border);
     state.upperFloor.push(border);
@@ -934,8 +975,8 @@ export function buildBuilding() {
 
   // ── Second-floor ceiling (underside of roof space) ──────────────────
   const f2CeilingMat = new THREE.MeshStandardMaterial({ color: '#1e1510', roughness: 0.9, transparent: true, opacity: 1.0 });
-  const f2Ceiling = new THREE.Mesh(new THREE.PlaneGeometry(60, 82), f2CeilingMat);
-  f2Ceiling.rotation.x = Math.PI / 2;
+  const f2Ceiling = new THREE.Mesh(new THREE.PlaneGeometry(60, 80), f2CeilingMat);
+  f2Ceiling.rotation.x = HALF_PI;
   f2Ceiling.position.set(0, mezzY + f2Height + 0.05, 0);
   f2Ceiling.receiveShadow = true;
   state.scene.add(f2Ceiling);
@@ -1071,8 +1112,8 @@ export function buildBuilding() {
     }
   }
 
-  // South-facing open edge (overlooking lobby from above main entrance)
-  addRailingSegment(-4.8, 40, 4.8, 40);
+  // South-facing opening above main entrance — spans only the door gap to avoid protruding through facade
+  addRailingSegment(-2, 40, 2, 40);
   // East wing — south open edge (Room 10 south wall, no exterior wall here)
   // West gallery — perimeter railings are covered by the exterior facade, no extra needed
   // Corridor north open edge (above elevator vestibule, overlooking elevator lobby)
@@ -1081,10 +1122,7 @@ export function buildBuilding() {
   addRailingSegment(5, -38, 29.5, -38);
   // West gallery north-end railing
   addRailingSegment(-29.5, -38, -5, -38);
-  // East wing east-wing room opening south edge (looking down into Commons area)
-  addRailingSegment(5, 40, 29.5, 40);
-  // West gallery south edge
-  addRailingSegment(-29.5, 40, -5, 40);
+  // South edges removed — they looked like trusses extending from the front of the building
 
   // ── Torches on second-floor corridor walls ───────────────────────────
   const f2TorchZs = [-34, -20, -4, 14, 32];
@@ -1096,33 +1134,15 @@ export function buildBuilding() {
   // ── Interactive screen for Room 10 — Upper Gallery (east wing south) ─
   const room10 = state.ROOMS.find((r) => r.id === 10);
   if (room10) {
-    const layout10 = ROOM_LAYOUTS[10] || { themeColor: WORLD_CONFIG.signAccent };
-    const r10ScreenGroup = new THREE.Group();
-    const r10OuterGeo = new THREE.BoxGeometry(7, 4, 0.2);
-    const r10Outer = new THREE.Mesh(r10OuterGeo, frameMat);
-    r10ScreenGroup.add(r10Outer);
-    const r10InnerGeo = new THREE.BoxGeometry(6.6, 3.6, 0.05);
-    const r10ScreenMat = screenMat.clone();
-    const r10Inner = new THREE.Mesh(r10InnerGeo, r10ScreenMat);
-    r10Inner.position.z = 0.1;
-    r10Inner.userData = { roomId: 10 };
-    state.clickableScreens.push(r10Inner);
-    state.roomScreens.set(10, {
-      material: r10ScreenMat,
-      baseColor: r10ScreenMat.color.clone(),
-      baseEmissive: r10ScreenMat.emissive.clone()
-    });
-    r10ScreenGroup.add(r10Inner);
-    const r10Border = new THREE.Mesh(r10InnerGeo,
-      new THREE.MeshBasicMaterial({ color: layout10.themeColor, wireframe: true }));
-    r10Border.position.z = 0.11;
-    r10Border.scale.set(1.02, 1.02, 1.02);
-    r10ScreenGroup.add(r10Border);
-    // Mount on east outer wall (x = +30 face, facing west into the room)
-    r10ScreenGroup.position.set(29.3, mezzY + f2Height * 0.55, 8);
-    r10ScreenGroup.rotation.y = -Math.PI / 2;
-    state.scene.add(r10ScreenGroup);
-    state.upperFloor.push(r10ScreenGroup);
+    // Room 10 screen is mounted on the east outer wall (x≈29.3) rather than the
+    // room's inner wall face, so we call buildRoomScreen with an explicit override
+    // by temporarily patching room.x to make the positioning formula yield x=29.3.
+    // wallOffset=0.22 → room.x + room.width/2 - 0.22 = 29.3 → room.x = 29.3 - 12.5 + 0.22 = 17.02
+    // It's cleaner to just place the group manually after building it.
+    const r10ScreenY = mezzY + f2Height * 0.55;
+    const r10Group = buildRoomScreen(room10, frameMat, screenMat, r10ScreenY, 0.22, state.upperFloor);
+    // Override position: buildRoomScreen placed it at room.x+room.width/2−0.22 ≈ 29.78; correct to 29.3
+    r10Group.position.set(29.3, r10ScreenY, 8);
     createRoomIndicator(room10);
     // Torches flanking the screen
     createWallTorch(29.3, mezzY + 2.2, 8 - 4, -Math.PI / 2, 10, true);

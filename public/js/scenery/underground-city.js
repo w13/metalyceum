@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export function buildCaveAndUndergroundCity() {
   const cx = 120, cz = 80;
@@ -81,7 +82,7 @@ export function buildCaveAndUndergroundCity() {
 
   // Floor
   const ugFloor = new THREE.Mesh(new THREE.PlaneGeometry(UGW, UGD), floorMat);
-  ugFloor.rotation.x = -Math.PI / 2;
+  ugFloor.rotation.x = FLAT;
   ugFloor.position.set(ugX, UG_Y + 0.02, ugZ);
   ugFloor.receiveShadow = true;
   group.add(ugFloor);
@@ -101,7 +102,7 @@ export function buildCaveAndUndergroundCity() {
 
   // Ceiling
   const ugCeiling = new THREE.Mesh(new THREE.PlaneGeometry(UGW, UGD), ceilingMat);
-  ugCeiling.rotation.x = -Math.PI / 2;
+  ugCeiling.rotation.x = FLAT;
   ugCeiling.position.set(ugX, UG_Y + UGH, ugZ);
   ugCeiling.receiveShadow = true;
   group.add(ugCeiling);
@@ -190,7 +191,7 @@ export function buildCaveAndUndergroundCity() {
     new THREE.RingGeometry(0.4, 0.7, 16),
     new THREE.MeshBasicMaterial({ color: '#fbbf24', transparent: true, opacity: 0.15, side: THREE.DoubleSide })
   );
-  glowRing.rotation.x = -Math.PI / 2;
+  glowRing.rotation.x = FLAT;
   glowRing.position.set(ugX, UG_Y + 3.95, ugZ);
   group.add(glowRing);
 

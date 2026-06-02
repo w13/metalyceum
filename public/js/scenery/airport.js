@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export function buildAirport() {
   const ax = 160, az = 220;
@@ -25,14 +26,14 @@ export function buildAirport() {
   // ── Runway ──────────────────────────────────────────────────────────
   const runwayW = 12, runwayL = 100;
   const rw = new THREE.Mesh(new THREE.PlaneGeometry(runwayW, runwayL), concMat);
-  rw.rotation.x = -Math.PI / 2;
+  rw.rotation.x = FLAT;
   rw.position.set(ax, baseY + 0.04, az);
   rw.receiveShadow = true;
   g.add(rw);
 
   for (let i = -45; i <= 45; i += 10) {
     const mk = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 3), markingMat);
-    mk.rotation.x = -Math.PI / 2;
+    mk.rotation.x = FLAT;
     mk.position.set(ax, baseY + 0.05, az + i);
     g.add(mk);
   }
@@ -56,7 +57,7 @@ export function buildAirport() {
   // ── Taxiway ─────────────────────────────────────────────────────────
   const taxiMat = new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.8 });
   const tw = new THREE.Mesh(new THREE.PlaneGeometry(6, 8), taxiMat);
-  tw.rotation.x = -Math.PI / 2;
+  tw.rotation.x = FLAT;
   tw.position.set(ax + runwayW / 2 + 4, baseY + 0.04, az);
   tw.receiveShadow = true;
   g.add(tw);
@@ -64,7 +65,7 @@ export function buildAirport() {
   // ── Terminal ────────────────────────────────────────────────────────
   const tX = ax + 18, tZ = az;
   const tw2 = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), concMat);
-  tw2.rotation.x = -Math.PI / 2;
+  tw2.rotation.x = FLAT;
   tw2.position.set(tX, baseY + 0.02, tZ);
   tw2.receiveShadow = true;
   g.add(tw2);
@@ -142,7 +143,7 @@ export function buildAirport() {
 
   // Floor
   const hFloor = new THREE.Mesh(new THREE.PlaneGeometry(hangW, hangD), concMat);
-  hFloor.rotation.x = -Math.PI / 2;
+  hFloor.rotation.x = FLAT;
   hFloor.position.set(hx, baseY + 0.02, hz);
   hFloor.receiveShadow = true;
   g.add(hFloor);
@@ -201,7 +202,7 @@ export function buildAirport() {
   const jetGroup = new THREE.Group();
   // Fuselage
   const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.65, 5.5, 10), jetMat);
-  fuse.rotation.x = Math.PI / 2;
+  fuse.rotation.x = HALF_PI;
   fuse.position.y = 0.6;
   fuse.castShadow = true;
   fuse.receiveShadow = true;
@@ -239,7 +240,7 @@ export function buildAirport() {
   // Engines
   for (let side = -1; side <= 1; side += 2) {
     const nacelle = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 8), darkMat);
-    nacelle.rotation.x = Math.PI / 2;
+    nacelle.rotation.x = HALF_PI;
     nacelle.position.set(side * 1.8, 0.25, 0.6);
     jetGroup.add(nacelle);
     const intake = new THREE.Mesh(new THREE.CircleGeometry(0.15, 8), darkMat);
@@ -296,7 +297,7 @@ export function buildAirport() {
     g.add(drum);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.02, 6, 8), new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.8 }));
     rim.position.set(hx + (i - 1) * 0.7, baseY + 0.5, hz + hangD/2 - 1.5);
-    rim.rotation.x = Math.PI / 2;
+    rim.rotation.x = HALF_PI;
     g.add(rim);
   }
 
@@ -305,7 +306,7 @@ export function buildAirport() {
   for (let i = -1; i <= 1; i += 2) {
     for (let j = -1; j <= 1; j += 2) {
       const td = new THREE.Mesh(new THREE.CircleGeometry(0.08, 8), markMat);
-      td.rotation.x = -Math.PI / 2;
+      td.rotation.x = FLAT;
       td.position.set(hx + i * 10, baseY + 0.025, hz + j * 8);
       g.add(td);
     }
@@ -322,7 +323,7 @@ export function buildAirport() {
     hg.add(fuse);
 
     const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.9, 6), new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.5 }));
-    boom.rotation.x = Math.PI / 2;
+    boom.rotation.x = HALF_PI;
     boom.position.set(0, 0.35, -0.7);
     hg.add(boom);
 
@@ -369,7 +370,7 @@ export function buildAirport() {
   ftCab.position.set(ax - 8, baseY + 0.2, az + 14);
   g.add(ftCab);
   const ftTank = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.8, 8), fuelMat);
-  ftTank.rotation.x = Math.PI / 2;
+  ftTank.rotation.x = HALF_PI;
   ftTank.position.set(ax - 7.3, baseY + 0.25, az + 14);
   g.add(ftTank);
 
@@ -401,6 +402,7 @@ export function buildAirport() {
   }
 
   state.scene.add(g);
+  state.landmarkGroups.set('airport', g);
   registerStaticScenery(rw,   { kind: 'outdoor', distance: 180 });
   registerStaticScenery(troof, { kind: 'outdoor', distance: 150 });
 }

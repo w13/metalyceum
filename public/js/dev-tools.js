@@ -41,30 +41,18 @@ export const devState = {
   showStaticAuditMarkers: false,
 };
 // River coordinates (matching physics.js)
-const riverPts = [
-  [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
-  [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
-  [62, 47], [50, 70], [30, 90], [10, 110], [-10, 130],
-  [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
-];
+import { RIVER_PTS } from '../config.js';
+import { pointToSegmentDistSq } from '../math.js';
 
 // Helper: Point-to-segment distance
-function ptSegDist(px, pz, ax, az, bx, bz) {
-  const dax = bx - ax, daz = bz - az;
-  const l2 = dax * dax + daz * daz;
-  if (l2 < 0.001) return Math.sqrt((px - ax) * (px - ax) + (pz - az) * (pz - az));
-  const tt = Math.max(0, Math.min(1, ((px - ax) * dax + (pz - az) * daz) / l2));
-  return Math.sqrt((px - ax - tt * dax) * (px - ax - tt * dax) + (pz - az - tt * daz) * (pz - az - tt * daz));
-}
-
-// Get distance to closest point on the river
+// Get distance to closest point on the river (uses shared math)
 function getRiverDist(x, z) {
-  let riverDist = Infinity;
-  for (let i = 0; i < riverPts.length - 1; i++) {
-    const d = ptSegDist(x, z, riverPts[i][0], riverPts[i][1], riverPts[i + 1][0], riverPts[i + 1][1]);
-    if (d < riverDist) riverDist = d;
+  let best = Infinity;
+  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
+    const d = pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]);
+    if (d < best) best = d;
   }
-  return riverDist;
+  return Math.sqrt(best);
 }
 
 // Teleport developer helper
@@ -398,7 +386,7 @@ export function rebuild3DHelpers() {
 
   // 3. River path line strip + boundaries
   if (devState.showRiverPath) {
-    const points = riverPts.map(pt => new THREE.Vector3(pt[0], getTerrainHeight(pt[0], pt[1], true) + 0.15, pt[1]));
+    const points = RIVER_PTS.map(pt => new THREE.Vector3(pt[0], getTerrainHeight(pt[0], pt[1], true) + 0.15, pt[1]));
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({ color: '#0ea5e9', linewidth: 3 });
     const line = new THREE.Line(geometry, material);
@@ -406,15 +394,15 @@ export function rebuild3DHelpers() {
 
     const leftPoints = [];
     const rightPoints = [];
-    for (let i = 0; i < riverPts.length; i++) {
-      const pt = riverPts[i];
+    for (let i = 0; i < RIVER_PTS.length; i++) {
+      const pt = RIVER_PTS[i];
       let dx = 0, dz = 0;
-      if (i < riverPts.length - 1) {
-        dx = riverPts[i+1][0] - pt[0];
-        dz = riverPts[i+1][1] - pt[1];
+      if (i < RIVER_PTS.length - 1) {
+        dx = RIVER_PTS[i+1][0] - pt[0];
+        dz = RIVER_PTS[i+1][1] - pt[1];
       } else {
-        dx = pt[0] - riverPts[i-1][0];
-        dz = pt[1] - riverPts[i-1][1];
+        dx = pt[0] - RIVER_PTS[i-1][0];
+        dz = pt[1] - RIVER_PTS[i-1][1];
       }
       const len = Math.sqrt(dx*dx + dz*dz) || 1;
       const nx = -dz / len;
@@ -881,7 +869,7 @@ function renderDevMapCanvas() {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  riverPts.forEach((pt, i) => {
+  RIVER_PTS.forEach((pt, i) => {
     const sPt = worldToScreen(pt[0], pt[1], w, h);
     if (i === 0) ctx.moveTo(sPt.sx, sPt.sy);
     else ctx.lineTo(sPt.sx, sPt.sy);
@@ -891,7 +879,7 @@ function renderDevMapCanvas() {
   ctx.strokeStyle = 'rgba(14, 165, 233, 0.55)';
   ctx.lineWidth = 3.2 * scale;
   ctx.beginPath();
-  riverPts.forEach((pt, i) => {
+  RIVER_PTS.forEach((pt, i) => {
     const sPt = worldToScreen(pt[0], pt[1], w, h);
     if (i === 0) ctx.moveTo(sPt.sx, sPt.sy);
     else ctx.lineTo(sPt.sx, sPt.sy);
@@ -1410,9 +1398,9 @@ function exposeLLMApi() {
         // Find closest river segment midpoint and push away from it
         let closestPt = [0, 0];
         let closestDist = Infinity;
-        for (let i = 0; i < riverPts.length - 1; i++) {
-          const mx = (riverPts[i][0] + riverPts[i+1][0]) / 2;
-          const mz = (riverPts[i][1] + riverPts[i+1][1]) / 2;
+        for (let i = 0; i < RIVER_PTS.length - 1; i++) {
+          const mx = (RIVER_PTS[i][0] + RIVER_PTS[i+1][0]) / 2;
+          const mz = (RIVER_PTS[i][1] + RIVER_PTS[i+1][1]) / 2;
           const d = Math.sqrt((a.x - mx) ** 2 + (a.z - mz) ** 2);
           if (d < closestDist) { closestDist = d; closestPt = [mx, mz]; }
         }

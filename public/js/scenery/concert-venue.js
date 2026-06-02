@@ -4,6 +4,7 @@ import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { createBrickTexture, createStoneTexture, createCarpetTexture } from '../textures.js';
 import { registerStaticScenery } from './visibility.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export function buildConcertVenue() {
   const vx = -85, vz = 140;
@@ -42,7 +43,7 @@ export function buildConcertVenue() {
     new THREE.PlaneGeometry(venueW, venueD),
     floorMat
   );
-  floor.rotation.x = -Math.PI / 2;
+  floor.rotation.x = FLAT;
   floor.position.set(vx, baseY + 0.02, vz);
   floor.receiveShadow = true;
   group.add(floor);
@@ -114,7 +115,7 @@ export function buildConcertVenue() {
     new THREE.PlaneGeometry(venueW - 1.0, venueD - 1.0),
     concertCeilMat
   );
-  concertCeiling.rotation.x = -Math.PI / 2;
+  concertCeiling.rotation.x = FLAT;
   concertCeiling.position.set(vx, baseY + venueH, vz);
   concertCeiling.receiveShadow = true;
   group.add(concertCeiling);
@@ -308,7 +309,7 @@ export function buildConcertVenue() {
     new THREE.RingGeometry(8, 10, 32),
     glowMat
   );
-  glowRing.rotation.x = -Math.PI / 2;
+  glowRing.rotation.x = FLAT;
   glowRing.position.set(vx, baseY + 0.04, vz);
   group.add(glowRing);
 
@@ -401,7 +402,7 @@ export function buildConcertVenue() {
     new THREE.RingGeometry(14.0, 15.8, 40),
     glowRingMat
   );
-  domeGlowRing.rotation.x = -Math.PI / 2;
+  domeGlowRing.rotation.x = FLAT;
   domeGlowRing.position.set(vx, baseY + venueH + 0.04, vz);
   group.add(domeGlowRing);
 

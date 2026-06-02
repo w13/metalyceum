@@ -21,7 +21,7 @@ import { toggleMinimap } from './minimap.js';
 
 import { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
 import { initElevatorUI } from './ui/elevator.js';
-import { initSoundtrackUi, initSoundtrackControls } from './ui/soundtrack-panel.js';
+import { initSoundtrackControls } from './ui/soundtrack-panel.js';
 import { initLoginForm, initColorPickerSync } from './ui/login.js';
 
 function setPanelOpen(panel, button, isOpen) {
@@ -32,46 +32,50 @@ function setPanelOpen(panel, button, isOpen) {
 }
 
 function initHudPanels() {
-  const musicIconBtn = document.getElementById('music-icon-btn');
-  const soundtrackCard = document.getElementById('soundtrack-card');
-  const eventsIconBtn = document.getElementById('events-icon-btn');
-  const eventsPanel = document.getElementById('events-panel');
-  const debugIconBtn = document.getElementById('debug-icon-btn');
-  const debugPanel = document.getElementById('debug-panel');
+  const panels = [
+    { btn: 'music-icon-btn', panel: 'soundtrack-card',
+      onOpen: async () => {
+        state.DEBUG_STATE.enabled = false;
+        if (state.isJoined) {
+          state.soundtrackState.enabled = true;
+          await resumeAudioContext();
+          updateSoundtrackUi();
+        }
+      },
+      onClose: () => { state.DEBUG_STATE.enabled = false; } },
+    { btn: 'events-icon-btn', panel: 'events-panel',
+      onOpen: () => { state.DEBUG_STATE.enabled = false; },
+      onClose: () => { state.DEBUG_STATE.enabled = false; } },
+    { btn: 'debug-icon-btn', panel: 'debug-panel',
+      onOpen: () => { state.DEBUG_STATE.enabled = true; },
+      onClose: () => { state.DEBUG_STATE.enabled = false; } },
+    { btn: 'controls-icon-btn', panel: 'controls-panel',
+      onOpen: () => { state.DEBUG_STATE.enabled = false; },
+      onClose: () => { state.DEBUG_STATE.enabled = false; },
+      closeBtn: 'close-controls-btn' },
+  ].map(cfg => ({
+    ...cfg,
+    btnEl: document.getElementById(cfg.btn),
+    panelEl: document.getElementById(cfg.panel),
+  })).filter(cfg => cfg.btnEl && cfg.panelEl);
 
-  if (musicIconBtn && soundtrackCard) {
-    musicIconBtn.addEventListener('click', async () => {
-      const isOpen = !soundtrackCard.classList.contains('panel-open');
-      setPanelOpen(soundtrackCard, musicIconBtn, isOpen);
-      setPanelOpen(eventsPanel, eventsIconBtn, false);
-      setPanelOpen(debugPanel, debugIconBtn, false);
-      state.DEBUG_STATE.enabled = false;
-      if (isOpen && state.isJoined) {
-        state.soundtrackState.enabled = true;
-        await resumeAudioContext();
-        updateSoundtrackUi();
+  // Collect all (btnEl, panelEl) pairs for the close-others loop
+  const allPairs = panels.map(p => ({ btn: p.btnEl, panel: p.panelEl }));
+
+  for (const p of panels) {
+    p.btnEl.addEventListener('click', async () => {
+      const isOpen = !p.panelEl.classList.contains('panel-open');
+      setPanelOpen(p.panelEl, p.btnEl, isOpen);
+      // Close every other panel
+      for (const other of allPairs) {
+        if (other.panel !== p.panelEl) setPanelOpen(other.panel, other.btn, false);
       }
+      (isOpen ? p.onOpen : p.onClose)();
     });
-  }
-
-  if (eventsIconBtn && eventsPanel) {
-    eventsIconBtn.addEventListener('click', () => {
-      const isOpen = !eventsPanel.classList.contains('panel-open');
-      setPanelOpen(eventsPanel, eventsIconBtn, isOpen);
-      setPanelOpen(soundtrackCard, musicIconBtn, false);
-      setPanelOpen(debugPanel, debugIconBtn, false);
-      state.DEBUG_STATE.enabled = false;
-    });
-  }
-
-  if (debugIconBtn && debugPanel) {
-    debugIconBtn.addEventListener('click', () => {
-      const isOpen = !debugPanel.classList.contains('panel-open');
-      setPanelOpen(debugPanel, debugIconBtn, isOpen);
-      setPanelOpen(soundtrackCard, musicIconBtn, false);
-      setPanelOpen(eventsPanel, eventsIconBtn, false);
-      state.DEBUG_STATE.enabled = isOpen;
-    });
+    if (p.closeBtn) {
+      const closeEl = document.getElementById(p.closeBtn);
+      if (closeEl) closeEl.addEventListener('click', () => setPanelOpen(p.panelEl, p.btnEl, false));
+    }
   }
 }
 
@@ -255,4 +259,4 @@ export function initUiHandlers() {
 }
 
 export { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
-export { initSoundtrackUi } from './ui/soundtrack-panel.js';
+// initSoundtrackUi removed — was imported but never called

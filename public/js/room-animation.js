@@ -43,9 +43,9 @@ export function updateRoomIndicatorAnimations(now) {
       }
 
       // ── Vertex-displacement waves on pool surfaces ────────────────────────
-      // Throttled to every other frame; computeVertexNormals skipped because
+      // Throttled to every 4th frame; computeVertexNormals skipped because
       // the surfaces are transparent DoubleSide planes where normals are imperceptible.
-      if (state.frameCount % 2 === 0) {
+      if (state.frameCount % 4 === 0) {
         if (data.poolSurface) {
           const mesh = data.poolSurface;
           const geo = mesh.geometry;

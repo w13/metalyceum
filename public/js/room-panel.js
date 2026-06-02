@@ -106,4 +106,4 @@ export function initRoomEventModal() {
 
 export { renderEventBoard, scheduleEventBoardRender } from './room-panel/event-board.js';
 export { refreshRoomPlayersList, scheduleRoomPlayersListRefresh, scheduleRoomVisualRefresh, syncRoomVisuals } from './room-panel/player-list.js';
-export { setupRoomVideo, syncActiveRoomMediaState, scheduleActiveRoomMediaState, pauseActiveEmbeddedYoutube, resumeActiveEmbeddedYoutube, syncRoomScreenMedia } from './room-panel/media.js';
+export { setupRoomVideo, syncActiveRoomMediaState, scheduleActiveRoomMediaState, syncRoomScreenMedia } from './room-panel/media.js';

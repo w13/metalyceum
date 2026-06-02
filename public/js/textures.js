@@ -2,7 +2,13 @@
 // Pure utility functions — no imports from other project modules.
 import * as THREE from 'three';
 
+// Shared texture cache — prevents redundant canvas re-generation on multiple calls.
+const _texCache = new Map();
+
 export function createGrassTexture() {
+  const cached = _texCache.get('grass');
+  if (cached) return cached;
+
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 256;
@@ -28,140 +34,127 @@ export function createGrassTexture() {
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(40, 40);
+  _texCache.set('grass', texture);
+  return texture;
+}
+
+/**
+ * Shared wood texture factory. Differences between light and dark oak are
+ * controlled entirely via the options object — no code duplication.
+ * @param {object} opts
+ * @param {string}  opts.cacheKey    - _texCache key
+ * @param {string}  opts.base        - CSS fill color for the base coat
+ * @param {string}  opts.seamColor   - plank-seam stroke color
+ * @param {number}  opts.seamWidth   - vertical seam line width
+ * @param {number}  opts.crossWidth  - horizontal cross-seam line width
+ * @param {number}  opts.grainAmp   - primary grain sine amplitude
+ * @param {number}  opts.grainAmp2  - secondary grain amplitude
+ * @param {number}  opts.grainAmp3  - tertiary grain amplitude
+ * @param {number}  opts.noiseAmp   - per-pixel noise magnitude
+ * @param {number}  opts.baseVal    - brightness baseline for grain
+ * @param {number[]} opts.valOffset - [r, g, b] offsets applied to baseVal
+ * @param {string}  opts.highlight   - rgba string for glossy highlights
+ */
+function createWoodTextureBase(opts) {
+  const cached = _texCache.get(opts.cacheKey);
+  if (cached) return cached;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = opts.base;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Wood grain — per-line sine-wave brightness with noise
+  for (let y = 0; y < 512; y++) {
+    const grain = Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * opts.grainAmp
+                + Math.sin(y * 0.3) * opts.grainAmp2
+                + Math.sin(y * 0.7) * opts.grainAmp3;
+    const noise = (Math.random() - 0.5) * opts.noiseAmp;
+    const val = opts.baseVal + grain + noise;
+    const [ro, go, bo] = opts.valOffset;
+    ctx.fillStyle = `rgb(${val + ro}, ${val + go}, ${val + bo})`;
+    ctx.fillRect(0, y, 512, 1);
+  }
+
+  // Vertical plank seams every 64px
+  ctx.strokeStyle = opts.seamColor;
+  ctx.lineWidth = opts.seamWidth;
+  for (let x = 0; x <= 512; x += 64) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 512);
+    ctx.stroke();
+  }
+
+  // Subtle horizontal cross-seams (staggered like real flooring)
+  ctx.strokeStyle = opts.seamColor;
+  ctx.lineWidth = opts.crossWidth;
+  for (let col = 0; col < 8; col++) {
+    const x = col * 64;
+    const offset = (col % 2) * 80;
+    for (let y = offset; y <= 512 + 80; y += 160) {
+      ctx.beginPath();
+      ctx.moveTo(x, y % 512);
+      ctx.lineTo(x + 64, y % 512);
+      ctx.stroke();
+    }
+  }
+
+  // Glossy highlights
+  ctx.strokeStyle = opts.highlight;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 20; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (Math.random() - 0.5) * 80, y + 2 + Math.random() * 8);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(8, 3);
+  texture.anisotropy = 4;
+  _texCache.set(opts.cacheKey, texture);
   return texture;
 }
 
 export function createWoodTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-
-  // Dark oak base
-  ctx.fillStyle = '#3a2510';
-  ctx.fillRect(0, 0, 512, 512);
-
-  // Wood grain — per-line sine-wave brightness with noise
-  for (let y = 0; y < 512; y++) {
-    const grain = Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * 18
-                + Math.sin(y * 0.3) * 6
-                + Math.sin(y * 0.7) * 3;
-    const noise = (Math.random() - 0.5) * 8;
-    const val = 60 + grain + noise;
-    ctx.fillStyle = `rgb(${val + 8}, ${val - 5}, ${val - 20})`;
-    ctx.fillRect(0, y, 512, 1);
-  }
-
-  // Vertical plank seams every 64px
-  ctx.strokeStyle = '#1a0f05';
-  ctx.lineWidth = 2;
-  for (let x = 0; x <= 512; x += 64) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, 512);
-    ctx.stroke();
-  }
-
-  // Subtle horizontal cross-seams (staggered like real flooring)
-  for (let col = 0; col < 8; col++) {
-    const x = col * 64;
-    const offset = (col % 2) * 80;
-    ctx.strokeStyle = '#1a0f05';
-    ctx.lineWidth = 1.2;
-    for (let y = offset; y <= 512 + 80; y += 160) {
-      ctx.beginPath();
-      ctx.moveTo(x, y % 512);
-      ctx.lineTo(x + 64, y % 512);
-      ctx.stroke();
-    }
-  }
-
-  // Glossy highlights
-  ctx.strokeStyle = 'rgba(160, 120, 80, 0.07)';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 20; i++) {
-    const x = Math.random() * 512;
-    const y = Math.random() * 512;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + (Math.random() - 0.5) * 80, y + 2 + Math.random() * 8);
-    ctx.stroke();
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(8, 3);
-  texture.anisotropy = 4;
-  return texture;
+  return createWoodTextureBase({
+    cacheKey: 'wood',
+    base: '#3a2510',
+    seamColor: '#1a0f05',
+    seamWidth: 2,
+    crossWidth: 1.2,
+    grainAmp: 18, grainAmp2: 6, grainAmp3: 3,
+    noiseAmp: 8,
+    baseVal: 60,
+    valOffset: [8, -5, -20],
+    highlight: 'rgba(160, 120, 80, 0.07)'
+  });
 }
 
 export function createDarkWoodTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-
-  // Deep dark oak base
-  ctx.fillStyle = '#1e1005';
-  ctx.fillRect(0, 0, 512, 512);
-
-  // Wood grain — per-line sine-wave brightness with noise
-  for (let y = 0; y < 512; y++) {
-    const grain = Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * 10
-                + Math.sin(y * 0.3) * 3
-                + Math.sin(y * 0.7) * 1.5;
-    const noise = (Math.random() - 0.5) * 4;
-    const val = 28 + grain + noise;
-    ctx.fillStyle = `rgb(${val + 6}, ${val + 1}, ${val - 6})`;
-    ctx.fillRect(0, y, 512, 1);
-  }
-
-  // Vertical plank seams every 64px
-  ctx.strokeStyle = '#0a0401';
-  ctx.lineWidth = 2.5;
-  for (let x = 0; x <= 512; x += 64) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, 512);
-    ctx.stroke();
-  }
-
-  // Subtle horizontal cross-seams (staggered like real flooring)
-  for (let col = 0; col < 8; col++) {
-    const x = col * 64;
-    const offset = (col % 2) * 80;
-    ctx.strokeStyle = '#0a0401';
-    ctx.lineWidth = 1.5;
-    for (let y = offset; y <= 512 + 80; y += 160) {
-      ctx.beginPath();
-      ctx.moveTo(x, y % 512);
-      ctx.lineTo(x + 64, y % 512);
-      ctx.stroke();
-    }
-  }
-
-  // Glossy highlights
-  ctx.strokeStyle = 'rgba(120, 90, 60, 0.05)';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < 20; i++) {
-    const x = Math.random() * 512;
-    const y = Math.random() * 512;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + (Math.random() - 0.5) * 80, y + 2 + Math.random() * 8);
-    ctx.stroke();
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(8, 3);
-  texture.anisotropy = 4;
-  return texture;
+  return createWoodTextureBase({
+    cacheKey: 'darkwood',
+    base: '#1e1005',
+    seamColor: '#0a0401',
+    seamWidth: 2.5,
+    crossWidth: 1.5,
+    grainAmp: 10, grainAmp2: 3, grainAmp3: 1.5,
+    noiseAmp: 4,
+    baseVal: 28,
+    valOffset: [6, 1, -6],
+    highlight: 'rgba(120, 90, 60, 0.05)'
+  });
 }
 
-const _texCache = new Map();
+
 
 export function createStoneTexture() {
   const cached = _texCache.get('stone');

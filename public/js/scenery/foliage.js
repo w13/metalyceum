@@ -35,7 +35,7 @@ export function createTrimmedBush(x, z, {
     rimMat
   );
   rim.position.y = 0.35;
-  rim.rotation.x = Math.PI / 2;
+  rim.rotation.x = HALF_PI;
   rim.castShadow = true;
   rim.receiveShadow = true;
   bushGroup.add(rim);

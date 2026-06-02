@@ -11,6 +11,7 @@ import { registerStaticScenery } from './visibility.js';
 import { createPanelLabelSprite } from './assets.js';
 import { deformPlaneToTerrain, createGroundedPatch, createGroundedRing, getTerrainCeiling, addSceneryCollider } from './utils.js';
 import { createTrimmedBush, createOrnamentalTree, createFlowerCluster, buildFrontApproachLandscaping } from './foliage.js';
+import { FLAT, HALF_PI } from '../math.js';
 
 export function createBannerStand(x, z, rotationY, color, texture) {
   const group = new THREE.Group();
@@ -85,7 +86,7 @@ export function createRoomIndicator(room) {
     new THREE.TorusGeometry(1.45, 0.12, 10, 24),
     new THREE.MeshStandardMaterial({ color: layout.themeColor, emissive: layout.themeColor, emissiveIntensity: 0.16 })
   );
-  ring.rotation.x = Math.PI / 2;
+  ring.rotation.x = HALF_PI;
   ring.position.y = 0.24;
   ring.userData.roomId = room.id;
   group.add(ring);
@@ -237,7 +238,7 @@ export function buildFrontFountain() {
     const approachGeo = new THREE.PlaneGeometry(8.75, 12.5, 4, 10);
     deformPlaneToTerrain(approachGeo, 50.25);
     const marbleApproach = new THREE.Mesh(approachGeo, marblePlazaMat.clone());
-    marbleApproach.rotation.x = -Math.PI / 2;
+    marbleApproach.rotation.x = FLAT;
     marbleApproach.position.set(fx, 0.09, 50.25);
     marbleApproach.receiveShadow = true;
     state.scene.add(marbleApproach);
@@ -247,7 +248,7 @@ export function buildFrontFountain() {
       new THREE.CircleGeometry(8.2, 56),
       marblePlazaMat
     );
-    marbleSlab.rotation.x = -Math.PI / 2;
+    marbleSlab.rotation.x = FLAT;
     marbleSlab.position.set(fx, fountainBaseY + 0.15, fz);
     marbleSlab.receiveShadow = true;
     state.scene.add(marbleSlab);
@@ -257,7 +258,7 @@ export function buildFrontFountain() {
       new THREE.TorusGeometry(8.2, 0.07, 4, 56),
       new THREE.MeshStandardMaterial({ color: '#b0a898', roughness: 0.5, metalness: 0.12 })
     );
-    slabRim.rotation.x = Math.PI / 2;
+    slabRim.rotation.x = HALF_PI;
     slabRim.position.set(fx, fountainBaseY + 0.15, fz);
     state.scene.add(slabRim);
   }
@@ -291,7 +292,7 @@ export function buildFrontFountain() {
     brickMat
   );
   capRing.position.set(fx, fountainBaseY + 0.8, fz);
-  capRing.rotation.x = Math.PI / 2;
+  capRing.rotation.x = HALF_PI;
   capRing.castShadow = true;
   capRing.receiveShadow = true;
   state.scene.add(capRing);
@@ -301,7 +302,7 @@ export function buildFrontFountain() {
     new THREE.CircleGeometry(3.2, 32),
     masonryMat
   );
-  basinFloor.rotation.x = -Math.PI / 2;
+  basinFloor.rotation.x = FLAT;
   basinFloor.position.set(fx, fountainBaseY + 0.03, fz);
   basinFloor.castShadow = true;
   basinFloor.receiveShadow = true;
@@ -362,7 +363,7 @@ export function buildFrontFountain() {
     trimMat
   );
   midRing.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 0.4, fz);
-  midRing.rotation.x = Math.PI / 2;
+  midRing.rotation.x = HALF_PI;
   midRing.castShadow = true;
   midRing.receiveShadow = true;
   state.scene.add(midRing);
@@ -384,7 +385,7 @@ export function buildFrontFountain() {
     brickMat
   );
   bowlRim.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 1.2 + 0.55 - 0.02, fz);
-  bowlRim.rotation.x = Math.PI / 2;
+  bowlRim.rotation.x = HALF_PI;
   bowlRim.castShadow = true;
   bowlRim.receiveShadow = true;
   state.scene.add(bowlRim);

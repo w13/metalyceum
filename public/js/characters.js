@@ -200,28 +200,20 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
 
 // --- NPC Generation ---
 const NPC_SPAWNS = [
-  // Indoor NPCs — each with unique style
-  { x: -17, z: -30, room: 0, name: 'Alex',  color: '#3b82f6', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#1e293b', shoes: '#18181b' },
-  { x: -14, z: -10, room: 1, name: 'Jordan', color: '#22c55e', hat: 'none',        noBackpack: false, glasses: false, pants: '#78350f', shoes: '#451a03' },
-  { x: -11, z: 8,   room: 2, name: 'Morgan', color: '#f59e0b', hat: 'none',        noBackpack: true,  glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#fcd9b6' },
-  { x: -14, z: 26,  room: 3, name: 'Casey',  color: '#ef4444', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
-  { x: 14,  z: -30, room: 4, name: 'Riley',  color: '#a855f7', hat: 'none',        noBackpack: true,  glasses: false, pants: '#4c1d95', shoes: '#2e1065', skin: '#fcd9b6' },
-  { x: 11,  z: -12, room: 5, name: 'Taylor', color: '#ec4899', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b' },
-  { x: 17,  z: 8,   room: 6, name: 'Quinn',  color: '#06b6d4', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#155e75', shoes: '#18181b' },
-  { x: 14,  z: 28,  room: 7, name: 'Avery',  color: '#f97316', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#d4a574' },
-  // Lobby NPCs (walking the main corridor / atrium)
-  { x: -3,  z: 20,  room: -1, name: 'Drew',  color: '#f43f5e', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#fcd9b6' },
-  { x: 0,   z: -5,  room: -1, name: 'Blake', color: '#10b981', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#064e3b', shoes: '#18181b' },
-  { x: 4,   z: 15,  room: -1, name: 'Skyler',color: '#f59e0b', hat: 'none',        noBackpack: false, glasses: false, pants: '#1e293b', shoes: '#18181b', skin: '#f5d6b8' },
-  { x: -3,  z: 35,  room: -1, name: 'Jay',   color: '#3b82f6', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
-  { x: 0,   z: -35, room: -1, name: 'River', color: '#22c55e', hat: 'none',        noBackpack: false, glasses: false, pants: '#064e3b', shoes: '#18181b', skin: '#fcd9b6' },
-  // Outdoor / Venue NPCs
-  { x: -3,  z: -35, room: -1, name: 'Sam',   color: '#8b5cf6', hat: 'none',        noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
-  { x: 3,   z: 38,  room: -1, name: 'Parker', color: '#14b8a6', hat: 'none',        noBackpack: true,  glasses: false, pants: '#115e59', shoes: '#18181b', skin: '#f5d6b8' },
-  { x: 60,  z: 148, room: 8,  name: 'Ember', color: '#f97316', hat: 'none',        noBackpack: true,  glasses: false, pants: '#1e293b', shoes: '#18181b' },
-  { x: 70,  z: 155, room: 8,  name: 'Vale',  color: '#a855f7', hat: 'none',        noBackpack: false, glasses: true,  pants: '#4c1d95', shoes: '#2e1065', skin: '#fcd9b6' },
-  { x: -80, z: 142, room: 9,  name: 'Lyric', color: '#06b6d4', hat: 'none',        noBackpack: false, glasses: false, pants: '#155e75', shoes: '#18181b' },
-  { x: -90, z: 136, room: 9,  name: 'Echo',  color: '#ec4899', hat: 'none',        noBackpack: true,  glasses: true,  pants: '#831843', shoes: '#18181b', skin: '#fcd9b6' },
+  // Indoor NPCs
+  { x: -17, z: -30, room: 0, name: 'Alex',  color: '#3b82f6', hat: 'none', noBackpack: true,  glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 14,  z: -30, room: 4, name: 'Riley', color: '#a855f7', hat: 'none', noBackpack: true,  glasses: false, pants: '#4c1d95', shoes: '#2e1065', skin: '#fcd9b6' },
+  { x: 17,  z: 8,   room: 6, name: 'Quinn', color: '#06b6d4', hat: 'none', noBackpack: true,  glasses: true,  pants: '#155e75', shoes: '#18181b' },
+  // Lobby NPCs
+  { x: -3,  z: 35,  room: -1, name: 'Jay',   color: '#3b82f6', hat: 'none', noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 0,   z: -35, room: -1, name: 'River', color: '#22c55e', hat: 'none', noBackpack: false, glasses: false, pants: '#064e3b', shoes: '#18181b' },
+  { x: 3,   z: 38,  room: -1, name: 'Parker',color: '#14b8a6', hat: 'none', noBackpack: true,  glasses: false, pants: '#115e59', shoes: '#18181b' },
+  // Amphitheater
+  { x: 60,  z: 148, room: 8,  name: 'Ember', color: '#f97316', hat: 'none', noBackpack: true,  glasses: false, pants: '#1e293b', shoes: '#18181b' },
+  { x: 70,  z: 155, room: 8,  name: 'Vale',  color: '#a855f7', hat: 'none', noBackpack: false, glasses: true,  pants: '#4c1d95', shoes: '#2e1065' },
+  // Concert venue
+  { x: -80, z: 142, room: 9,  name: 'Lyric', color: '#06b6d4', hat: 'none', noBackpack: false, glasses: false, pants: '#155e75', shoes: '#18181b' },
+  { x: -90, z: 136, room: 9,  name: 'Echo',  color: '#ec4899', hat: 'none', noBackpack: true,  glasses: true,  pants: '#831843', shoes: '#18181b' },
 ];
 
 export function spawnNpcs() {
@@ -234,7 +226,7 @@ export function spawnNpcs() {
     const npc = {
       id: `npc-${spawn.name}`,
       x: spawn.x,
-      y: getTerrainHeight(spawn.x, spawn.z),
+      y: getTerrainHeight(spawn.x, spawn.z, true),
       z: spawn.z,
       speed: 2.5,
       ry: Math.random() * Math.PI * 2,
@@ -332,7 +324,7 @@ function moveNpcTowardTarget(npc, dt) {
   npc.x = nextX;
   npc.z = nextZ;
   npc.ry = angle;
-  npc.y = getTerrainHeight(npc.x, npc.z);
+  npc.y = getTerrainHeight(npc.x, npc.z, true); // ignoreBridges=true skips the mezzanine override
   npc.mesh.position.set(npc.x, npc.y, npc.z);
   npc.mesh.rotation.y = -npc.ry + Math.PI / 2;
 
