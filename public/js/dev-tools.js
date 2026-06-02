@@ -40,12 +40,12 @@ export const devState = {
   lastInspected: null,      // from alt+click inspector
   showStaticAuditMarkers: false,
 };
-
 // River coordinates (matching physics.js)
 const riverPts = [
-  [200, -200], [160, -150], [120, -100], [80, -55],
-  [70, -10], [78, 35], [65, 80], [35, 120],
-  [-10, 155], [-70, 190], [-130, 220]
+  [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
+  [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
+  [62, 47], [50, 70], [30, 90], [10, 110], [-10, 130],
+  [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
 ];
 
 // Helper: Point-to-segment distance
@@ -398,7 +398,7 @@ export function rebuild3DHelpers() {
 
   // 3. River path line strip + boundaries
   if (devState.showRiverPath) {
-    const points = riverPts.map(pt => new THREE.Vector3(pt[0], getTerrainHeight(pt[0], pt[1]) + 0.15, pt[1]));
+    const points = riverPts.map(pt => new THREE.Vector3(pt[0], getTerrainHeight(pt[0], pt[1], true) + 0.15, pt[1]));
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({ color: '#0ea5e9', linewidth: 3 });
     const line = new THREE.Line(geometry, material);
@@ -425,8 +425,8 @@ export function rebuild3DHelpers() {
       const rx = pt[0] - nx * 5.0;
       const rz = pt[1] - nz * 5.0;
 
-      leftPoints.push(new THREE.Vector3(lx, getTerrainHeight(lx, lz) + 0.15, lz));
-      rightPoints.push(new THREE.Vector3(rx, getTerrainHeight(rx, rz) + 0.15, rz));
+      leftPoints.push(new THREE.Vector3(lx, getTerrainHeight(lx, lz, true) + 0.15, lz));
+      rightPoints.push(new THREE.Vector3(rx, getTerrainHeight(rx, rz, true) + 0.15, rz));
     }
 
     const leftGeom = new THREE.BufferGeometry().setFromPoints(leftPoints);

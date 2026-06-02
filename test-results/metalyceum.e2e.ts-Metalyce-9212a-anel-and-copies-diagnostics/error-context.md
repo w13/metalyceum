@@ -12,26 +12,26 @@
 # Error details
 
 ```
-Test timeout of 30000ms exceeded.
+Test timeout of 60000ms exceeded.
 ```
 
 ```
-Error: expect(locator).toContainText(expected) failed
-
-Locator: locator('#debug-player-pos')
-Expected pattern: /X:/
-Received string:  ""
-
+Error: locator.click: Test timeout of 60000ms exceeded.
 Call log:
-  - Expect "toContainText" with timeout 5000ms
-  - waiting for locator('#debug-player-pos')
+  - waiting for locator('#debug-icon-btn')
+    - locator resolved to <button type="button" title="Debug" id="debug-icon-btn" aria-label="Debug panel" class="hud-icon-square glass">…</button>
+  - attempting click action
+    - waiting for element to be visible, enabled and stable
+    - element is visible, enabled and stable
+    - scrolling into view if needed
+    - done scrolling
 
 ```
 
 # Page snapshot
 
 ```yaml
-- generic [ref=e1]:
+- generic [active] [ref=e1]:
   - generic:
     - generic:
       - paragraph: Opening Metalyceum...
@@ -39,14 +39,14 @@ Call log:
     - generic [ref=e5]:
       - button "Music player" [ref=e6] [cursor=pointer]:
         - generic [ref=e7]: 🎵
-        - generic [ref=e8]: ♪ On
+        - generic [ref=e8]: Music
       - button "Event board" [ref=e9] [cursor=pointer]:
         - generic [ref=e10]: 📅
         - generic [ref=e11]: Events
       - button "World editor" [ref=e12] [cursor=pointer]:
         - generic [ref=e13]: 🛠️
         - generic [ref=e14]: Editor
-      - button "Debug panel" [active] [ref=e15] [cursor=pointer]:
+      - button "Debug panel" [ref=e15] [cursor=pointer]:
         - generic [ref=e16]: 🐞
         - generic [ref=e17]: Debug
     - generic [ref=e18]:
@@ -57,132 +57,113 @@ Call log:
         - button "Room" [ref=e24] [cursor=pointer]
       - generic [ref=e25]:
         - generic [ref=e26]: Welcome to Metalyceum. Walk through rooms, chat with others, and open live events together.
-        - generic [ref=e27]: ✅ Reconnected.
-        - generic [ref=e28]:
-          - generic [ref=e29]: Global
-          - generic [ref=e30]: "Alice:"
-          - generic [ref=e31]: Hi Bob, can you hear me?
-        - generic [ref=e32]:
-          - generic [ref=e33]: Global
-          - generic [ref=e34]: "Bob:"
-          - generic [ref=e35]: Yes Alice, loud and clear!
-        - generic [ref=e36]:
-          - generic [ref=e37]: Global
-          - generic [ref=e38]: "Alice:"
-          - generic [ref=e39]: Hello world from test suite!
-        - generic [ref=e40]:
-          - generic [ref=e41]: Global
-          - generic [ref=e42]: "Alice:"
-          - generic [ref=e43]: Hello world from test suite!
-        - generic [ref=e44]:
-          - generic [ref=e45]: Global
-          - generic [ref=e46]: "Alice:"
-          - generic [ref=e47]: Hi Bob, can you hear me?
-        - generic [ref=e48]:
-          - generic [ref=e49]: Global
-          - generic [ref=e50]: "Bob:"
-          - generic [ref=e51]: Yes Alice, loud and clear!
-        - generic [ref=e52]:
-          - generic [ref=e53]: Global
-          - generic [ref=e54]: "Alice:"
-          - generic [ref=e55]: Hi Bob, can you hear me?
-        - generic [ref=e56]:
-          - generic [ref=e57]: Global
-          - generic [ref=e58]: "Bob:"
-          - generic [ref=e59]: Yes Alice, loud and clear!
-        - generic [ref=e60]:
-          - generic [ref=e61]: Global
-          - generic [ref=e62]: "Alice:"
-          - generic [ref=e63]: Hello world from test suite!
-        - generic [ref=e64]:
-          - generic [ref=e65]: Global
-          - generic [ref=e66]: "Alice:"
-          - generic [ref=e67]: Hi Bob, can you hear me?
-        - generic [ref=e68]:
-          - generic [ref=e69]: Global
-          - generic [ref=e70]: "Bob:"
-          - generic [ref=e71]: Yes Alice, loud and clear!
-        - generic [ref=e72]:
-          - generic [ref=e73]: Global
-          - generic [ref=e74]: "Alice:"
-          - generic [ref=e75]: Hello world from test suite!
-        - generic [ref=e76]: TestUser entered Metalyceum!
-      - generic [ref=e77]:
-        - textbox "Message everyone in Metalyceum..." [ref=e78]
-        - button "Send" [ref=e79] [cursor=pointer]
-    - generic [ref=e80]:
-      - button "✕" [ref=e81] [cursor=pointer]
-      - generic [ref=e82]:
-        - heading "Room" [level=2] [ref=e83]
-        - text: 1 / 10 Players
-      - generic [ref=e85]: Idle
-      - button "📺 Open Theater Mode" [ref=e89] [cursor=pointer]:
-        - generic [ref=e90]: 📺 Open Theater Mode
+        - generic [ref=e27]:
+          - generic [ref=e28]: Global
+          - generic [ref=e29]: "Alice:"
+          - generic [ref=e30]: Hi Bob, can you hear me?
+        - generic [ref=e31]:
+          - generic [ref=e32]: Global
+          - generic [ref=e33]: "Bob:"
+          - generic [ref=e34]: Yes Alice, loud and clear!
+        - generic [ref=e35]:
+          - generic [ref=e36]: Global
+          - generic [ref=e37]: "Alice:"
+          - generic [ref=e38]: Hello world from test suite!
+        - generic [ref=e39]:
+          - generic [ref=e40]: Global
+          - generic [ref=e41]: "Alice:"
+          - generic [ref=e42]: Hello world from test suite!
+        - generic [ref=e43]:
+          - generic [ref=e44]: Global
+          - generic [ref=e45]: "Alice:"
+          - generic [ref=e46]: Hi Bob, can you hear me?
+        - generic [ref=e47]:
+          - generic [ref=e48]: Global
+          - generic [ref=e49]: "Bob:"
+          - generic [ref=e50]: Yes Alice, loud and clear!
+        - generic [ref=e51]:
+          - generic [ref=e52]: Global
+          - generic [ref=e53]: "Alice:"
+          - generic [ref=e54]: Hi Bob, can you hear me?
+        - generic [ref=e55]:
+          - generic [ref=e56]: Global
+          - generic [ref=e57]: "Bob:"
+          - generic [ref=e58]: Yes Alice, loud and clear!
+        - generic [ref=e59]:
+          - generic [ref=e60]: Global
+          - generic [ref=e61]: "Alice:"
+          - generic [ref=e62]: Hello world from test suite!
+        - generic [ref=e63]:
+          - generic [ref=e64]: Global
+          - generic [ref=e65]: "Alice:"
+          - generic [ref=e66]: Hi Bob, can you hear me?
+        - generic [ref=e67]:
+          - generic [ref=e68]: Global
+          - generic [ref=e69]: "Bob:"
+          - generic [ref=e70]: Yes Alice, loud and clear!
+        - generic [ref=e71]:
+          - generic [ref=e72]: Global
+          - generic [ref=e73]: "Alice:"
+          - generic [ref=e74]: Hello world from test suite!
+        - generic [ref=e75]:
+          - generic [ref=e76]: Global
+          - generic [ref=e77]: "Alice:"
+          - generic [ref=e78]: Hello world from test suite!
+        - generic [ref=e79]:
+          - generic [ref=e80]: Global
+          - generic [ref=e81]: "Alice:"
+          - generic [ref=e82]: Hello world from test suite!
+        - generic [ref=e83]:
+          - generic [ref=e84]: Global
+          - generic [ref=e85]: "Alice:"
+          - generic [ref=e86]: Hi Bob, can you hear me?
+        - generic [ref=e87]:
+          - generic [ref=e88]: Global
+          - generic [ref=e89]: "Bob:"
+          - generic [ref=e90]: Yes Alice, loud and clear!
       - generic [ref=e91]:
-        - heading "Players in Room" [level=3] [ref=e92]
-        - list [ref=e93]
-      - button "Edit Room Event" [ref=e95] [cursor=pointer]
-  - generic [ref=e96]:
-    - generic [ref=e97]:
-      - generic [ref=e98]: W
-      - generic [ref=e99]: A
-      - generic [ref=e100]: S
-      - generic [ref=e101]: D
-      - generic [ref=e102]: Move
-    - generic [ref=e103]:
-      - generic [ref=e104]: Space
-      - generic [ref=e105]: Jump
-    - generic [ref=e106]:
-      - generic [ref=e107]: ▲
-      - generic [ref=e108]: ▼
-      - generic [ref=e109]: ◀
-      - generic [ref=e110]: ▶
-      - generic [ref=e111]: Orbit Camera
-    - generic [ref=e112]:
-      - generic [ref=e113]: Drag Mouse
-      - generic [ref=e114]: Rotate Camera
-    - generic [ref=e115]:
-      - generic [ref=e116]: Scroll
-      - generic [ref=e117]: Zoom
-    - generic [ref=e118]:
-      - generic [ref=e119]: "`"
-      - generic [ref=e120]: Toggle Debug
-    - generic [ref=e121]:
-      - generic [ref=e122]: M
-      - generic [ref=e123]: Toggle Map
-  - generic [ref=e124]:
-    - generic [ref=e125]:
-      - generic [ref=e126]:
-        - heading "System Diagnostics" [level=3] [ref=e127]
-        - paragraph [ref=e128]: Real-time player, camera, and engine metrics
-      - button "Copy Info" [ref=e129] [cursor=pointer]
-    - separator [ref=e130]
-    - generic [ref=e131]:
-      - generic [ref=e132]:
-        - generic [ref=e133]: Player Position
-        - generic [ref=e134]: "X: 0.00 | Y: 0.00 | Z: 44.00"
-      - generic [ref=e135]:
-        - generic [ref=e136]: Camera Position
-        - generic [ref=e137]: "X: 3.00 | Y: 5.50 | Z: 60.00"
-      - generic [ref=e138]:
-        - generic [ref=e139]: Camera Direction
-        - generic [ref=e140]: "X: -0.18 | Y: -0.24 | Z: -0.95"
-    - separator [ref=e141]
-    - generic [ref=e143]:
-      - generic [ref=e144]:
-        - generic [ref=e145]: FPS
-        - generic [ref=e146]: "3"
-      - generic [ref=e147]:
-        - generic [ref=e148]: Players
-        - generic [ref=e149]: "2"
-      - generic [ref=e150]:
-        - generic [ref=e151]: Visible Props
-        - generic [ref=e152]: 38 / 85
-      - generic [ref=e153]:
-        - generic [ref=e154]: Live Rooms
-        - generic [ref=e155]: "0"
-    - separator [ref=e156]
-    - generic [ref=e158]: Console Errors
+        - textbox "Message everyone in Metalyceum..." [ref=e92]
+        - button "Send" [ref=e93] [cursor=pointer]
+    - generic [ref=e94]:
+      - button "✕" [ref=e95] [cursor=pointer]
+      - generic [ref=e96]:
+        - heading "Room" [level=2] [ref=e97]
+        - text: 1 / 10 Players
+      - generic [ref=e99]: Idle
+      - button "📺 Open Theater Mode" [ref=e103] [cursor=pointer]:
+        - generic [ref=e104]: 📺 Open Theater Mode
+      - generic [ref=e105]:
+        - heading "Players in Room" [level=3] [ref=e106]
+        - list [ref=e107]
+      - button "Edit Room Event" [ref=e109] [cursor=pointer]
+  - generic [ref=e110]:
+    - generic [ref=e111]:
+      - generic [ref=e112]: W
+      - generic [ref=e113]: A
+      - generic [ref=e114]: S
+      - generic [ref=e115]: D
+      - generic [ref=e116]: Move
+    - generic [ref=e117]:
+      - generic [ref=e118]: Space
+      - generic [ref=e119]: Jump
+    - generic [ref=e120]:
+      - generic [ref=e121]: ▲
+      - generic [ref=e122]: ▼
+      - generic [ref=e123]: ◀
+      - generic [ref=e124]: ▶
+      - generic [ref=e125]: Orbit Camera
+    - generic [ref=e126]:
+      - generic [ref=e127]: Drag Mouse
+      - generic [ref=e128]: Rotate Camera
+    - generic [ref=e129]:
+      - generic [ref=e130]: Scroll
+      - generic [ref=e131]: Zoom
+    - generic [ref=e132]:
+      - generic [ref=e133]: "`"
+      - generic [ref=e134]: Toggle Debug
+    - generic [ref=e135]:
+      - generic [ref=e136]: M
+      - generic [ref=e137]: Toggle Map
   - dialog:
     - generic:
       - button: ✕
@@ -191,6 +172,22 @@ Call log:
       - generic:
         - paragraph: Press Esc or click outside to close.
         - button: Close
+  - generic [ref=e139]:
+    - generic [ref=e140]:
+      - generic [ref=e141]: OTIS
+      - generic [ref=e142]: ELEVATOR CO.
+    - generic [ref=e143]:
+      - generic [ref=e144]: G
+      - generic [ref=e145]: FLOOR
+    - generic [ref=e146]:
+      - button [ref=e147] [cursor=pointer]:
+        - generic [ref=e148]: ▲
+      - button [ref=e149] [cursor=pointer]:
+        - generic [ref=e150]: ▼
+    - generic [ref=e151]:
+      - generic [ref=e152]: PUSH
+      - generic [ref=e153]: TO
+      - generic [ref=e154]: CALL
 ```
 
 # Test source
@@ -226,7 +223,8 @@ Call log:
   28  |     // Toggle Debug Panel
   29  |     const debugBtn = page.locator("#debug-icon-btn");
   30  |     await expect(debugBtn).toBeVisible();
-  31  |     await debugBtn.click();
+> 31  |     await debugBtn.click();
+      |                    ^ Error: locator.click: Test timeout of 60000ms exceeded.
   32  | 
   33  |     // Verify debug panel is shown
   34  |     const debugPanel = page.locator("#debug-panel");
@@ -234,8 +232,7 @@ Call log:
   36  | 
   37  |     // Verify coordinate displays exist
   38  |     const playerPos = page.locator("#debug-player-pos");
-> 39  |     await expect(playerPos).toContainText(/X:/);
-      |                             ^ Error: expect(locator).toContainText(expected) failed
+  39  |     await expect(playerPos).toContainText(/X:/);
   40  | 
   41  |     // Test clipboard copy
   42  |     const copyBtn = page.locator("#copy-debug-btn");
@@ -328,12 +325,4 @@ Call log:
   129 |     // Alice should receive Bob's message
   130 |     const aliceChatLog = alicePage.locator("#chat-log");
   131 |     await expect(aliceChatLog).toContainText("Bob");
-  132 |     await expect(aliceChatLog).toContainText("Yes Alice, loud and clear!");
-  133 | 
-  134 |     // Clean up
-  135 |     await aliceContext.close();
-  136 |     await bobContext.close();
-  137 |   });
-  138 | });
-  139 | 
 ```

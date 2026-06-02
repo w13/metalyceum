@@ -131,10 +131,10 @@ export function buildRoof(batcher, materials, config) {
     shape.lineTo(0, roofRise);
     shape.closePath();
 
-    const pedGeo = new THREE.ShapeGeometry(shape);
+    const wallDepth = 0.2;
+    const pedGeo = new THREE.ExtrudeGeometry(shape, { depth: wallDepth, bevelEnabled: false });
     const pedMesh = new THREE.Mesh(pedGeo, ridgeMat);
-    pedMesh.rotation.x = -Math.PI / 2;
-    pedMesh.position.set(0, roofBaseY, zPos);
+    pedMesh.position.set(0, roofBaseY, zSign === 1 ? zPos - wallDepth : zPos);
     addRoofMesh(pedMesh);
 
     const rakeLen = Math.sqrt(roofHalfW * roofHalfW + roofRise * roofRise);

@@ -14,9 +14,34 @@ function _ss(lo, hi, t) {
   return v * v * (3 - 2 * v);
 }
 
+// Helper to determine if (x, z) is on a rotated box (bridge deck)
+function isOnRotatedBridge(x, z, centerX, centerZ, angle, length, width) {
+  const dx = x - centerX;
+  const dz = z - centerZ;
+  const cos = Math.cos(-angle);
+  const sin = Math.sin(-angle);
+  const rx = dx * cos - dz * sin;
+  const rz = dx * sin + dz * cos;
+  return Math.abs(rx) <= width / 2 && Math.abs(rz) <= length / 2;
+}
+
 // Rolling hills with fully smooth transitions into every flat zone.
 // No hard cutoffs — all edges use smoothstep so terrain fades naturally.
-export function getTerrainHeight(x, z) {
+export function getTerrainHeight(x, z, ignoreBridges = false) {
+  if (!ignoreBridges) {
+    // 1. Road Bridge at (26, 93)
+    if (isOnRotatedBridge(x, z, 26, 93, Math.atan2(13, 19), 12.0, 4.5)) {
+      return 0.275; // Top of the deck (bridgeY + 0.125)
+    }
+    // 2. Stone Arch Bridge at (73, 8)
+    const segAngle = Math.atan2(18, 3);
+    const perpAngle = segAngle + Math.PI / 2;
+    if (isOnRotatedBridge(x, z, 73, 8, -perpAngle, 6.5, 2.8)) {
+      const rawTerrainY = getTerrainHeight(73, 8, true);
+      return rawTerrainY + 3.6; // Top of road deck
+    }
+  }
+
   // Base rolling hills — two overlapping sine octaves, amplitude ≈ ±3.7 u
   const hills = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.2
               + Math.cos(x * 0.05) * Math.sin(z * 0.05) * 1.5;
@@ -98,10 +123,10 @@ export function getTerrainHeight(x, z) {
     const d = _ptSegDist(x, z, riverPts[i][0], riverPts[i][1], riverPts[i + 1][0], riverPts[i + 1][1]);
     if (d < riverDist) riverDist = d;
   }
-  // Deep, steep-sided canyon: 3.5u deep channel with a 4u edge roll-off so the river
-  // is clearly visible from surrounding terrain. The water surface sits at ~channel bottom + 0.5.
-  const riverChannel = _ss(4, 0, riverDist) * 3.5  // 3.5u deep at center, steep 4u edge
-    + _ss(6, 4, riverDist) * 0.8;                   // 0.8u extra berm at the rim for a visible bank lip
+  // Deep, steep-sided canyon (wider and deeper):
+  // 4.8u deep channel with a 7u edge roll-off, plus a 1.2u berm extending out to 10u
+  const riverChannel = _ss(7.0, 0.0, riverDist) * 4.8
+    + _ss(10.0, 7.0, riverDist) * 1.2;                   // 0.8u extra berm at the rim for a visible bank lip
 
   // ── Castle at (130, -80) — flat zone (4× scale = 80u radius)
   const d10 = Math.sqrt((x - 130) * (x - 130) + (z + 80) * (z + 80));

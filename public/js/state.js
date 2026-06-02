@@ -68,13 +68,14 @@ export const state = {
     velocity: null, // will be initialized to Vector3 in engine
     displayVelocity: null, // post-collision XZ velocity for animation/rotation only
     isGrounded: true,
+    flying: false,
     currentRoom: -1
   },
   remotePlayers: new Map(), // id -> player metadata + mesh
   npcs: [], // Ambient simulated NPCs
 
   // --- Input States ---
-  keys: { w: false, a: false, s: false, d: false, space: false, shift: false },
+  keys: { w: false, a: false, s: false, d: false, space: false, shift: false, t: false, y: false },
   cameraKeys: { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false },
   cameraRig: {
     followYaw: Math.PI,

@@ -184,6 +184,7 @@ export function animate() {
   syncPosition();
 
   updateNpcs(dt);
+  updateJetpack(dt, _now);
   state.remotePlayers.forEach((p) => {
     updateRemotePlayer(p, dt, _now);
   });
@@ -292,7 +293,7 @@ export function animate() {
       const dist = state.localPlayer
         ? Math.sqrt(state.localPlayer.x ** 2 + (state.localPlayer.z + 36) ** 2)
         : 99;
-      const shouldOpen = dist < 2.5;
+      const shouldOpen = dist < 5.0;
       state._elevatorDoorTarget = shouldOpen ? 0 : 1;
       if (state._elevatorDoorCollider) {
         state._elevatorDoorCollider.visible = !shouldOpen;

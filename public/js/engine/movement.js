@@ -14,6 +14,7 @@ import {
 import { getTerrainHeight, checkCollision } from '../physics.js';
 import { isCannonReady, getPlayerBodyRef, teleportPlayer, syncBodyY, stepCannon } from '../physics-engine.js';
 import { animateAvatarWalk } from '../characters.js';
+import { toggleJetpackTakeoff, toggleJetpackLand, updateJetpack } from './jetpack.js';
 import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
 import {
   getCameraYaw,
@@ -57,7 +58,7 @@ export function updateLocalPlayer(dt, now) {
 
   const acceleration = 55.0;
   const maxSpeed = 9.5;
-  const sprintSpeed = 24.0;
+  const sprintSpeed = 9.5 * 5; // 5x normal speed
   const drag = 8.5;
   const gravity = 25.0;
   const jumpForce = 10.0;
@@ -65,11 +66,31 @@ export function updateLocalPlayer(dt, now) {
   // Manual physics fallback
   const targetGroundY = getFootAnchoredHeight(state.localPlayer.x, state.localPlayer.z);
 
-  if (!state.localPlayer.isGrounded) {
-    state.localPlayer.velocity.y -= gravity * dt;
+  // ── Jetpack flight ───────────────────────────────────────────────────
+  if (state.keys.t && state.localPlayer.isGrounded) {
+    toggleJetpackTakeoff();
+  }
+  if (state.keys.y && state.localPlayer.flying) {
+    toggleJetpackLand();
+  }
+
+  if (state.localPlayer.flying) {
+    // Flight mode — no gravity, W/S controls vertical speed
+    const flySpeed = 12.0;
+    const vDir = (state.keys.w ? 1 : 0) - (state.keys.s ? 1 : 0);
+    state.localPlayer.velocity.y += vDir * flySpeed * dt;
+    // Clamp vertical speed so you don't rocket off
+    state.localPlayer.velocity.y = Math.max(-flySpeed, Math.min(flySpeed, state.localPlayer.velocity.y));
     state.localPlayer.y += state.localPlayer.velocity.y * dt;
 
-    if (state.localPlayer.y <= targetGroundY) {
+  } else if (!state.localPlayer.isGrounded) {
+    // Free-fall or landing after pressing Y
+    if (!state.localPlayer.flying) {
+      state.localPlayer.velocity.y -= gravity * dt;
+    }
+    state.localPlayer.y += state.localPlayer.velocity.y * dt;
+
+    if (!state.localPlayer.flying && state.localPlayer.velocity.y <= 0 && state.localPlayer.y <= targetGroundY) {
       state.localPlayer.y = targetGroundY;
       state.localPlayer.velocity.y = 0;
       state.localPlayer.isGrounded = true;
@@ -106,8 +127,9 @@ export function updateLocalPlayer(dt, now) {
       .addScaledVector(_camRight, moveDirection.x)
       .normalize();
 
-    state.localPlayer.velocity.x += targetDir.x * acceleration * dt;
-    state.localPlayer.velocity.z += targetDir.z * acceleration * dt;
+    const accel = isSprinting ? acceleration * 1.8 : acceleration;
+    state.localPlayer.velocity.x += targetDir.x * accel * dt;
+    state.localPlayer.velocity.z += targetDir.z * accel * dt;
   }
 
   const isSprinting = state.keys.shift;

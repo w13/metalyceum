@@ -796,12 +796,12 @@ export function buildBuilding() {
   for (let side = -1; side <= 1; side += 2) {
     const md = new THREE.Mesh(new THREE.BoxGeometry(0.06, eH - 0.8, 0.75), mahoganyMat);
     md.position.set(side * 0.6, (eH - 0.8)/2, eZ + eD/2 + 0.02);
-    md.userData._baseRY = side * 0.15; state.scene.add(md); doorPanels.push(md);
+    md.userData._baseRY = side * 0.15; md.userData._side = side; state.scene.add(md); doorPanels.push(md);
     const inlay = new THREE.Mesh(new THREE.BoxGeometry(0.07, eH - 1.2, 0.02), goldMat);
     inlay.position.set(side * 0.6, (eH - 0.8)/2, eZ + eD/2 + 0.05); state.scene.add(inlay);
     const fd = new THREE.Mesh(new THREE.BoxGeometry(0.04, eH - 1.0, 0.55), mahoganyMat);
     fd.position.set(side * 1.1, (eH - 1.0)/2, eZ + eD/2 + 0.02);
-    fd.userData._baseRY = side * 0.35; state.scene.add(fd); doorPanels.push(fd);
+    fd.userData._baseRY = side * 0.35; fd.userData._side = side; state.scene.add(fd); doorPanels.push(fd);
     const h = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.2, 6), brassMat);
     h.rotation.x = Math.PI/2; h.position.set(side * 0.85, 1.3, eZ + eD/2 + 0.08); state.scene.add(h);
     const pl = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.04), brassMat);

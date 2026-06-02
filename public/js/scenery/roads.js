@@ -77,38 +77,117 @@ export function buildRoads() {
     const pts = curve.getPoints(72);
     buildTerrainRoad(pts, 5.0);
 
-    // Bridge/culvert where the road crosses the river (approx. at x=26, z=93)
-    // Build a raised stone bridge so the road goes OVER the river
     const bridgeMat = new THREE.MeshStandardMaterial({ color: '#8a7a5a', roughness: 0.78 });
     const brX = 26, brZ = 93;
-    const brY = getTerrainHeight(brX, brZ);
-    const bridgeH = 2.0; // height above riverbed
-    const span = 5.0;
+    const bridgeY = 0.15; // flush with the road on the banks
+    const roadAngle = Math.atan2(13, 19);
+    const tangent = new THREE.Vector3(Math.sin(roadAngle), 0, Math.cos(roadAngle));
+    const right = new THREE.Vector3(tangent.z, 0, -tangent.x);
 
-    // Raised road deck
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.3, 2.0), bridgeMat);
-    deck.position.set(brX, brY + bridgeH, brZ);
+    // 1. Raised road deck (oriented along roadAngle)
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.25, 12.0), bridgeMat);
+    deck.position.set(brX, bridgeY, brZ);
+    deck.rotation.y = roadAngle;
     deck.castShadow = true;
     deck.receiveShadow = true;
     state.scene.add(deck);
 
-    // Stone side walls (retaining walls) on each side
-    for (let side = -1; side <= 1; side += 2) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.3, bridgeH + 0.2, 5.5), bridgeMat);
-      wall.position.set(brX + side * 1.8, brY + (bridgeH + 0.2) / 2, brZ);
-      wall.castShadow = true;
-      state.scene.add(wall);
+    // 2. Pillars at both banks (local Z = -4.2 and 4.2)
+    for (let offsetZ of [-4.2, 4.2]) {
+      const px = brX + tangent.x * offsetZ;
+      const pz = brZ + tangent.z * offsetZ;
+      const pillarBaseY = getTerrainHeight(px, pz, true);
+      const pillarH = Math.max(0.2, bridgeY - pillarBaseY);
+      const pillarY = (bridgeY + pillarBaseY) / 2;
+
+      const pillar = new THREE.Mesh(
+        new THREE.BoxGeometry(4.8, pillarH, 1.5),
+        bridgeMat
+      );
+      pillar.position.set(px, pillarY, pz);
+      pillar.rotation.y = roadAngle;
+      pillar.castShadow = true;
+      pillar.receiveShadow = true;
+      state.scene.add(pillar);
     }
 
-    // Approach ramps (stepped stones on both sides)
-    for (let side = -1; side <= 1; side += 2) {
-      for (let step = 0; step < 4; step++) {
-        const t = (step + 1) / 4;
-        const ramp = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 2.0), bridgeMat);
-        ramp.position.set(brX + side * (t * 2.0 + 0.3), brY + t * 0.5, brZ);
-        ramp.receiveShadow = true;
-        state.scene.add(ramp);
+    // 3. Curved arch underside
+    const archCount = 10;
+    for (let i = 0; i < archCount; i++) {
+      const t = i / (archCount - 1);
+      const theta = Math.PI * t;
+      const localZ = Math.cos(theta) * 4.2;
+      const localY = -Math.sin(theta) * 2.2 - 0.15;
+
+      const px = brX + tangent.x * localZ;
+      const pz = brZ + tangent.z * localZ;
+      const py = bridgeY + localY;
+
+      // Only draw if it's above the terrain bed
+      if (py > getTerrainHeight(px, pz, true) + 0.1) {
+        const block = new THREE.Mesh(
+          new THREE.BoxGeometry(4.6, 0.25, 1.0),
+          bridgeMat
+        );
+        block.position.set(px, py, pz);
+        block.rotation.y = roadAngle;
+        block.rotateX(theta - Math.PI / 2);
+        block.castShadow = true;
+        block.receiveShadow = true;
+        state.scene.add(block);
       }
+    }
+
+    // 4. Side walls (parapets) + posts
+    for (let side of [-1, 1]) {
+      const wallX = -right.x * side * 2.3;
+      const wallZ = -right.z * side * 2.3;
+
+      const wall = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 0.7, 12.0),
+        bridgeMat
+      );
+      wall.position.set(brX + wallX, bridgeY + 0.35, brZ + wallZ);
+      wall.rotation.y = roadAngle;
+      wall.castShadow = true;
+      state.scene.add(wall);
+
+      // Add small decorative posts
+      for (let posZ of [-6.0, -3.0, 0, 3.0, 6.0]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.25, 0.9, 0.25),
+          bridgeMat
+        );
+        post.position.set(
+          brX + wallX + tangent.x * posZ,
+          bridgeY + 0.45,
+          brZ + wallZ + tangent.z * posZ
+        );
+        post.rotation.y = roadAngle;
+        post.castShadow = true;
+        state.scene.add(post);
+      }
+    }
+
+    // 5. Small transition ramps at the ends of the bridge
+    for (let side of [-1, 1]) {
+      const edgeZ = side * 6.0;
+      const px = brX + tangent.x * edgeZ;
+      const pz = brZ + tangent.z * edgeZ;
+      const rampH = getTerrainHeight(px, pz, true);
+      
+      const ramp = new THREE.Mesh(
+        new THREE.BoxGeometry(4.5, 0.1, 1.2),
+        bridgeMat
+      );
+      ramp.position.set(
+        px + tangent.x * side * 0.6,
+        (bridgeY + rampH) / 2,
+        pz + tangent.z * side * 0.6
+      );
+      ramp.rotation.y = roadAngle;
+      ramp.receiveShadow = true;
+      state.scene.add(ramp);
     }
   }
 

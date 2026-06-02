@@ -61,9 +61,9 @@ describe('World Placement Auditor', () => {
   });
 
   it('detects river encroachment when an asset is placed in the river channel', () => {
-    // River points include [65, 80]. Placing a tree at (66, 0, 80) is within 5 units channel width.
+    // River points include [50, 70]. Placing a tree at (51, 0, 70) is within 5 units channel width.
     state.placedAssets.set('asset-river', {
-      asset: { id: 'asset-river', type: 'tree', x: 66.0, y: 0.0, z: 80.0, rotationY: 0, scale: 1.0, roomId: -1 },
+      asset: { id: 'asset-river', type: 'tree', x: 51.0, y: 0.0, z: 70.0, rotationY: 0, scale: 1.0, roomId: -1 },
       group: new THREE.Group()
     });
 

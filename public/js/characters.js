@@ -236,6 +236,7 @@ export function spawnNpcs() {
       x: spawn.x,
       y: getTerrainHeight(spawn.x, spawn.z),
       z: spawn.z,
+      speed: 2.5,
       ry: Math.random() * Math.PI * 2,
       room: spawn.room,
       isMoving: false,

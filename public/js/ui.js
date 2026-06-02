@@ -187,6 +187,8 @@ function initKeyboardHandlers() {
       setMovementKeyState(k, true);
       if (e.key === ' ') state.keys.space = true;
       if (e.key === 'Shift') state.keys.shift = true;
+      if (e.key === 't' || e.key === 'T') state.keys.t = true;
+      if (e.key === 'y' || e.key === 'Y') state.keys.y = true;
       setCameraKeyState(e.key, true);
     }
 
@@ -230,6 +232,8 @@ function initKeyboardHandlers() {
     setMovementKeyState(k, false);
     if (e.key === ' ') state.keys.space = false;
     if (e.key === 'Shift') state.keys.shift = false;
+    if (e.key === 't' || e.key === 'T') state.keys.t = false;
+    if (e.key === 'y' || e.key === 'Y') state.keys.y = false;
     setCameraKeyState(e.key, false);
   });
 }

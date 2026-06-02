@@ -10,7 +10,7 @@ const RIVER_PTS = [
   [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
 ];
 
-const RIVER_WIDTH = 4.5;
+const RIVER_WIDTH = 8.5;
 const BRIDGE_X = 73, BRIDGE_Z = 8;
 const WATERFALL_X = 30, WATERFALL_Z = 90;
 
@@ -155,7 +155,7 @@ function buildRiverRibbon(points, width, material, isUpper) {
       sampleZ = cz + ndz * 0.05;
     }
 
-    const waterY = getTerrainHeight(sampleX, sampleZ) + 1.0;
+    const waterY = getTerrainHeight(sampleX, sampleZ) + 2.2;
 
     const halfWidth = width / 2;
     // Compute left and right coordinates of the ribbon in world space
@@ -297,8 +297,8 @@ function buildWaterfall() {
   const wx = WATERFALL_X, wz = WATERFALL_Z;
 
   // We sample slightly upstream/downstream along flow vector (-1, 1) for top and bottom heights
-  const topY = getTerrainHeight(wx + 0.1, wz - 0.1) + 1.0;
-  const botY = getTerrainHeight(wx - 0.1, wz + 0.1) + 1.0;
+  const topY = getTerrainHeight(wx + 0.1, wz - 0.1) + 2.2;
+  const botY = getTerrainHeight(wx - 0.1, wz + 0.1) + 2.2;
   const fallH = Math.max(0.1, topY - botY);
 
   const fallMat = new THREE.ShaderMaterial({
@@ -363,10 +363,10 @@ function buildStoneArchBridge() {
   }
   const perpAngle = segAngle + Math.PI / 2;
 
-  const bridgeY = getTerrainHeight(bx, bz);
+  const waterY = getTerrainHeight(bx, bz, true) + 2.2;
   const span = 5.0;       // half-span of the arch
   const archRise = 2.2;   // height of the arch above the springing point
-  const springY = bridgeY + 0.2; // springing level (just above water)
+  const springY = waterY + 0.2; // springing level (just above water)
 
   // ── Solid arch barrel (the curved underside) ────────────────────────
   const archR = (span * span + archRise * archRise) / (2 * archRise);

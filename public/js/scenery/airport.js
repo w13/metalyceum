@@ -136,16 +136,16 @@ export function buildAirport() {
   beacon.position.set(twrX, baseY + 17.1, twrZ);
   g.add(beacon);
 
-  // ── Large Hangar with huge sliding door ────────────────────────────
+  // ── Large Hangar with open overhead door ────────────────────────────
   const hangW = 42, hangD = 32, hangH = 14;
   const hx = ax - 30, hz = az + 32;
 
   // Floor
-  const hf = new THREE.Mesh(new THREE.PlaneGeometry(hangW, hangD), concMat);
-  hf.rotation.x = -Math.PI / 2;
-  hf.position.set(hx, baseY + 0.02, hz);
-  hf.receiveShadow = true;
-  g.add(hf);
+  const hFloor = new THREE.Mesh(new THREE.PlaneGeometry(hangW, hangD), concMat);
+  hFloor.rotation.x = -Math.PI / 2;
+  hFloor.position.set(hx, baseY + 0.02, hz);
+  hFloor.receiveShadow = true;
+  g.add(hFloor);
 
   // Back and side walls
   const hBack = new THREE.Mesh(new THREE.BoxGeometry(hangW, hangH, 0.3), hangarMat);
@@ -170,74 +170,146 @@ export function buildAirport() {
   g.add(hRoof);
   state.roofMeshes.push(hRoof);
 
-  // Entrance frame
+  // Entrance frame with rolled-up overhead door
   const frameMat = new THREE.MeshStandardMaterial({ color: '#4b5563', roughness: 0.7, metalness: 0.15 });
-  const pL = new THREE.Mesh(new THREE.BoxGeometry(0.5, hangH, 0.5), frameMat);
-  pL.position.set(hx - hangW/2 + 0.25, baseY + hangH/2, hz - hangD/2);
-  pL.castShadow = true; g.add(pL);
-  const pR = new THREE.Mesh(new THREE.BoxGeometry(0.5, hangH, 0.5), frameMat);
-  pR.position.set(hx + hangW/2 - 0.25, baseY + hangH/2, hz - hangD/2);
-  pR.castShadow = true; g.add(pR);
+  [-hangW/2 + 0.25, hangW/2 - 0.25].forEach(xOff => {
+    const fp = new THREE.Mesh(new THREE.BoxGeometry(0.5, hangH, 0.5), frameMat);
+    fp.position.set(hx + xOff, baseY + hangH/2, hz - hangD/2);
+    fp.castShadow = true; g.add(fp);
+  });
   const header = new THREE.Mesh(new THREE.BoxGeometry(hangW, 0.6, 0.5), frameMat);
   header.position.set(hx, baseY + hangH - 0.3, hz - hangD/2);
   header.castShadow = true; g.add(header);
 
-  // Sectional sliding door — partially open (stacked panels pushed to one side)
-  const doorMat = new THREE.MeshStandardMaterial({ color: '#4b5563', roughness: 0.7, metalness: 0.3 });
+  // Overhead door — rolled up above the opening (visible as a horizontal bundle at the top)
+  const doorRollMat = new THREE.MeshStandardMaterial({ color: '#6b7280', roughness: 0.7, metalness: 0.2 });
+  for (let i = 0; i < 8; i++) {
+    const section = new THREE.Mesh(new THREE.BoxGeometry(hangW - 0.4, 0.12, 0.3), doorRollMat);
+    section.position.set(hx, baseY + hangH - 0.5 - i * 0.15, hz - hangD/2 + 0.1);
+    g.add(section);
+  }
+
+  // Interior lighting — rows of fluorescent tubes
+  const fluoLightMat = new THREE.MeshBasicMaterial({ color: '#fef08a' });
+  for (let i = -2; i <= 2; i++) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, hangD - 2), fluoLightMat);
+    strip.position.set(hx + i * 8, baseY + hangH - 0.1, hz);
+    g.add(strip);
+  }
+
+  // ── Private Jet (inside the hangar, facing the runway) ─────────────
+  const jetGroup = new THREE.Group();
+  // Fuselage
+  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.65, 5.5, 10), jetMat);
+  fuse.rotation.x = Math.PI / 2;
+  fuse.position.y = 0.6;
+  fuse.castShadow = true;
+  fuse.receiveShadow = true;
+  jetGroup.add(fuse);
+  // Nose cone
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), jetMat);
+  nose.position.set(0, 0.6, 2.8);
+  nose.scale.set(1, 1, 0.6);
+  jetGroup.add(nose);
+
+  // Swept wings
+  for (let side = -1; side <= 1; side += 2) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.06, 0.8), jetMat);
+    wing.position.set(side * 1.4, 0.8, 0.3);
+    wing.rotation.z = side * 0.15;
+    wing.castShadow = true;
+    wing.receiveShadow = true;
+    jetGroup.add(wing);
+    // Winglet
+    const wl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.25, 0.4), accentMat);
+    wl.position.set(side * 2.8, 0.95, 0.3);
+    jetGroup.add(wl);
+  }
+
+  // Tail (T-tail configuration)
+  const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.7, 0.55), accentMat);
+  tailFin.position.set(0, 1.05, -2.6);
+  jetGroup.add(tailFin);
+  for (let side = -1; side <= 1; side += 2) {
+    const ht = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.3), accentMat);
+    ht.position.set(side * 0.35, 1.05, -2.6);
+    jetGroup.add(ht);
+  }
+
+  // Engines
+  for (let side = -1; side <= 1; side += 2) {
+    const nacelle = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 8), darkMat);
+    nacelle.rotation.x = Math.PI / 2;
+    nacelle.position.set(side * 1.8, 0.25, 0.6);
+    jetGroup.add(nacelle);
+    const intake = new THREE.Mesh(new THREE.CircleGeometry(0.15, 8), darkMat);
+    intake.position.set(side * 1.8, 0.25, 0.85);
+    intake.rotation.y = Math.PI / 2;
+    jetGroup.add(intake);
+  }
+
+  // Passenger windows
+  for (let i = -2.2; i <= 2.2; i += 0.8) {
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), darkMat);
+    w.position.set(0, 0.7, i);
+    jetGroup.add(w);
+  }
+
+  // Registration number on fuselage
+  const regMat = new THREE.MeshBasicMaterial({ color: '#1e293b' });
   for (let i = 0; i < 5; i++) {
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.08, hangH - 1.0, 8.2), doorMat);
-    // Panels stacked to the left side of the opening
-    panel.position.set(hx - hangW/2 + 0.5 + i * 0.15, baseY + (hangH - 1.0) / 2, hz - hangD/2 + 0.3);
-    g.add(panel);
+    const letter = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), regMat);
+    letter.position.set(0, 0.85, -1.2 + i * 0.15);
+    jetGroup.add(letter);
   }
 
-  // ── Private Jet (inside the hangar, facing out) ────────────────────
-  function makeJet(px, pz, ry) {
-    const jg = new THREE.Group();
-    const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.65, 5.5, 10), jetMat);
-    fuse.rotation.x = Math.PI / 2;
-    fuse.position.y = 0.6;
-    fuse.castShadow = true;
-    fuse.receiveShadow = true;
-    jg.add(fuse);
+  jetGroup.position.set(hx, baseY + 0.03, hz + 4);
+  jetGroup.rotation.y = Math.PI;
+  g.add(jetGroup);
 
-    for (let side = -1; side <= 1; side += 2) {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.06, 0.8), jetMat);
-      wing.position.set(side * 1.4, 0.8, 0.3);
-      wing.rotation.z = side * 0.15;
-      wing.castShadow = true;
-      wing.receiveShadow = true;
-      jg.add(wing);
-    }
-
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.04), accentMat);
-    tail.position.set(0, 1.05, -2.6);
-    jg.add(tail);
-    for (let side = -1; side <= 1; side += 2) {
-      const st = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.3), accentMat);
-      st.position.set(side * 0.35, 0.75, -2.5);
-      jg.add(st);
-    }
-
-    for (let side = -1; side <= 1; side += 2) {
-      const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.5, 8), darkMat);
-      eng.rotation.x = Math.PI / 2;
-      eng.position.set(side * 1.8, 0.25, 0.6);
-      jg.add(eng);
-    }
-
-    for (let i = -2; i <= 2; i += 0.8) {
-      const w = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), darkMat);
-      w.position.set(0, 0.7, i);
-      jg.add(w);
-    }
-
-    jg.position.set(px, baseY + 0.03, pz);
-    jg.rotation.y = ry;
-    return jg;
+  // ── Hangar equipment ──────────────────────────────────────────────
+  const eqMat = new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.7, metalness: 0.3 });
+  // Workbench along the side wall
+  const bench = new THREE.Mesh(new THREE.BoxGeometry(6, 0.06, 1.2), new THREE.MeshStandardMaterial({ color: '#3a2510', roughness: 0.7 }));
+  bench.position.set(hx - hangW/2 + 3.5, baseY + 0.83, hz - 6);
+  g.add(bench);
+  for (let i = 0; i < 4; i++) {
+    const bl = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.04), eqMat);
+    bl.position.set(hx - hangW/2 + 2 + i * 1, baseY + 0.4, hz - 6);
+    g.add(bl);
+  }
+  // Tool chest
+  const tc = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), eqMat);
+  tc.position.set(hx - hangW/2 + 1, baseY + 0.25, hz - 8);
+  g.add(tc);
+  for (let d = 0; d < 3; d++) {
+    const dr = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.04, 0.38), new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.6 }));
+    dr.position.set(hx - hangW/2 + 1, baseY + 0.06 + d * 0.15, hz - 8);
+    g.add(dr);
   }
 
-  g.add(makeJet(hx, hz + 2, 0));
+  // Oil drums near the back wall
+  const drumMat = new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.7 });
+  for (let i = 0; i < 3; i++) {
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.5, 8), drumMat);
+    drum.position.set(hx + (i - 1) * 0.7, baseY + 0.25, hz + hangD/2 - 1.5);
+    g.add(drum);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.02, 6, 8), new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.8 }));
+    rim.position.set(hx + (i - 1) * 0.7, baseY + 0.5, hz + hangD/2 - 1.5);
+    rim.rotation.x = Math.PI / 2;
+    g.add(rim);
+  }
+
+  // Floor markings (tie-down points)
+  const markMat = new THREE.MeshBasicMaterial({ color: '#fbbf24' });
+  for (let i = -1; i <= 1; i += 2) {
+    for (let j = -1; j <= 1; j += 2) {
+      const td = new THREE.Mesh(new THREE.CircleGeometry(0.08, 8), markMat);
+      td.rotation.x = -Math.PI / 2;
+      td.position.set(hx + i * 10, baseY + 0.025, hz + j * 8);
+      g.add(td);
+    }
+  }
 
   // ── Helicopters ────────────────────────────────────────────────────
   function makeHelicopter(px, pz, ry) {
