@@ -26,28 +26,42 @@ export function initDebugPanel() {
   }
 }
 
-// River waypoints — kept in sync with physics.js / dev-tools.js
-const _riverPts = [
-  [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
-  [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
-  [62, 47], [50, 70], [30, 90], [10, 110], [-10, 130],
-  [-30, 150], [-55, 170], [-80, 190], [-105, 205], [-130, 220]
-];
+// Shared scratch vector for world-position queries in the copy function
+const _cpWp = new THREE.Vector3();
 
-function _ptSegDist(px, pz, ax, az, bx, bz) {
-  const dax = bx - ax, daz = bz - az;
-  const l2 = dax * dax + daz * daz;
-  if (l2 < 0.001) return Math.sqrt((px - ax) ** 2 + (pz - az) ** 2);
-  const t = Math.max(0, Math.min(1, ((px - ax) * dax + (pz - az) * daz) / l2));
-  return Math.sqrt((px - ax - t * dax) ** 2 + (pz - az - t * daz) ** 2);
+// Returns the 8-sector bearing of (ox,oz) relative to (px,pz) given a camera forward direction.
+// fwdX/fwdZ must be the XZ-projected, normalized camera forward vector.
+function _relBearing(px, pz, ox, oz, fwdX, fwdZ) {
+  const dx = ox - px, dz = oz - pz;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  if (len < 0.3) return 'here';
+  const nx = dx / len, nz = dz / len;
+  // fwdDot: positive = ahead. rightDot: positive = to the right of forward.
+  const fwdDot  = nx * fwdX + nz * fwdZ;
+  const rightDot = nx * fwdZ - nz * fwdX;
+  const deg = ((Math.atan2(rightDot, fwdDot) * 180 / Math.PI) + 360) % 360;
+  if (deg < 22.5 || deg >= 337.5) return 'ahead';
+  if (deg < 67.5)  return 'ahead-right';
+  if (deg < 112.5) return 'right';
+  if (deg < 157.5) return 'behind-right';
+  if (deg < 202.5) return 'behind';
+  if (deg < 247.5) return 'behind-left';
+  if (deg < 292.5) return 'left';
+  return 'ahead-left';
 }
+
 function _riverDist(x, z) {
-  let d = Infinity;
-  for (let i = 0; i < _riverPts.length - 1; i++) {
-    const s = _ptSegDist(x, z, _riverPts[i][0], _riverPts[i][1], _riverPts[i + 1][0], _riverPts[i + 1][1]);
-    if (s < d) d = s;
+  let best = Infinity;
+  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
+    const [ax, az] = RIVER_PTS[i], [bx, bz] = RIVER_PTS[i + 1];
+    const dax = bx - ax, daz = bz - az;
+    const l2 = dax * dax + daz * daz;
+    const t = l2 < 0.001 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dax + (z - az) * daz) / l2));
+    const ex = ax + dax * t - x, ez = az + daz * t - z;
+    const d = ex * ex + ez * ez;
+    if (d < best) best = d;
   }
-  return d;
+  return Math.sqrt(best);
 }
 
 function copyDiagnosticsToClipboard() {
@@ -74,6 +88,14 @@ function copyDiagnosticsToClipboard() {
     : 'N/A';
   const webSocket = state.socket?.readyState === WebSocket.OPEN ? 'Connected' : 'Disconnected';
 
+  // ── Camera forward direction on XZ (normalized) — used for relative bearings ──
+  let nFwdX = 0, nFwdZ = 1;
+  if (state.camera) {
+    state.camera.getWorldDirection(_cpWp);
+    const fLen = Math.sqrt(_cpWp.x * _cpWp.x + _cpWp.z * _cpWp.z);
+    if (fLen > 0.001) { nFwdX = _cpWp.x / fLen; nFwdZ = _cpWp.z / fLen; }
+  }
+
   // ── Terrain ───────────────────────────────────────────────────────────────
   const terrainY = getTerrainHeight(px, pz);
   const sampleH = [[20,0],[-20,0],[0,20],[0,-20]].map(([dx,dz]) => getTerrainHeight(px+dx, pz+dz));
@@ -85,14 +107,14 @@ function copyDiagnosticsToClipboard() {
                  : rivDist < 15  ? `${rivDist.toFixed(1)}u  (near river)`
                  : `${rivDist.toFixed(1)}u`;
 
-  // ── Nearest landmark ──────────────────────────────────────────────────────
+  // ── Nearest landmark (header context) ────────────────────────────────────
   let nearestLM = null, nearestLMDist = Infinity;
   for (const [key, def] of Object.entries(LANDMARK_REGISTRY)) {
     const grp = state.landmarkGroups?.get(key);
     const lx = def.approxCenter[0] + (grp ? grp.position.x : 0);
     const lz = def.approxCenter[1] + (grp ? grp.position.z : 0);
     const d = Math.sqrt((px - lx) ** 2 + (pz - lz) ** 2);
-    if (d < nearestLMDist) { nearestLMDist = d; nearestLM = { key, def, d }; }
+    if (d < nearestLMDist) { nearestLMDist = d; nearestLM = { key, def, lx, lz }; }
   }
   const lmInsideFlag = nearestLM && nearestLMDist < nearestLM.def.approxRadius ? ' [INSIDE]' : '';
   const lmLine = nearestLM ? `${nearestLM.def.label}  ${nearestLMDist.toFixed(1)}u${lmInsideFlag}` : '—';
@@ -104,64 +126,68 @@ function copyDiagnosticsToClipboard() {
     roomBoundsLine = `\n           Bounds: X [${b.minX.toFixed(1)}, ${b.maxX.toFixed(1)}]  Z [${b.minZ.toFixed(1)}, ${b.maxZ.toFixed(1)}]`;
   }
 
-  // ── Nearby: landmark groups, placed assets, rooms ─────────────────────────
-  const nearby = [];
+  // ── Nearby objects — semantic scan, sorted by distance ───────────────────
+  // Radius: 50u for scene objects (you're close to these); 120u for landmarks (large, visible far)
+  const NEARBY_R = 50;
+  const LANDMARK_R = 120;
+  const objects = [];
 
-  if (state.landmarkGroups) {
-    for (const [key, grp] of state.landmarkGroups.entries()) {
-      const def = LANDMARK_REGISTRY[key];
-      if (!def) continue;
-      const lx = def.approxCenter[0] + grp.position.x;
-      const lz = def.approxCenter[1] + grp.position.z;
-      const d = Math.sqrt((px - lx) ** 2 + (pz - lz) ** 2);
-      if (d < 120) {
-        const inside = d < def.approxRadius ? ' [INSIDE]' : '';
-        nearby.push({ label: `Landmark: ${def.label} @ (${lx.toFixed(0)}, ${lz.toFixed(0)})  ${d.toFixed(0)}u${inside}`, d });
-      }
-    }
+  // 1. Placed dynamic assets
+  for (const { asset } of (state.placedAssets?.values() ?? [])) {
+    const d = Math.sqrt((asset.x - px) ** 2 + (asset.z - pz) ** 2);
+    if (d > NEARBY_R) continue;
+    const bearing = _relBearing(px, pz, asset.x, asset.z, nFwdX, nFwdZ);
+    const yAbove = (asset.y - getTerrainHeight(asset.x, asset.z)).toFixed(2);
+    objects.push({ d, line: `Placed asset: ${asset.type}  id:${asset.id.slice(0, 8)}  pos:(${asset.x.toFixed(1)}, ${asset.y.toFixed(1)}, ${asset.z.toFixed(1)})  y+${yAbove}  [${bearing}]` });
   }
 
-  if (state.placedAssets) {
-    for (const { asset } of state.placedAssets.values()) {
-      const dx = asset.x - px, dz = asset.z - pz;
-      const d = Math.sqrt(dx * dx + dz * dz);
-      if (d < 120) {
-        nearby.push({ label: `Asset: ${asset.type}  @ (${asset.x.toFixed(1)}, ${asset.z.toFixed(1)})  ${d.toFixed(0)}u  [id:${asset.id.slice(0, 8)}]`, d });
+  // 2. Static scenery groups — registered named scene entities
+  for (const entry of (state.STATIC_SCENERY ?? [])) {
+    if (!entry.object3d) continue;
+    entry.object3d.getWorldPosition(_cpWp);
+    const d = Math.sqrt((_cpWp.x - px) ** 2 + (_cpWp.z - pz) ** 2);
+    if (d > NEARBY_R) continue;
+    // Identify landmark parent by walking the group chain
+    let lmHint = '';
+    for (const [key, grp] of (state.landmarkGroups?.entries() ?? [])) {
+      let cur = entry.object3d.parent;
+      while (cur && cur !== state.scene) {
+        if (cur === grp) { lmHint = `  [${key}]`; break; }
+        cur = cur.parent;
       }
+      if (lmHint) break;
     }
+    const visible = entry.object3d.visible ? '' : '  [hidden]';
+    const bearing = _relBearing(px, pz, _cpWp.x, _cpWp.z, nFwdX, nFwdZ);
+    objects.push({ d, line: `Static (${entry.kind})${lmHint}${visible}  pos:(${_cpWp.x.toFixed(1)}, ${_cpWp.y.toFixed(1)}, ${_cpWp.z.toFixed(1)})  [${bearing}]` });
   }
 
-  for (const room of state.ROOMS) {
+  // 3. Landmark groups
+  for (const [key, grp] of (state.landmarkGroups?.entries() ?? [])) {
+    const def = LANDMARK_REGISTRY[key];
+    if (!def) continue;
+    const lx = def.approxCenter[0] + grp.position.x;
+    const lz = def.approxCenter[1] + grp.position.z;
+    const d = Math.sqrt((lx - px) ** 2 + (lz - pz) ** 2);
+    if (d > LANDMARK_R) continue;
+    const inside = d < def.approxRadius ? '  [INSIDE]' : '';
+    const bearing = _relBearing(px, pz, lx, lz, nFwdX, nFwdZ);
+    objects.push({ d, line: `Landmark: ${def.label}${inside}  center:(${lx.toFixed(0)}, ${lz.toFixed(0)})  r=${def.approxRadius}  [${bearing}]` });
+  }
+
+  // 4. Rooms (excluding current)
+  for (const room of (state.ROOMS ?? [])) {
     if (room.id === currentRoomId) continue;
-    const dx = room.x - px, dz = room.z - pz;
-    const d = Math.sqrt(dx * dx + dz * dz);
-    if (d < 120) {
-      nearby.push({ label: `Room: ${room.name} (id:${room.id})  @ (${room.x}, ${room.z})  ${d.toFixed(0)}u`, d });
-    }
+    const d = Math.sqrt((room.x - px) ** 2 + (room.z - pz) ** 2);
+    if (d > NEARBY_R) continue;
+    const bearing = _relBearing(px, pz, room.x, room.z, nFwdX, nFwdZ);
+    objects.push({ d, line: `Room: ${room.name} (id:${room.id})  @ (${room.x}, ${room.z})  [${bearing}]` });
   }
 
-  // Scan scene for meshes (river segments, bridge parts, etc. not in landmarks)
-  const _wp = new THREE.Vector3();
-  if (state.scene) {
-    state.scene.traverse((child) => {
-      if (nearby.length >= 30) return;
-      if (child.type !== 'Mesh' || !child.geometry) return;
-      child.getWorldPosition(_wp);
-      const ox = _wp.x, oz = _wp.z;
-      const d = Math.sqrt((px - ox) ** 2 + (pz - oz) ** 2);
-      if (d > 120) return;
-      const g = child.geometry;
-      const p = g.parameters || {};
-      let dim = g.type;
-      if (p.width) dim = `${(p.width||0).toFixed(1)}x${(p.height||0).toFixed(1)}`;
-      else if (p.radiusTop) dim = `r${(p.radiusTop||0).toFixed(2)} h${(p.height||0).toFixed(2)}`;
-      const label = `${dim} @ (${ox.toFixed(1)},${oz.toFixed(1)}) y=${_wp.y.toFixed(1)} ${d.toFixed(0)}u`;
-      nearby.push({ label, d });
-    });
-  }
-
-  nearby.sort((a, b) => a.d - b.d);
-  const nearbyList = nearby.slice(0, 30).map(n => n.label).join('\n  ') || '(none within 120u)';
+  objects.sort((a, b) => a.d - b.d);
+  const objectList = objects.length
+    ? objects.map(o => `  ${String(o.d.toFixed(0)).padStart(3)}u  ${o.line}`).join('\n')
+    : '  (none within 50u)';
 
   // ── Landmark offsets (non-zero) ───────────────────────────────────────────
   const lmOffsets = [];
@@ -205,14 +231,11 @@ function copyDiagnosticsToClipboard() {
   let inspectedBlock = '';
   const ins = devState.lastInspected;
   if (ins) {
-    inspectedBlock = `\nLast inspected (Alt+click):\n` +
-      `  Geometry:      ${ins.geometry}\n` +
-      `  World pos:     (${ins.worldPos.x}, ${ins.worldPos.y}, ${ins.worldPos.z})\n` +
-      `  World rot deg: X=${ins.worldRotDeg.x}°  Y=${ins.worldRotDeg.y}°  Z=${ins.worldRotDeg.z}°\n` +
-      `  World scale:   (${ins.worldScale.x}, ${ins.worldScale.y}, ${ins.worldScale.z})\n` +
-      `  Terrain Y:     ${ins.terrainY}  |  Y above terrain: ${ins.yAboveTerrain}u\n` +
-      `  Parent chain:  ${ins.parentChain}` +
-      (Object.keys(ins.userData ?? {}).length ? `\n  userData:      ${JSON.stringify(ins.userData)}` : '');
+    inspectedBlock = `\nLast alt+click:\n` +
+      `  ${ins.geometry}  pos:(${ins.worldPos.x}, ${ins.worldPos.y}, ${ins.worldPos.z})` +
+      `  rot:Y=${ins.worldRotDeg.y}°  scale:(${ins.worldScale.x}, ${ins.worldScale.y}, ${ins.worldScale.z})` +
+      `  y+${ins.yAboveTerrain}u above terrain  parent:${ins.parentChain}` +
+      (Object.keys(ins.userData ?? {}).length ? `\n  userData: ${JSON.stringify(ins.userData)}` : '');
   }
 
   // ── Error log ─────────────────────────────────────────────────────────────
@@ -231,7 +254,7 @@ function copyDiagnosticsToClipboard() {
   const sceneCount = state.scene ? state.scene.children.length : '?';
   const lmGroupCount = state.landmarkGroups?.size ?? 0;
 
-  const text = `Metalyceum Diagnostics Report
+  const text = `Metalyceum Scene Report
 ==============================
 Timestamp: ${new Date().toISOString()}
 Player:    ${pPos}  Heading: ${headingDeg}°
@@ -239,24 +262,18 @@ Player:    ${pPos}  Heading: ${headingDeg}°
 Camera:    ${cPos}
 Direction: ${cDir}
 
-Position context:
-- Terrain:   y=${terrainY.toFixed(3)}  (slope ±${slopeRange}u over 20u)
-- River:     ${rivLabel}
-- Nearest landmark: ${lmLine}
+Location:
+  Terrain:  y=${terrainY.toFixed(3)}  slope ±${slopeRange}u over 20u
+  River:    ${rivLabel}
+  Landmark: ${lmLine}
 
-Network:   ${webSocket}  (Profile: ${state._netProfile || 'normal'})
-Memory:    ${mem}
-Performance:
-- FPS: ${fps}
-- Players Online: ${players}
-- Visible Props: ${props} / ${state.STATIC_SCENERY?.length ?? '?'}
-- Live Rooms: ${rooms}
-- Upper Walls: ${upperWallCount}, Roof Meshes: ${roofCount}
-- Colliders: ${colliderCount}, WALLS: ${wallCount}
-- Scene root objects: ${sceneCount}, Landmark groups: ${lmGroupCount}
+Performance: ${fps} fps | ${players} players | ${props} visible props
+Network: ${webSocket}  (profile: ${state._netProfile || 'normal'})
+Memory:  ${mem}
+Counts:  colliders:${colliderCount}  walls:${wallCount}  upperWalls:${upperWallCount}  roofMeshes:${roofCount}  sceneRoot:${sceneCount}  landmarks:${lmGroupCount}
 
-Nearby (<120u):
-  ${nearbyList}
+Objects within 50u  (closest first — [bearing] is relative to camera forward):
+${objectList}
 ${lmOffsetBlock}${auditBlock}${staticAuditBlock}${inspectedBlock}${errorBlock}
 ==============================`;
 

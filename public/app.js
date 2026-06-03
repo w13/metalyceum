@@ -19,8 +19,7 @@ import {
   prepareSoundtrackLoginTransition
 } from './js/audio.js';
 import { initMinimap } from './js/minimap.js';
-// debug-tweaks is dynamically imported below (non-blocking) to avoid
-// breaking login if the module file or lil-gui CDN is unavailable.
+import { initDevTools } from './js/dev-tools.js';
 
 // Global Callback called by YouTube SDK iframe API script loading
 window.onYouTubeIframeAPIReady = function() {
@@ -129,10 +128,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Start building the 3D world immediately (visible behind the translucent login overlay)
   initEngine();
   initMinimap();
-  // Debug-tweaks loaded lazily — survives missing file or CDN failure
-  import('./js/debug-tweaks.js').then(m => m.initDebugTweaks()).catch(e => {
-    console.warn('[app] Debug tweaks unavailable:', e);
-  });
+  initDevTools();
   initDebugPanel();
   initSoundtrackUi();
   initUiHandlers();
