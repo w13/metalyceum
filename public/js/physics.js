@@ -3,7 +3,19 @@ import * as THREE from 'three';
 import { state } from './state.js';
 import { MAP_SIZE, COVERED_BOUNDS, LOBBY_BOUNDS, RIVER_PTS } from './config.js';
 import { AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from './utils.js';
-import { pointToSegmentDistSq } from './math.js';
+
+function pointToSegmentDistSq(px, pz, x1, z1, x2, z2) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq === 0) {
+    const ddx = px - x1, ddz = pz - z1;
+    return ddx * ddx + ddz * ddz;
+  }
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
+  const cx = x1 + dx * t, cz = z1 + dz * t;
+  const ddx = px - cx, ddz = pz - cz;
+  return ddx * ddx + ddz * ddz;
+}
 
 // Scratch objects — zero allocations per frame
 const _sphere = new THREE.Sphere(new THREE.Vector3(), 0.4);
@@ -112,6 +124,10 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
   // Large lakes (depth modifiers)
   const lake1 = 5 * (1 - _ss(5, 55, Math.sqrt((x - 250) ** 2 + (z + 250) ** 2)));
   const lake2 = 4.5 * (1 - _ss(5, 45, Math.sqrt((x + 200) ** 2 + (z - 280) ** 2)));
+
+  // Base rolling hills — two overlapping sine octaves, amplitude ≈ ±3.7 u
+  const hills = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.2
+              + Math.cos(x * 0.05) * Math.sin(z * 0.05) * 1.5;
 
   const flatFactor = 1 - Math.max(f1, f2, f3, f4, f5, f6, f7, f8, f10);
   return (hills - cavity + Math.max(wfHeight - riverChannel, 0)) * flatFactor + hillRise - riverChannel - lake1 - lake2;

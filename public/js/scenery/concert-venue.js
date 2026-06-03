@@ -4,7 +4,9 @@ import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { createBrickTexture, createStoneTexture, createCarpetTexture } from '../textures.js';
 import { registerStaticScenery } from './visibility.js';
-import { FLAT, HALF_PI } from '../math.js';
+
+const HALF_PI = Math.PI / 2;
+const FLAT = -HALF_PI;
 
 export function buildConcertVenue() {
   const vx = -85, vz = 140;

@@ -13,10 +13,10 @@ import {
 } from '../config.js';
 import { getTerrainHeight, checkCollision, getWaterSurfaceHeight } from '../physics.js';
 import { isCannonReady, getPlayerBodyRef, teleportPlayer, syncBodyY, stepCannon } from '../physics-engine.js';
+import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
 import { animateAvatarWalk } from '../characters.js';
 import { animateAvatarSwim } from '../animations.js';
 import { toggleJetpackTakeoff, toggleJetpackLand, updateJetpack } from './jetpack.js';
-import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
 import {
   getCameraYaw,
   isExitCameraWatchActive,
@@ -36,8 +36,13 @@ const _desiredCameraTarget = new THREE.Vector3();
 const _FOOT_SPREAD = 0.3;
 const _TERRAIN_FOLLOW_RATE = 15; // lerp rate for smooth Y follow (frame-independent)
 
-function getFootAnchoredHeight(x, z) {
+// Cached bounding box of all water bodies (river + lakes) — used as a cheap pre-check
+// before the full getWaterSurfaceHeight polyline scan. Updated once at startup.
+const _WATER_BOUNDS = { minX: -20, maxX: 130, minZ: -30, maxZ: 310 };
+
+function getFootAnchoredHeight(x, z, precise = true) {
   const h = getTerrainHeight(x, z);
+  if (!precise) return h; // single sample is fine when airborne or swimming
   const hL = getTerrainHeight(x - _FOOT_SPREAD, z);
   const hR = getTerrainHeight(x + _FOOT_SPREAD, z);
   const hF = getTerrainHeight(x, z + _FOOT_SPREAD * 0.6);
@@ -64,8 +69,12 @@ export function updateLocalPlayer(dt, now) {
   const gravity = 25.0;
   const jumpForce = 10.0;
 
-  // Manual physics fallback
-  const targetGroundY = getFootAnchoredHeight(state.localPlayer.x, state.localPlayer.z);
+  // Precision ground sampling: use single-sample when airborne or swimming (no edge-snapping needed)
+  const needPreciseTerrain = !state.localPlayer.flying && !state.localPlayer.swimming
+    && state.localPlayer.isGrounded;
+  const targetGroundY = getFootAnchoredHeight(
+    state.localPlayer.x, state.localPlayer.z, needPreciseTerrain
+  );
 
   // ── Jetpack flight ───────────────────────────────────────────────────
   if (state.keys.t && state.localPlayer.isGrounded) {
@@ -75,8 +84,12 @@ export function updateLocalPlayer(dt, now) {
     toggleJetpackLand();
   }
 
-  // ── Swimming check ──
-  const waterY = getWaterSurfaceHeight(state.localPlayer.x, state.localPlayer.z);
+  // Swimming check — quick XZ bounding-box pre-check skips the polyline scan when far from water
+  const _lx = state.localPlayer.x;
+  const _lz = state.localPlayer.z;
+  const _nearWater = _lx >= _WATER_BOUNDS.minX && _lx <= _WATER_BOUNDS.maxX
+                  && _lz >= _WATER_BOUNDS.minZ && _lz <= _WATER_BOUNDS.maxZ;
+  const waterY = _nearWater ? getWaterSurfaceHeight(_lx, _lz) : null;
   const inWater = waterY !== null;
   state.localPlayer.swimming = inWater && state.localPlayer.y < waterY + 0.1; // swim at surface level
 

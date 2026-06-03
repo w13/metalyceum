@@ -18,7 +18,6 @@ import {
   updateNpcs,
   refreshStaticSceneryVisibility
 } from './scenery.js';
-import { syncPosition } from './multiplayer.js';
 import { updateDebugPanel } from './ui.js';
 import {
   closeRoomEventModal,
@@ -53,8 +52,13 @@ function fadeMeshArray(arr, target, dt) {
     const m = arr[i];
     if (!m || !m.isObject3D) continue;
     if (m.material && m.material.transparent) {
-      m.material.opacity = THREE.MathUtils.lerp(m.material.opacity, target, 8 * dt);
-      m.material.needsUpdate = true;
+      const prevOpacity = m.material.opacity;
+      const newOpacity = THREE.MathUtils.lerp(prevOpacity, target, 8 * dt);
+      // Only flag needsUpdate when opacity meaningfully changed — avoids per-frame uniform re-upload
+      if (Math.abs(newOpacity - prevOpacity) > 0.0005) {
+        m.material.opacity = newOpacity;
+        m.material.needsUpdate = true;
+      }
       m.visible = m.material.opacity > 0.02;
     } else {
       m.visible = target > 0.5;
@@ -63,6 +67,11 @@ function fadeMeshArray(arr, target, dt) {
 }
 
 const _desiredCameraTarget = new THREE.Vector3();
+// Pre-allocated scratch for elevator Box3 computation — avoids per-frame allocation
+const _elevatorBox3Scratch = new THREE.Box3();
+// Last player XZ position when shadow frustum was last updated
+let _shadowLastPx = -99999;
+let _shadowLastPz = -99999;
 
 // Lighting transition colors (outdoor → indoor)
 const _hemiOutColor = new THREE.Color('#dcc878');
@@ -79,8 +88,19 @@ const _CAM_ACCEL = 5.5;  // rad/s² while key held
 const _CAM_MAX   = 1.6;  // rad/s peak speed
 const _CAM_DECAY = 7.0;  // exponential decay rate per second after key release
 
+// Cache last scanned XZ — skip O(n) room scan when player hasn't moved
+let _roomScanLastX = -99999;
+let _roomScanLastZ = -99999;
+
 export function detectRoomEntry() {
-  const activeRoomId = getRoomIdForPosition(state.localPlayer.x, state.localPlayer.z);
+  const px = state.localPlayer.x;
+  const pz = state.localPlayer.z;
+  // Skip scan if player hasn't moved meaningfully since last check
+  if (Math.abs(px - _roomScanLastX) < 0.15 && Math.abs(pz - _roomScanLastZ) < 0.15) return;
+  _roomScanLastX = px;
+  _roomScanLastZ = pz;
+
+  const activeRoomId = getRoomIdForPosition(px, pz);
 
   if (activeRoomId !== state.localPlayer.currentRoom) {
     state.localPlayer.currentRoom = activeRoomId;
@@ -118,25 +138,13 @@ export function detectRoomEntry() {
   }
 }
 
-// Teleport observer to bypass circular updates
+// Teleport observer: force a room scan immediately on next frame after teleport
 window.addEventListener('room-marker-teleport', () => {
+  _roomScanLastX = -99999; // invalidate cache so next detectRoomEntry scans immediately
+  _roomScanLastZ = -99999;
   detectRoomEntry();
-  syncPosition();
 });
 
-// Lazy syncTweaks import — non-blocking, survives missing module
-let _syncTweaks = null;
-function callSyncTweaks() {
-  if (_syncTweaks === null) {
-    _syncTweaks = false; // mark as "attempted"
-    import('./debug-tweaks.js').then(m => {
-      _syncTweaks = m.syncTweaksToEngine;
-    }).catch(() => {
-      _syncTweaks = undefined; // permanently disabled
-    });
-  }
-  if (typeof _syncTweaks === 'function') _syncTweaks();
-}
 
 function updateRemotePlayer(p, dt, now) {
   const remoteLerpSpeed = 1 - Math.pow(REMOTE_PLAYER_SMOOTHING, dt);
@@ -176,7 +184,6 @@ function updateRemotePlayer(p, dt, now) {
 }
 
 export function animate() {
-  callSyncTweaks();
   const _now = performance.now();
   const dt = Math.min((_now - state.lastTime) / 1000, 0.1);
   state.lastTime = _now;
@@ -203,7 +210,7 @@ export function animate() {
   updateTorches(_now);
   updateLocalPlayer(dt, _now);
   detectRoomEntry();
-  syncPosition();
+  // syncPosition is now driven by setInterval in multiplayer.js \u2014 removed from render loop
 
   updateNpcs(dt);
   updateJetpack(dt, _now);
@@ -250,21 +257,25 @@ export function animate() {
   const nearBuilding = px !== undefined && Math.abs(px) < 45 && Math.abs(pz) < 55;
 
   if (nearBuilding) {
-    // Upper walls — use shared material where present, otherwise fadeMeshArray
-    state.upperWalls.forEach(w => {
-      if (!w || !w.isObject3D) return;
-      if (w.material === state.upperWallMat) {
-        w.visible = state.upperWallMat.opacity > 0.02;
-        return;
-      }
-      if (w.material && w.material.transparent) {
-        try { w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, _rideFade, 8 * dt); }
-        catch(e) {}
-        w.visible = w.material.opacity > 0.02;
-      } else {
-        w.visible = _rideFade > 0.5;
-      }
-    });
+    // Upper walls — use shared material where present, otherwise fadeMeshArray.
+    // Early-out: when opacity is already stable (fully opaque or fully gone), skip traversal.
+    const _wallOpacityStable = Math.abs(_rideFade - (state.upperWallMat?.opacity ?? 1)) < 0.005;
+    if (!_wallOpacityStable || !state.upperWallMat) {
+      state.upperWalls.forEach(w => {
+        if (!w || !w.isObject3D) return;
+        if (w.material === state.upperWallMat) {
+          w.visible = state.upperWallMat.opacity > 0.02;
+          return;
+        }
+        if (w.material && w.material.transparent) {
+          try { w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, _rideFade, 8 * dt); }
+          catch(e) {}
+          w.visible = w.material.opacity > 0.02;
+        } else {
+          w.visible = _rideFade > 0.5;
+        }
+      });
+    }
 
     fadeMeshArray(state.roofMeshes, _rideFade, dt);
   }
@@ -286,12 +297,19 @@ export function animate() {
       const pz = state.localPlayer.z;
       state.sceneSunLight.position.set(38 + px, 22, 12 + pz);
       state.sceneSunLight.target.position.set(px, 0, pz);
-      const d = 28;
-      state.sceneSunLight.shadow.camera.left = px - d;
-      state.sceneSunLight.shadow.camera.right = px + d;
-      state.sceneSunLight.shadow.camera.top = pz - d;
-      state.sceneSunLight.shadow.camera.bottom = pz + d;
-      state.sceneSunLight.shadow.camera.updateProjectionMatrix();
+      // Only rebuild shadow frustum when player moves >2 units — updateProjectionMatrix
+      // triggers a GPU uniform upload and was running 60×/s unnecessarily.
+      const shadowMoved = Math.abs(px - _shadowLastPx) > 2 || Math.abs(pz - _shadowLastPz) > 2;
+      if (shadowMoved) {
+        _shadowLastPx = px;
+        _shadowLastPz = pz;
+        const d = 28;
+        state.sceneSunLight.shadow.camera.left = px - d;
+        state.sceneSunLight.shadow.camera.right = px + d;
+        state.sceneSunLight.shadow.camera.top = pz - d;
+        state.sceneSunLight.shadow.camera.bottom = pz + d;
+        state.sceneSunLight.shadow.camera.updateProjectionMatrix();
+      }
     }
   }
   if (state.sceneHemisphereLight) {
@@ -310,7 +328,8 @@ export function animate() {
   state.controls.update();
   updateCameraFollow(dt, _now);
   updateDebugPanel(_now);
-  updateDevTools(_now);
+  // Throttle dev-tools (heavy DOM reads) to every 6th frame — same cadence as minimap
+  if (state.frameCount % 6 === 0) updateDevTools(_now);
 
   try {
     // ── Elevator door collider sync ───────────────────────────────────────
@@ -324,7 +343,8 @@ export function animate() {
       // so the player can walk through.
       if (state._elevatorDoorBox) {
         if (dc.visible) {
-          state._elevatorDoorBox.copy(new THREE.Box3().setFromObject(dc));
+          // Reuse pre-allocated scratch — avoids allocating a new Box3 every frame
+          state._elevatorDoorBox.copy(_elevatorBox3Scratch.setFromObject(dc));
         } else {
           state._elevatorDoorBox.min.set(0, 0, 0);
           state._elevatorDoorBox.max.set(0, 0, 0);
@@ -332,6 +352,11 @@ export function animate() {
       }
     }
 
+    // Sky dome tracks camera XZ — keeps it centred even when the player moves far from origin
+    if (state.skyDome) {
+      state.skyDome.position.x = state.camera.position.x;
+      state.skyDome.position.z = state.camera.position.z;
+    }
     state.renderer.render(state.scene, state.camera);
   } catch (err) {
     console.error("[Metalyceum] Render error:", err);
@@ -428,7 +453,7 @@ export function initEngine() {
   state.renderer.setSize(window.innerWidth, window.innerHeight);
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   state.renderer.shadowMap.enabled = true;
-  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  state.renderer.shadowMap.type = THREE.PCFShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
   state.renderer.toneMappingExposure = 1.3;
 

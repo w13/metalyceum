@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 
-const RGBE_LOADER_URL = 'three/addons/loaders/RGBELoader.js';
+const HDR_LOADER_URL = 'three/addons/loaders/HDRLoader.js';
 
 // Poly Haven CC0 HDRI — 1K resolution for performance, outdoor dawn sky
 const HDR_URL = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kiara_1_dawn_1k.hdr';
@@ -24,8 +24,8 @@ export async function loadHdriEnvironment() {
   }
 
   try {
-    const { RGBELoader } = await import(RGBE_LOADER_URL);
-    const loader = new RGBELoader();
+    const { HDRLoader } = await import(HDR_LOADER_URL);
+    const loader = new HDRLoader();
 
     await new Promise((resolve, reject) => {
       loader.load(
@@ -62,6 +62,6 @@ export async function loadHdriEnvironment() {
       );
     });
   } catch (importErr) {
-    console.warn('[HDRI] RGBELoader import failed, scene continues without env map:', importErr);
+    console.warn('[HDRI] HDRLoader import failed, scene continues without env map:', importErr);
   }
 }

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getRoomEventStatus } from '../utils.js';
 import { getTerrainHeight, getRoomBounds } from '../physics.js';
-import { LANDMARK_REGISTRY } from '../config.js';
+import { LANDMARK_REGISTRY, RIVER_PTS } from '../config.js';
 import { devState } from '../dev-tools.js';
 
 export function initDebugPanel() {

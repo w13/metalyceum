@@ -21,7 +21,7 @@ import { toggleMinimap } from './minimap.js';
 
 import { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
 import { initElevatorUI } from './ui/elevator.js';
-import { initSoundtrackControls } from './ui/soundtrack-panel.js';
+import { initSoundtrackUi, initSoundtrackControls } from './ui/soundtrack-panel.js';
 import { initLoginForm, initColorPickerSync } from './ui/login.js';
 
 function setPanelOpen(panel, button, isOpen) {
@@ -259,4 +259,4 @@ export function initUiHandlers() {
 }
 
 export { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
-// initSoundtrackUi removed — was imported but never called
+export { initSoundtrackUi } from './ui/soundtrack-panel.js';

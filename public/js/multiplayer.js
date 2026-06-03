@@ -78,6 +78,22 @@ const ACTIVE_NETWORK_PROFILE = NETWORK_PROFILES[NETWORK_PROFILE] || NETWORK_PROF
 const SEND_INTERVAL_MS = 1000 / ACTIVE_NETWORK_PROFILE.sendHz;
 let lastSentTime = 0;
 
+// Position-sync runs on its own interval rather than being called from the render loop.
+// This eliminates 5 Math.abs() calls + a comparison on every render frame.
+let _syncPositionTimer = null;
+
+function startPositionSync() {
+  stopPositionSync();
+  _syncPositionTimer = setInterval(syncPosition, SEND_INTERVAL_MS);
+}
+
+function stopPositionSync() {
+  if (_syncPositionTimer !== null) {
+    clearInterval(_syncPositionTimer);
+    _syncPositionTimer = null;
+  }
+}
+
 function setConnectionStatus(connected) {
   document.getElementById('connection-status').classList.toggle('connected', connected);
 }
@@ -255,6 +271,7 @@ export function connectMultiplayer() {
     reconnectFailureShown = false;
     setConnectionStatus(true);
     startHeartbeat(ws);
+    startPositionSync();
 
     // Undim the screen — no chat spam
     _tabReturnPending = false;
@@ -277,6 +294,7 @@ export function connectMultiplayer() {
   ws.addEventListener('close', (event) => {
     if (ws !== state.socket) return;
     stopHeartbeat();
+    stopPositionSync();
     // Dim the screen — no chat spam
     setReconnectOverlay(true, 'Connection lost — reconnecting…');
     // Don't clear remote players — keep them visible but mark as disconnected
@@ -518,6 +536,8 @@ export function removeRemotePlayer(id) {
 
 export function syncPosition() {
   if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return;
+  // Early out if the player hasn't joined yet
+  if (!state.isJoined) return;
 
   const dx = Math.abs(state.localPlayer.x - state.lastSentPosition.x);
   const dy = Math.abs(state.localPlayer.y - state.lastSentPosition.y);

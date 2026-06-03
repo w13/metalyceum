@@ -25,7 +25,9 @@ import { createDoorFrame } from './building/doors.js';
 import { buildClassroomAssets } from './building/interiors.js';
 import { createWallTorch } from './building/torches.js';
 import { buildRoof } from './building/roof.js';
-import { FLAT, HALF_PI } from './math.js';
+
+const HALF_PI = Math.PI / 2;
+const FLAT = -HALF_PI;
 
 // Named building extents — used throughout buildBuilding() for facade, walls, and columns.
 const BLDG_X_MIN = -30;
@@ -245,7 +247,7 @@ export function buildMap() {
   state.scene.add(centerInstances);
 
   const grassInstances = new THREE.InstancedMesh(state.sharedScenery.grassBladeGeo, state.sharedScenery.grassTuftMat, 180);
-  grassInstances.castShadow = true;
+  grassInstances.castShadow = false; // tiny blades don't contribute meaningful shadows
   let bladeIdx = 0;
   for (let i = 0; i < 60; i++) {
     const { x, z, groundY } = samplePosition();
@@ -596,10 +598,6 @@ export function buildBuilding() {
       columnPositions.push({ x, z });
     }
   }
-  addPerimeterCol(-30 - perimOffset, -40 - perimOffset);
-  addPerimeterCol(30 + perimOffset, -40 - perimOffset);
-  addPerimeterCol(-30 - perimOffset, 40 + perimOffset);
-  addPerimeterCol(30 + perimOffset, 40 + perimOffset);
   for (let x = -28; x <= 28; x += perimSpacing) { if (Math.abs(x) > 4) addPerimeterCol(x, 40 + perimOffset); }
   for (let x = -28; x <= 28; x += perimSpacing) { addPerimeterCol(x, -40 - perimOffset); }
   for (let z = -35; z <= 35; z += perimSpacing) { addPerimeterCol(-30 - perimOffset, z); }
@@ -669,7 +667,7 @@ export function buildBuilding() {
   function addFacadeBand(xStart, zStart, xEnd, zEnd, y, height, depth, material, normalX, normalZ) {
     const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
     if (len < 0.01) return;
-    addOrientedBox(len + 1.1, height, depth, (xStart + xEnd) / 2, y, (zStart + zEnd) / 2, angle, material, normalX, normalZ, depth * 0.35, true);
+    addOrientedBox(len, height, depth, (xStart + xEnd) / 2, y, (zStart + zEnd) / 2, angle, material, normalX, normalZ, depth * 0.35, true);
   }
 
   function addBanner(x, z, rotY) {

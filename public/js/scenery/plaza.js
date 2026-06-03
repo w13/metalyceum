@@ -11,7 +11,9 @@ import { registerStaticScenery } from './visibility.js';
 import { createPanelLabelSprite } from './assets.js';
 import { deformPlaneToTerrain, createGroundedPatch, createGroundedRing, getTerrainCeiling, addSceneryCollider } from './utils.js';
 import { createTrimmedBush, createOrnamentalTree, createFlowerCluster, buildFrontApproachLandscaping } from './foliage.js';
-import { FLAT, HALF_PI } from '../math.js';
+
+const HALF_PI = Math.PI / 2;
+const FLAT = -HALF_PI;
 
 export function createBannerStand(x, z, rotationY, color, texture) {
   const group = new THREE.Group();

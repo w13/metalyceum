@@ -586,7 +586,7 @@ export function initTransformControls() {
   controls.addEventListener('change', () => {
     if (state.editor.selectedId) syncSelectedAssetFromObject();
   });
-  state.scene.add(controls);
+  state.scene.add(controls.getHelper());
   state.editor.transformControls = controls;
 }
 

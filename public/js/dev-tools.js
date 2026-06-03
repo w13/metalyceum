@@ -41,8 +41,20 @@ export const devState = {
   showStaticAuditMarkers: false,
 };
 // River coordinates (matching physics.js)
-import { RIVER_PTS } from '../config.js';
-import { pointToSegmentDistSq } from '../math.js';
+import { RIVER_PTS } from './config.js';
+
+function pointToSegmentDistSq(px, pz, x1, z1, x2, z2) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq === 0) {
+    const ddx = px - x1, ddz = pz - z1;
+    return ddx * ddx + ddz * ddz;
+  }
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
+  const cx = x1 + dx * t, cz = z1 + dz * t;
+  const ddx = px - cx, ddz = pz - cz;
+  return ddx * ddx + ddz * ddz;
+}
 
 // Helper: Point-to-segment distance
 // Get distance to closest point on the river (uses shared math)
@@ -1019,9 +1031,6 @@ export function toggleDevMap(forceState) {
   const show = typeof forceState === 'boolean' ? forceState : !devState.showMap;
   devState.showMap = show;
 
-  const checkbox = document.getElementById('dev-map-checkbox');
-  if (checkbox) checkbox.checked = show;
-
   initMapDOM();
   const panel = document.getElementById('dev-map-panel');
   if (panel) {
@@ -1036,118 +1045,76 @@ export function toggleDevMap(forceState) {
   }
 }
 
-// --- lil-gui setup ---
-export function initDevTools(gui) {
-  if (!gui) return;
+// Pre-allocated scratch objects for the Alt+click inspector — avoids per-click allocation
+const _inspRaycaster = new THREE.Raycaster();
+const _inspMouse = new THREE.Vector2();
+const _inspWp = new THREE.Vector3();
+const _inspWq = new THREE.Quaternion();
+const _inspWs = new THREE.Vector3();
 
+export function initDevTools() {
   if (typeof document !== 'undefined') {
     initMapDOM();
   }
 
-  const folder = gui.addFolder('AI & Dev Helpers');
+  if (typeof window === 'undefined') return;
 
-  const mapControl = folder.add(devState, 'showMap').name('Show 2D Map').onChange((v) => {
-    toggleDevMap(v);
-  });
-  if (typeof document !== 'undefined') {
-    const input = mapControl.domElement.querySelector('input');
-    if (input) input.id = 'dev-map-checkbox';
-  }
-
-  folder.add(devState, 'showAssetBoxes').name('Show Asset Colliders').onChange(() => {
-    devState.helpersDirty = true;
-  });
-  folder.add(devState, 'showWallBoxes').name('Show Wall Colliders').onChange(() => {
-    devState.helpersDirty = true;
-  });
-  folder.add(devState, 'showRiverPath').name('Show River Path').onChange(() => {
-    devState.helpersDirty = true;
-  });
-  folder.add(devState, 'showFlatZones').name('Show Flat Zones').onChange(() => {
-    devState.helpersDirty = true;
-  });
-  folder.add(devState, 'showLandmarkBoxes').name('Show Landmark Boxes').onChange(() => {
-    devState.helpersDirty = true;
-  });
-  folder.add(devState, 'showStaticAuditMarkers').name('Show Misalign Markers').onChange(() => {
-    devState.helpersDirty = true;
+  // Shift+M: toggle 2D world map
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'M' && e.shiftKey) {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      toggleDevMap();
+    }
   });
 
-  folder.add({ audit: () => runWorldAudit() }, 'audit').name('Run Placement Audit');
-  folder.add({ auditStatic: () => {
-    const issues = _auditStaticScenery();
-    devState.showStaticAuditMarkers = true;
-    devState.helpersDirty = true;
-    console.log(`[Static Audit] ${issues.length} issues found. Markers enabled.`);
-  }}, 'auditStatic').name('Audit Static Scenery');
-  folder.add({ clearInspected: () => {
-    devState.lastInspected = null;
-    devState.helpersDirty = true;
-  }}, 'clearInspected').name('Clear Inspector');
+  // Alt+click: inspect any mesh and log its world transform
+  window.addEventListener('click', (e) => {
+    if (!e.altKey || !state.DEBUG_STATE?.enabled || !state.camera || !state.renderer) return;
+    const canvas = state.renderer.domElement;
+    const rect = canvas.getBoundingClientRect();
+    _inspMouse.set(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    _inspRaycaster.setFromCamera(_inspMouse, state.camera);
+    const hits = _inspRaycaster.intersectObjects(state.scene.children, true);
+    if (!hits.length) return;
 
-  folder.close();
+    const obj = hits[0].object;
+    obj.getWorldPosition(_inspWp);
+    obj.getWorldQuaternion(_inspWq);
+    const wr = new THREE.Euler().setFromQuaternion(_inspWq);
+    obj.getWorldScale(_inspWs);
 
-  // Alt+click: inspect any mesh in the scene
-  if (typeof window !== 'undefined') {
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'M' && e.shiftKey) {
-        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
-        toggleDevMap();
+    // Walk parent chain to identify landmark membership
+    let parentInfo = 'scene-root';
+    let cur = obj.parent;
+    while (cur && cur !== state.scene) {
+      for (const [key, grp] of state.landmarkGroups.entries()) {
+        if (grp === cur) { parentInfo = `landmark:${key}`; break; }
       }
-    });
+      if (parentInfo !== 'scene-root') break;
+      cur = cur.parent;
+    }
 
-    window.addEventListener('click', (e) => {
-      if (!e.altKey || !state.DEBUG_STATE?.enabled || !state.camera || !state.renderer) return;
-      const canvas = state.renderer.domElement;
-      const rect = canvas.getBoundingClientRect();
-      const mouse = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1
-      );
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, state.camera);
-      const hits = raycaster.intersectObjects(state.scene.children, true);
-      if (!hits.length) return;
+    const terrainY = getTerrainHeight(_inspWp.x, _inspWp.z);
+    const result = {
+      type: obj.type,
+      geometry: obj.geometry?.type || '—',
+      worldPos: { x: +_inspWp.x.toFixed(3), y: +_inspWp.y.toFixed(3), z: +_inspWp.z.toFixed(3) },
+      worldRotDeg: { x: +(wr.x * 180 / Math.PI).toFixed(1), y: +(wr.y * 180 / Math.PI).toFixed(1), z: +(wr.z * 180 / Math.PI).toFixed(1) },
+      worldScale: { x: +_inspWs.x.toFixed(3), y: +_inspWs.y.toFixed(3), z: +_inspWs.z.toFixed(3) },
+      terrainY: +terrainY.toFixed(3),
+      yAboveTerrain: +(_inspWp.y - terrainY).toFixed(3),
+      parentChain: parentInfo,
+      userData: obj.userData,
+    };
 
-      const obj = hits[0].object;
-      const wp = new THREE.Vector3();
-      obj.getWorldPosition(wp);
-      const wq = new THREE.Quaternion();
-      obj.getWorldQuaternion(wq);
-      const wr = new THREE.Euler().setFromQuaternion(wq);
-      const ws = new THREE.Vector3();
-      obj.getWorldScale(ws);
-
-      // Walk parent chain to identify landmark membership
-      let parentInfo = 'scene-root';
-      let cur = obj.parent;
-      while (cur && cur !== state.scene) {
-        for (const [key, grp] of state.landmarkGroups.entries()) {
-          if (grp === cur) { parentInfo = `landmark:${key}`; break; }
-        }
-        if (parentInfo !== 'scene-root') break;
-        cur = cur.parent;
-      }
-
-      const terrainY = getTerrainHeight(wp.x, wp.z);
-      const result = {
-        type: obj.type,
-        geometry: obj.geometry?.type || '—',
-        worldPos: { x: +wp.x.toFixed(3), y: +wp.y.toFixed(3), z: +wp.z.toFixed(3) },
-        worldRotDeg: { x: +(wr.x * 180 / Math.PI).toFixed(1), y: +(wr.y * 180 / Math.PI).toFixed(1), z: +(wr.z * 180 / Math.PI).toFixed(1) },
-        worldScale: { x: +ws.x.toFixed(3), y: +ws.y.toFixed(3), z: +ws.z.toFixed(3) },
-        terrainY: +terrainY.toFixed(3),
-        yAboveTerrain: +(wp.y - terrainY).toFixed(3),
-        parentChain: parentInfo,
-        userData: obj.userData,
-      };
-
-      devState.lastInspected = result;
-      devState.helpersDirty = true;
-      console.log('[Inspector] Alt+clicked:');
-      console.log(JSON.stringify(result, null, 2));
-    });
-  }
+    devState.lastInspected = result;
+    devState.helpersDirty = true;
+    console.log('[Inspector] Alt+clicked:');
+    console.log(JSON.stringify(result, null, 2));
+  });
 }
 
 // --- Calculation helpers (used by both API and internals) ---

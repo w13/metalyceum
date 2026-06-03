@@ -1,18 +1,94 @@
-// Shared scenery utilities — terrain ribbons, scatter helpers, water shader factory
+// Shared scenery utilities — terrain ribbons, terrain helpers, colliders, water shader factory
 import * as THREE from 'three';
+import { state } from '../state.js';
+import { MAP_SIZE } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
+import { isWorldPlacementAllowed } from '../utils.js';
+
+// ── Terrain deformation helpers ──────────────────────────────────────────
+export function deformPlaneToTerrain(geometry, translateZ) {
+  deformGroundGeometry(geometry, 0, translateZ);
+}
+
+export function deformGroundGeometry(geometry, centerX, centerZ, scaleX = 1, scaleY = 1) {
+  const pos = geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const vx = pos.getX(i) * scaleX;
+    const vy = pos.getY(i) * scaleY;
+    const h = getTerrainHeight(centerX + vx, centerZ - vy);
+    pos.setX(i, vx);
+    pos.setY(i, vy);
+    pos.setZ(i, h);
+  }
+  geometry.computeVertexNormals();
+}
+
+export function getTerrainCeiling(x, z, halfX = 0, halfZ = 0) {
+  const sampleOffsets = [
+    [0, 0],
+    [-halfX, -halfZ], [-halfX, halfZ],
+    [halfX, -halfZ], [halfX, halfZ],
+    [-halfX, 0], [halfX, 0],
+    [0, -halfZ], [0, halfZ]
+  ];
+  return sampleOffsets.reduce((maxHeight, [offsetX, offsetZ]) => {
+    return Math.max(maxHeight, getTerrainHeight(x + offsetX, z + offsetZ));
+  }, getTerrainHeight(x, z));
+}
+
+export function createGroundedPatch(geometry, material, centerX, centerZ, {
+  yOffset = 0.02,
+  scaleX = 1,
+  scaleY = 1,
+  receiveShadow = true,
+  castShadow = false
+} = {}) {
+  deformGroundGeometry(geometry, centerX, centerZ, scaleX, scaleY);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(centerX, yOffset, centerZ);
+  mesh.receiveShadow = receiveShadow;
+  mesh.castShadow = castShadow;
+  return mesh;
+}
+
+export function createGroundedRing(innerRadius, outerRadius, segments, material, centerX, centerZ, options = {}) {
+  return createGroundedPatch(
+    new THREE.RingGeometry(innerRadius, outerRadius, segments),
+    material,
+    centerX,
+    centerZ,
+    options
+  );
+}
+
+export function addSceneryCollider(minX, maxX, minZ, maxZ, assetId) {
+  state.PLACED_ASSET_COLLIDERS.push({ minX, maxX, minZ, maxZ, assetId });
+}
+
+/** Rejection-sample a world position that passes isWorldPlacementAllowed. */
+export function samplePosition(margin = 20) {
+  let x, z;
+  do {
+    x = (Math.random() - 0.5) * (MAP_SIZE - margin);
+    z = (Math.random() - 0.5) * (MAP_SIZE - margin);
+  } while (!isWorldPlacementAllowed(x, z));
+  return { x, z, groundY: getTerrainHeight(x, z) };
+}
+
+/** Compute length, angle, and deltas from (x1,z1) to (x2,z2). */
+export function vec2LengthAngle(x1, z1, x2, z2) {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  return { dx, dz, len, angle: Math.atan2(dz, dx) };
+}
 
 // ── Terrain-following ribbon (used by roads + river) ─────────────────────
-// Builds a quad strip that follows terrain height at each vertex.
-// points: Array of [x, z] or THREE.Vector3
-// Options: width, yOffset, lateralOffset, addUVs, verticalBias (water surface offset)
 export function buildTerrainRibbon(points, width, material, options = {}) {
   if (points.length < 2) return null;
   const {
-    yOffset = 0,
-    lateralOffset = 0,
-    addUVs = false,
-    verticalBias = 0, // + for upper surface, - for lower surface
+    yOffset = 0, lateralOffset = 0, addUVs = false, verticalBias = 0,
   } = options;
 
   const positions = [];
@@ -23,14 +99,15 @@ export function buildTerrainRibbon(points, width, material, options = {}) {
     const prev = points[Math.max(i - 1, 0)];
     const next = points[Math.min(i + 1, points.length - 1)];
 
-    // Extract coordinates regardless of point format
-    const cx = prev[0] !== undefined ? prev[0] : prev.x; const cz = prev[1] !== undefined ? prev[1] : prev.z;
-    const nx = next[0] !== undefined ? next[0] : next.x; const nz = next[1] !== undefined ? next[1] : next.z;
+    const cx = prev[0] !== undefined ? prev[0] : prev.x;
+    const cz = prev[1] !== undefined ? prev[1] : prev.z;
+    const nx = next[0] !== undefined ? next[0] : next.x;
+    const nz = next[1] !== undefined ? next[1] : next.z;
     let dx = nx - cx, dz = nz - cz;
     let tangentLen = Math.sqrt(dx * dx + dz * dz);
     if (tangentLen < 0.001) { dx = 0; dz = 1; tangentLen = 1; }
     const tx = dx / tangentLen, tz = dz / tangentLen;
-    const rx = -tz, rz = tx; // right perpendicular
+    const rx = -tz, rz = tx;
 
     const ptx = points[i][0] !== undefined ? points[i][0] : points[i].x;
     const ptz = points[i][1] !== undefined ? points[i][1] : points[i].z;
@@ -65,7 +142,6 @@ export function buildTerrainRibbon(points, width, material, options = {}) {
 }
 
 // ── Water shader factory ─────────────────────────────────────────────────
-// Creates a ShaderMaterial with animated wave displacement and depth-based coloring.
 export function createWaterShader(opts = {}) {
   const {
     deepColor = [0.02, 0.12, 0.28],

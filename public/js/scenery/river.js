@@ -4,7 +4,9 @@ import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 
 import { RIVER_PTS } from '../config.js';
-import { FLAT, HALF_PI } from '../math.js';
+
+const HALF_PI = Math.PI / 2;
+const FLAT = -HALF_PI;
 
 const RIVER_WIDTH = 4.5;
 const BRIDGE_X = 73, BRIDGE_Z = 8;
@@ -139,11 +141,13 @@ export function buildRiver() {
   buildRiverRibbon(upperPts, RIVER_WIDTH, upperMat, true);
   buildRiverRibbon(lowerPts, RIVER_WIDTH, lowerMat, false);
 
-  // ── Waterfall ────────────────────────────────────────────────────────
-  buildWaterfall(waterMaterials);
-
-  // ── Boulders along the river ────────────────────────────────────────
+  // ── Boulders along the river ── (InstancedMesh — was 25 individual draw calls)
   const rockMat = state.sharedScenery.boulderMat;
+  const rockGeo = new THREE.DodecahedronGeometry(0.5, 0); // base size; scale varies per instance
+  const rockInstances = new THREE.InstancedMesh(rockGeo, rockMat, 25);
+  rockInstances.castShadow = true;
+  rockInstances.receiveShadow = true;
+  const _rockObj = new THREE.Object3D();
   for (let i = 0; i < 25; i++) {
     const segIdx = Math.floor(Math.random() * (RIVER_PTS.length - 1));
     const [ax, az] = RIVER_PTS[segIdx];
@@ -157,16 +161,27 @@ export function buildRiver() {
     const bx3 = rx + Math.cos(perpAngle) * offset;
     const bz3 = rz + Math.sin(perpAngle) * offset;
     const rockY = getTerrainHeight(bx3, bz3);
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.25 + Math.random() * 0.5, 0), rockMat);
-    rock.position.set(bx3, rockY + 0.05, bz3);
-    rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-    rock.scale.set(1, 0.4 + Math.random() * 0.6, 1);
-    state.scene.add(rock);
+    const scaleX = 0.5 + Math.random();
+    const scaleY = (0.4 + Math.random() * 0.6) * scaleX;
+    _rockObj.position.set(bx3, rockY + 0.05, bz3);
+    _rockObj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    _rockObj.scale.set(scaleX, scaleY, scaleX);
+    _rockObj.updateMatrix();
+    rockInstances.setMatrixAt(i, _rockObj.matrix);
   }
+  rockInstances.instanceMatrix.needsUpdate = true;
+  state.scene.add(rockInstances);
 
-  // ── Daffodils along the riverbanks ──────────────────────────────────
+  // ── Daffodils along the riverbanks ── (InstancedMesh — was 100 individual draw calls)
   const stemMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.9 });
   const petalMat = new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.7 });
+  const stemGeo = new THREE.CylinderGeometry(0.015, 0.02, 0.4, 4);
+  const headGeo = new THREE.SphereGeometry(0.04, 6, 6);
+  const stemInstances = new THREE.InstancedMesh(stemGeo, stemMat, 50);
+  const headInstances = new THREE.InstancedMesh(headGeo, petalMat, 50);
+  stemInstances.castShadow = false;
+  headInstances.castShadow = false;
+  const _daffObj = new THREE.Object3D();
   for (let i = 0; i < 50; i++) {
     const segIdx = Math.floor(Math.random() * (RIVER_PTS.length - 1));
     const [ax, az] = RIVER_PTS[segIdx];
@@ -180,13 +195,22 @@ export function buildRiver() {
     const dax = fx2 + Math.cos(perpAngle) * offset;
     const daz = fz2 + Math.sin(perpAngle) * offset;
     const dy = getTerrainHeight(dax, daz);
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.4, 4), stemMat);
-    stem.position.set(dax, dy + 0.2, daz);
-    state.scene.add(stem);
-    const center = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), petalMat);
-    center.position.set(dax, dy + 0.42, daz);
-    state.scene.add(center);
+    _daffObj.position.set(dax, dy + 0.2, daz);
+    _daffObj.rotation.set(0, Math.random() * Math.PI * 2, 0);
+    _daffObj.scale.setScalar(1);
+    _daffObj.updateMatrix();
+    stemInstances.setMatrixAt(i, _daffObj.matrix);
+    _daffObj.position.set(dax, dy + 0.42, daz);
+    _daffObj.updateMatrix();
+    headInstances.setMatrixAt(i, _daffObj.matrix);
   }
+  stemInstances.instanceMatrix.needsUpdate = true;
+  headInstances.instanceMatrix.needsUpdate = true;
+  state.scene.add(stemInstances);
+  state.scene.add(headInstances);
+
+  // ── Waterfall ────────────────────────────────────────────────────────
+  buildWaterfall(waterMaterials);
 
   buildStoneArchBridge();
 
@@ -288,6 +312,8 @@ function buildWaterfall(waterMaterials) {
 }
 
 // ── Stone Arch Bridge ────────────────────────────────────────────────────
+// Uses InstancedMesh for voussoirs, crenellations and ramp steps to reduce
+// 54+ individual scene.add() calls to just 5 instanced draw calls.
 function buildStoneArchBridge() {
   const bx = BRIDGE_X, bz = BRIDGE_Z;
   const brickMat = new THREE.MeshStandardMaterial({ color: '#8a7a5a', roughness: 0.78 });
@@ -312,21 +338,39 @@ function buildStoneArchBridge() {
   const archR = (span * span + archRise * archRise) / (2 * archRise);
   const centerY = bridgeY + archRise - archR;
 
-  // Arch voussoirs
+  // ── Arch voussoirs — batched into two InstancedMesh (alternating brick/stone)
   const voussoirCount = 18;
+  const rowCount = 3;
+  const totalBrick = Math.ceil(voussoirCount / 2) * rowCount;  // even indices
+  const totalStone = Math.floor(voussoirCount / 2) * rowCount; // odd indices
+  const vGeo = new THREE.BoxGeometry(0.5, 0.22, 0.3);
+  const brickInst = new THREE.InstancedMesh(vGeo, brickMat, totalBrick);
+  const stoneInst = new THREE.InstancedMesh(vGeo, stoneMat, totalStone);
+  brickInst.castShadow = true; stoneInst.castShadow = true;
+  const _vo = new THREE.Object3D();
+  let brickIdx = 0, stoneIdx = 0;
   for (let i = 0; i < voussoirCount; i++) {
     const t = i / (voussoirCount - 1);
     const axOff = (t - 0.5) * span * 2;
     const ayOff = centerY + Math.sqrt(Math.max(0, archR * archR - axOff * axOff));
-    const w = 0.5;
     for (let row = -1; row <= 1; row++) {
       const rOff = row * 0.6;
-      const block = new THREE.Mesh(new THREE.BoxGeometry(w, 0.22, 0.3), i % 2 === 0 ? brickMat : stoneMat);
-      block.position.set(bx + Math.cos(perpAngle) * rOff + Math.cos(segAngle) * axOff, ayOff + 0.11, bz + Math.sin(perpAngle) * rOff + Math.sin(segAngle) * axOff);
-      block.castShadow = true;
-      state.scene.add(block);
+      _vo.position.set(
+        bx + Math.cos(perpAngle) * rOff + Math.cos(segAngle) * axOff,
+        ayOff + 0.11,
+        bz + Math.sin(perpAngle) * rOff + Math.sin(segAngle) * axOff
+      );
+      _vo.rotation.set(0, 0, 0);
+      _vo.scale.setScalar(1);
+      _vo.updateMatrix();
+      if (i % 2 === 0) { brickInst.setMatrixAt(brickIdx++, _vo.matrix); }
+      else             { stoneInst.setMatrixAt(stoneIdx++, _vo.matrix); }
     }
   }
+  brickInst.instanceMatrix.needsUpdate = true;
+  stoneInst.instanceMatrix.needsUpdate = true;
+  state.scene.add(brickInst);
+  state.scene.add(stoneInst);
 
   // Deck
   const deck = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.3, 2.8), stoneMat);
@@ -342,25 +386,33 @@ function buildStoneArchBridge() {
   road.receiveShadow = true;
   state.scene.add(road);
 
-  // Parapet walls with crenellations
+  // ── Parapet walls with crenellations — batched into InstancedMesh per side
+  const crenGeo = new THREE.BoxGeometry(0.55, 0.7, 0.18);
+  const merlonGeo = new THREE.BoxGeometry(0.45, 0.25, 0.18);
+  // 10 segments + 5 merlons per side × 2 sides = 20 crenInst, 10 merlonInst
+  const crenInst = new THREE.InstancedMesh(crenGeo, stoneMat, 20);
+  const merlonInst = new THREE.InstancedMesh(merlonGeo, darkStoneMat, 10);
+  crenInst.castShadow = true;
+  const _cv = new THREE.Object3D();
+  let crenIdx = 0, merlonIdx = 0;
   for (let side = -1; side <= 1; side += 2) {
     const pOff = side * 1.55;
     for (let i = 0; i < 10; i++) {
       const t = (i / 9) - 0.5;
       const px = bx + Math.cos(perpAngle) * pOff + Math.cos(segAngle) * t * 5;
       const pz = bz + Math.sin(perpAngle) * pOff + Math.sin(segAngle) * t * 5;
-      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.18), stoneMat);
-      seg.position.set(px, bridgeY + 1.45, pz);
-      seg.castShadow = true;
-      state.scene.add(seg);
+      _cv.position.set(px, bridgeY + 1.45, pz);
+      _cv.rotation.set(0, 0, 0);
+      _cv.scale.setScalar(1);
+      _cv.updateMatrix();
+      crenInst.setMatrixAt(crenIdx++, _cv.matrix);
       if (i % 2 === 0) {
-        const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.25, 0.18), darkStoneMat);
-        merlon.position.set(px, bridgeY + 1.85, pz);
-        state.scene.add(merlon);
+        _cv.position.set(px, bridgeY + 1.85, pz);
+        _cv.updateMatrix();
+        merlonInst.setMatrixAt(merlonIdx++, _cv.matrix);
       }
     }
   }
-
   // Approach ramps
   for (let side = -1; side <= 1; side += 2) {
     for (let step = 0; step < 5; step++) {

@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';
-import { FLAT, HALF_PI } from '../math.js';
+
+const HALF_PI = Math.PI / 2;
+const FLAT = -HALF_PI;
 
 export function buildCaveAndUndergroundCity() {
   const cx = 120, cz = 80;

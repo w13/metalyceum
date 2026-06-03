@@ -15,8 +15,8 @@ import {
   CAMERA_HEADING_DECAY,
   CAMERA_TARGET_LOOK_HEIGHT
 } from '../config.js';
-import { isLocalPlayerUnderRoof } from '../physics.js';
 import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
+import { isLocalPlayerUnderRoof } from '../physics.js';
 
 // Scratch variables to cut garbage collection overhead to 0 per frame
 const _orbitOffset = new THREE.Vector3();
