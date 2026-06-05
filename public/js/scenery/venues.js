@@ -16,7 +16,7 @@ export function buildOutdoorVenues() {
   buildAmphitheater();
   buildConcertVenue();
   buildAirport();
+  buildCastle();
   buildCaveAndUndergroundCity();
   buildRiver();
-  buildCastle();
 }

@@ -5,7 +5,7 @@ import { state } from '../state.js';
 export function buildRoof(batcher, materials, config) {
   const { addMesh, addOrientedBox } = batcher;
   const { limestoneMat, bronzeMat, limestoneShadowMat } = materials;
-  const { entablatureY } = config;
+  const { entablatureY, registerRoofMesh = null } = config;
 
   const halfBldgW = 30;
   const halfBldgD = 40;
@@ -61,7 +61,8 @@ export function buildRoof(batcher, materials, config) {
   function addRoofMesh(mesh) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    state.roofMeshes.push(mesh);
+    if (registerRoofMesh) registerRoofMesh(mesh);
+    else state.roofMeshes.push(mesh);
     state.scene.add(mesh);
   }
 

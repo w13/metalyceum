@@ -8,7 +8,7 @@ import { RIVER_PTS } from '../config.js';
 const HALF_PI = Math.PI / 2;
 const FLAT = -HALF_PI;
 
-const RIVER_WIDTH = 4.5;
+const RIVER_WIDTH = 8.0; // wider water mesh to fill the deepened channel
 const BRIDGE_X = 73, BRIDGE_Z = 8;
 const WATERFALL_X = 30, WATERFALL_Z = 90;
 
@@ -20,12 +20,14 @@ const waterVertShader = `
   void main() {
     vUv = uv;
     vec3 pos = position;
-    float wave1 = sin(pos.x * 0.8 + uTime * 1.2) * 0.04
-                + sin(pos.y * 0.6 + uTime * 0.9 + 1.3) * 0.03;
-    float wave2 = sin(pos.x * 0.3 + pos.y * 0.4 + uTime * 0.7) * 0.06
-                + sin(pos.x * 0.5 - pos.y * 0.5 + uTime * 1.1) * 0.04;
-    pos.z += wave1 + wave2;
-    vElevation = pos.z;
+    // uv.x = across width (0..1), uv.y = along river length (increases downstream)
+    // Displace Y (vertical) so waves are surface ripples, not horizontal wiggles
+    float wave1 = sin(vUv.x * 6.0 + uTime * 1.2) * 0.05
+                + sin(vUv.y * 2.2 + uTime * 0.9 + 1.3) * 0.04;
+    float wave2 = sin(vUv.x * 2.5 + vUv.y * 1.8 + uTime * 0.7) * 0.07
+                + sin(vUv.x * 4.0 - vUv.y * 1.4 + uTime * 1.1) * 0.05;
+    vElevation = wave1 + wave2;
+    pos.y += vElevation;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
   }
 `;
@@ -332,11 +334,18 @@ function buildStoneArchBridge() {
     }
   }
   const perpAngle = segAngle + Math.PI / 2;
-  const bridgeY = getTerrainHeight(bx, bz);
+
+  // Use raw terrain (ignoring the bridge override) as the river-bottom reference.
+  // This prevents the recursive getTerrainHeight call from returning the already-elevated
+  // bridge deck height, which made the arch crown float ~2u above the road surface.
+  const rawBridgeY = getTerrainHeight(bx, bz, true); // river bottom ≈ −6u here
+  const deckSurfaceY = rawBridgeY + 3.6;             // matches physics.js return value
+
   const span = 5.0;
   const archRise = 2.2;
   const archR = (span * span + archRise * archRise) / (2 * archRise);
-  const centerY = bridgeY + archRise - archR;
+  // Crown of arch = deckSurfaceY; centre of circular arc is that many units below the crown
+  const centerY = deckSurfaceY - archR;
 
   // ── Arch voussoirs — batched into two InstancedMesh (alternating brick/stone)
   const voussoirCount = 18;
@@ -372,16 +381,16 @@ function buildStoneArchBridge() {
   state.scene.add(brickInst);
   state.scene.add(stoneInst);
 
-  // Deck
+  // Deck — centre at deckSurfaceY (box is 0.3 thick; top face = deckSurfaceY + 0.15)
   const deck = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.3, 2.8), stoneMat);
-  deck.position.set(bx, bridgeY + 1.1, bz);
+  deck.position.set(bx, deckSurfaceY, bz);
   deck.rotation.y = -perpAngle;
   deck.castShadow = true;
   deck.receiveShadow = true;
   state.scene.add(deck);
 
   const road = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.08, 2.4), roadMat);
-  road.position.set(bx, bridgeY + 1.2, bz);
+  road.position.set(bx, deckSurfaceY + 0.19, bz);
   road.rotation.y = -perpAngle;
   road.receiveShadow = true;
   state.scene.add(road);
@@ -401,26 +410,32 @@ function buildStoneArchBridge() {
       const t = (i / 9) - 0.5;
       const px = bx + Math.cos(perpAngle) * pOff + Math.cos(segAngle) * t * 5;
       const pz = bz + Math.sin(perpAngle) * pOff + Math.sin(segAngle) * t * 5;
-      _cv.position.set(px, bridgeY + 1.45, pz);
+      _cv.position.set(px, deckSurfaceY + 0.5, pz);
       _cv.rotation.set(0, 0, 0);
       _cv.scale.setScalar(1);
       _cv.updateMatrix();
       crenInst.setMatrixAt(crenIdx++, _cv.matrix);
       if (i % 2 === 0) {
-        _cv.position.set(px, bridgeY + 1.85, pz);
+        _cv.position.set(px, deckSurfaceY + 0.9, pz);
         _cv.updateMatrix();
         merlonInst.setMatrixAt(merlonIdx++, _cv.matrix);
       }
     }
   }
-  // Approach ramps
+  // Approach ramps — extend outward along the crossing direction (perpAngle), not along the river.
+  // Steps interpolate from deckSurfaceY (inner) down to natural terrain (outer).
   for (let side = -1; side <= 1; side += 2) {
     for (let step = 0; step < 5; step++) {
-      const t = (step + 1) / 5;
-      const axOff = side * (span + t * 2.5);
-      const rampY = bridgeY + t * 0.6;
+      const t = (step + 1) / 5;                        // 0.2 → 1.0 going outward
+      const dist = span * 0.5 + t * 4.5;               // 3.0 → 7.0 units from centre
+      const stepX = bx + Math.cos(perpAngle) * side * dist;
+      const stepZ = bz + Math.sin(perpAngle) * side * dist;
+      const groundY = getTerrainHeight(stepX, stepZ, true);
+      // Height: starts near deckSurfaceY at t=0, reaches natural terrain at t=1
+      const stepSurfaceY = deckSurfaceY + (groundY - deckSurfaceY) * t;
       const stepMesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.15, 2.2), stoneMat);
-      stepMesh.position.set(bx + Math.cos(segAngle) * axOff, rampY + 0.075, bz + Math.sin(segAngle) * axOff);
+      stepMesh.position.set(stepX, stepSurfaceY + 0.075, stepZ);
+      stepMesh.rotation.y = -perpAngle;
       stepMesh.receiveShadow = true;
       stepMesh.castShadow = true;
       state.scene.add(stepMesh);

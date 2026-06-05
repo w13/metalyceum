@@ -349,6 +349,11 @@ function moveNpcTowardTarget(npc, dt) {
 
 export function updateNpcs(dt) {
   state.npcs.forEach((npc) => {
+    // Cull NPC updates when >100u from the player — movement, limb animation,
+    // and emoji timing are all imperceptible at that distance.
+    const _npcDx = state.localPlayer ? state.localPlayer.x - npc.x : 0;
+    const _npcDz = state.localPlayer ? state.localPlayer.z - npc.z : 0;
+    if (_npcDx * _npcDx + _npcDz * _npcDz > 10000) return; // 100u²
     // Emoji animation — show random emoji during idle, hide during walk
     if (npc.emojiSprite) {
       npc.emojiTimer -= dt;

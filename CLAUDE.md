@@ -106,7 +106,7 @@ No lint/format scripts. Tests live in `src/**/*.test.ts` and `test/client/*.test
 - **`js/room-animation.js`** — Animated room entrance/exit transitions.
 - **`js/modals.js`** — Generic modal dialog helpers.
 - **`js/utils.js`** — Shared helpers (e.g., `applyRoomData`).
-- **`js/debug-tweaks.js`** — Runtime debug toggles.
+- **`js/debug-tweaks.js`** — *(deleted; lil-gui panel removed)*
 
 ## LLM world-building tools
 
@@ -169,7 +169,7 @@ metalyceumDev.teleportTo('castle')
 metalyceumDev.listLandmarks()  // ['castle','airport','amphitheater','concertVenue','undergroundCity']
 ```
 
-The **lil-gui Landmarks folder** (debug panel → Landmarks) provides the same live-slider experience for manual adjustment. "Copy Values" button logs `JSON.stringify({x,y,z,rotY})` to the console.
+Live landmark adjustment is done via the console only — the lil-gui panel was removed.
 
 ### World state snapshot
 
@@ -216,11 +216,103 @@ metalyceumDev.nearestObjects(130, -80, 15)
 // → [{label, id, x, z, r, centreDist, edgeDist}, ...]
 ```
 
+### Z-fighting and shimmering
+
+```js
+// Scan flat meshes near the player for terrain z-fighting and surface-on-surface overlap
+metalyceumDev.auditZFighting()        // → issues[], 200u radius
+metalyceumDev.auditZFighting(60)      // tighter scan around current position
+metalyceumDev.getZFightIssues()       // return cached results without re-scanning
+metalyceumDev.toggleZFightMarkers()   // flip coloured 3D ring markers on/off
+```
+
+Each issue includes a `fix` field with the exact material change needed:
+- `terrain-zfight` → add `polygonOffset: true, polygonOffsetFactor: -2` to material, or raise mesh Y
+- `surface-zfight` → add `polygonOffset` to the upper mesh's material
+
+Severity: `critical` (<0.005u gap) · `high` (<0.02u) · `medium` (<0.06u) · `info` (offset present but gap is essentially zero)
+
+### Consolidated build audit
+
+Run this after adding or modifying geometry in any area. It bundles all checks into one call.
+
+```js
+// Audit the area around the player (60u radius)
+metalyceumDev.buildAudit()
+
+// Audit a specific area — use this when editing a scenery file
+metalyceumDev.buildAudit(130, -80, 80)   // cx, cz, radius
+
+// Returns:
+// {
+//   site:        worldQuery result for the centre
+//   terrain:     { min, max, maxSlope, isFlat }
+//   zfighting:   { critical, high, medium, issues[] }
+//   placedAssets:{ count, issues[] }
+//   scenery:     { count, issues[] }
+//   summary:     'CLEAN' | 'N issues'
+// }
+```
+
 ### Key data sources
 
 - **`LANDMARK_REGISTRY`** in `public/js/config.js` — authoritative landmark names, center coords, radii. All landmark-aware code reads from here; never hardcode these values elsewhere.
 - **`state.landmarkGroups`** — `Map<string, THREE.Group>` holding each landmark's root group. All 5 landmark scenery files register their group here after building.
 - **Scenery files** (`public/js/scenery/castle.js` etc.) use a root `THREE.Group` that is both added to `state.scene` and registered in `state.landmarkGroups`. Moving the group offsets all child meshes.
+
+## Running dev tools during a coding session
+
+When writing or modifying scenery/building code, verify the result in-browser using the Chrome browser automation tools (`mcp__claude-in-chrome__*`). This is the authoritative check — type-checking and tests cannot catch geometry placement errors.
+
+### Workflow
+
+1. **Ensure the dev server is running.** If not: `npm run dev` (use `run_in_background: true`).
+
+2. **Get a browser tab.** Use `mcp__claude-in-chrome__tabs_context_mcp` to find an existing tab, or create one with `mcp__claude-in-chrome__tabs_create_mcp` and navigate to `http://localhost:8787`.
+
+3. **Wait for the world to load.** The map builds asynchronously. Poll with:
+   ```js
+   // Paste into mcp__claude-in-chrome__javascript_tool
+   typeof window.metalyceumDev !== 'undefined' && window.metalyceumDev.terrainAt !== undefined
+   // → true once the API is live
+   ```
+
+4. **Teleport to the area being worked on** (no need to walk there):
+   ```js
+   metalyceumDev.teleport(130, -80)          // by coordinates
+   metalyceumDev.teleportTo('castle')        // by landmark name
+   ```
+
+5. **Run the audit.** Use the centre of the modified area and a radius that covers it:
+   ```js
+   metalyceumDev.buildAudit(cx, cz, radius)
+   ```
+   Read results via `mcp__claude-in-chrome__read_console_messages` (filter on `[buildAudit]`).
+
+6. **Fix any issues**, then re-run until the report shows `summary: 'CLEAN'`.
+
+### Which tool for which situation
+
+| Situation | Command |
+|-----------|---------|
+| After adding a road, carpet, or flat floor mesh | `metalyceumDev.auditZFighting(60)` |
+| After moving a landmark | `metalyceumDev.audit()` |
+| After adding static scenery groups | `metalyceumDev.auditStaticScenery(0.4)` |
+| Before placing new geometry — understand the site | `metalyceumDev.worldQuery(x, z)` |
+| Full area verification (before committing) | `metalyceumDev.buildAudit(cx, cz, radius)` |
+| Investigating a specific object | Alt+click the mesh in-game → `metalyceumDev.getLastInspected()` |
+| Checking terrain slope for a road/ramp | `metalyceumDev.sampleTerrain(cx, cz, r, 7)` |
+
+### What to do with audit results
+
+- **`terrain-zfight`**: add `polygonOffset: true, polygonOffsetFactor: -2` to the mesh's material, OR raise its Y by the `gap` amount shown in the `fix` field.
+- **`surface-zfight`**: add `polygonOffset` to the upper mesh's material.
+- **`floating` / `buried`**: use `metalyceumDev.suggestFix(n)` to get the exact corrected Y.
+- **`clipping`**: use `metalyceumDev.suggestFix(n)` to get the minimum separation delta.
+
+### Important: log in first
+
+Most `metalyceumDev` tools require a joined player session (`state.isJoined = true`). `worldQuery`, `terrainAt`, and `sampleTerrain` work without joining, but `auditZFighting`, `audit`, and `buildAudit` need the scene to be fully built. Log in with any username/avatar color before running audits.
 
 ## Conventions and constraints
 

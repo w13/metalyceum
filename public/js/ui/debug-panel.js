@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getRoomEventStatus } from '../utils.js';
 import { getTerrainHeight, getRoomBounds } from '../physics.js';
+
+// Reusable scratch vector — avoids new THREE.Vector3() allocation every frame in debug panel
+const _camDir = new THREE.Vector3();
 import { LANDMARK_REGISTRY, RIVER_PTS } from '../config.js';
 import { devState } from '../dev-tools.js';
 
@@ -324,9 +327,8 @@ export function updateDebugPanel(now) {
       state.debugCameraPosEl.textContent = `X: ${state.camera.position.x.toFixed(2)} | Y: ${state.camera.position.y.toFixed(2)} | Z: ${state.camera.position.z.toFixed(2)}`;
     }
     if (state.debugCameraDirEl && typeof THREE !== 'undefined') {
-      const camDir = new THREE.Vector3();
-      state.camera.getWorldDirection(camDir);
-      state.debugCameraDirEl.textContent = `X: ${camDir.x.toFixed(2)} | Y: ${camDir.y.toFixed(2)} | Z: ${camDir.z.toFixed(2)}`;
+      state.camera.getWorldDirection(_camDir);
+      state.debugCameraDirEl.textContent = `X: ${_camDir.x.toFixed(2)} | Y: ${_camDir.y.toFixed(2)} | Z: ${_camDir.z.toFixed(2)}`;
     }
   }
 

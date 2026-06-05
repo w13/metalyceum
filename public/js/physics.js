@@ -1,7 +1,13 @@
 // Physics and Collision Handling for Metalyceum
 import * as THREE from 'three';
 import { state } from './state.js';
-import { MAP_SIZE, COVERED_BOUNDS, LOBBY_BOUNDS, RIVER_PTS } from './config.js';
+import {
+  MAP_SIZE,
+  COVERED_BOUNDS,
+  LOBBY_BOUNDS,
+  MAIN_BUILDING_MEZZANINE_Y,
+  RIVER_PTS
+} from './config.js';
 import { AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from './utils.js';
 
 function pointToSegmentDistSq(px, pz, x1, z1, x2, z2) {
@@ -71,9 +77,10 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
       return 0.275; // Top of the deck (bridgeY + 0.125)
     }
     // 2. Stone Arch Bridge at (73, 8)
+    // length=2.8 is along the river; width=6.5 is the crossing span (was swapped)
     const segAngle = Math.atan2(18, 3);
     const perpAngle = segAngle + Math.PI / 2;
-    if (isOnRotatedBridge(x, z, 73, 8, -perpAngle, 6.5, 2.8)) {
+    if (isOnRotatedBridge(x, z, 73, 8, -perpAngle, 2.8, 6.5)) {
       const rawTerrainY = getTerrainHeight(73, 8, true);
       return rawTerrainY + 3.6; // Top of road deck
     }
@@ -84,7 +91,7 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
       Math.abs(x) <= 29.5 && z >= -40 && z <= 40 &&
       state.localPlayer && state.localPlayer.y > 3.0
     ) {
-      return 7.5; // Mezzanine deck surface
+      return MAIN_BUILDING_MEZZANINE_Y; // Mezzanine deck surface
     }
   }
 
@@ -124,8 +131,9 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
     const d = Math.sqrt(pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]));
     if (d < riverDist) riverDist = d;
   }
-  const riverChannel = _ss(7.0, 0.0, riverDist) * 4.8
-    + _ss(10.0, 7.0, riverDist) * 1.2;
+  // Wider, deeper channel: inner 9u half-width, 7u deep; berm 9–13u, 1.5u deep
+  const riverChannel = _ss(9.0, 0.0, riverDist) * 7.0
+    + _ss(13.0, 9.0, riverDist) * 1.5;
 
   // Waterfall step at (30, 90)
   const wfDist = Math.abs((x - 30) * Math.cos(-0.6) + (z - 90) * Math.sin(-0.6));
@@ -233,10 +241,9 @@ export function getWaterSurfaceHeight(x, z) {
     const d = Math.sqrt(pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]));
     if (d < riverDist) riverDist = d;
   }
-  // River channel extends about 4 units from centerline
+  // Water fills the inner 4.5u of the 9u half-width channel (some bank visible on each side)
   if (riverDist > 4.5) return null;
-  // Water surface is ~2.8 units below the reference terrain at the closest river point
-  // Find the closest river control point to estimate surface height (use local vars, don't mutate RIVER_PTS)
+  // Find the closest river control point to sample terrain at the channel centre
   let closestX = RIVER_PTS[0][0], closestZ = RIVER_PTS[0][1];
   let minDist2 = Infinity;
   for (let i = 0; i < RIVER_PTS.length; i++) {
@@ -244,7 +251,7 @@ export function getWaterSurfaceHeight(x, z) {
     const d2 = dx * dx + dz * dz;
     if (d2 < minDist2) { minDist2 = d2; closestX = RIVER_PTS[i][0]; closestZ = RIVER_PTS[i][1]; }
   }
-  // Sample terrain at the closest point to get the reference (non-channel) height
+  // Water surface = terrain at channel centre (already depressed) + 1.0, matching buildRiverRibbon
   const ref = getTerrainHeight(closestX, closestZ, true);
-  return ref - 2.8;
+  return ref + 1.0;
 }

@@ -38,6 +38,8 @@ export const state = {
   STATIC_SCENERY: [],
   /** @type {Map<string, any>} */
   landmarkGroups: new Map(),
+  /** Per-building fade registry for roofs, upper stories, and basements. */
+  fadeZones: [],
   /** Second-floor meshes — faded only when player is on the ground floor. */
   upperFloor: [],
   /** @type {any[]} */

@@ -44,30 +44,7 @@ import {
 import { updateLocalPlayer } from './engine/movement.js';
 import { updateJetpack } from './engine/jetpack.js';
 import { updateTorches } from './lighting.js';
-
-// Fade an array of Object3Ds toward a target opacity each frame.
-// Transparent materials lerp; opaque materials switch at 0.5 threshold.
-// Returns true if any transparent item is still lerping (not yet converged).
-function fadeMeshArray(arr, target, dt) {
-  let converging = false;
-  for (let i = 0; i < arr.length; i++) {
-    const m = arr[i];
-    if (!m || !m.isObject3D) continue;
-    if (m.material && m.material.transparent) {
-      const prevOpacity = m.material.opacity;
-      const newOpacity = THREE.MathUtils.lerp(prevOpacity, target, 8 * dt);
-      if (Math.abs(newOpacity - prevOpacity) > 0.0005) {
-        m.material.opacity = newOpacity;
-        m.material.needsUpdate = true;
-        converging = true;
-      }
-      m.visible = m.material.opacity > 0.02;
-    } else {
-      if (m.visible !== (target > 0.5)) m.visible = target > 0.5;
-    }
-  }
-  return converging;
-}
+import { updateFadeZones } from './fade-system.js';
 
 const _desiredCameraTarget = new THREE.Vector3();
 // Pre-allocated scratch for elevator Box3 computation — avoids per-frame allocation
@@ -75,13 +52,6 @@ const _elevatorBox3Scratch = new THREE.Box3();
 // Last player XZ position when shadow frustum was last updated
 let _shadowLastPx = -99999;
 let _shadowLastPz = -99999;
-
-// Convergence tracking for fadeMeshArray — skip iterating when stable.
-// Set to NaN so the first-frame target always triggers an update.
-let _roofFadeTarget = NaN;
-let _roofFadeActive = false;
-let _f2FadeTarget = NaN;
-let _f2FadeActive = false;
 
 // Lighting transition colors (outdoor → indoor)
 const _hemiOutColor = new THREE.Color('#87ceeb');
@@ -173,7 +143,10 @@ function updateRemotePlayer(p, dt, now) {
   p.mesh.rotation.y = p.ry;
 
   if (!disconnected) {
-    animateAvatarWalk(p, dt, now);
+    // Throttle remote player limb animation to every 2nd frame — 30fps vs 60fps is imperceptible for small character limbs
+    if ((state.frameCount || 0) % 2 === 0) {
+      animateAvatarWalk(p, dt, now);
+    }
     p.mesh.scale.setScalar(1);
   } else {
     // Disconnected: freeze in place, scale down, gray name tag
@@ -247,61 +220,7 @@ export function animate() {
     const exitTargetLerp = 1 - Math.pow(CAMERA_TARGET_DECAY, dt);
     state.controls.target.lerp(_desiredCameraTarget, exitTargetLerp);
   }
-  const targetOpacity = isInside ? 0.0 : 1.0;
-  
-  if (state.ceilingMat) {
-    state.ceilingMat.opacity = THREE.MathUtils.lerp(state.ceilingMat.opacity, targetOpacity, 8 * dt);
-    state.ceilingMesh.visible = state.ceilingMat.opacity > 0.02;
-  }
-  if (state.upperWallMat) {
-    state.upperWallMat.opacity = THREE.MathUtils.lerp(state.upperWallMat.opacity, targetOpacity, 8 * dt);
-  }
-  
-  // Upper floor fade target — follows elevator ride progress when active
-  const _rp = state.elevatorRideProgress || 0;
-  const _rideFade = _rp > 0 ? _rp : (isInside ? 0.0 : 1.0);
-
-  // Skip fade loops when far from the building (saves ~140 mesh iterations per frame outdoors)
-  const px = state.localPlayer && state.localPlayer.x;
-  const pz = state.localPlayer && state.localPlayer.z;
-  const nearBuilding = px !== undefined && Math.abs(px) < 45 && Math.abs(pz) < 55;
-
-  if (nearBuilding) {
-    // Upper walls — use shared material where present, otherwise fadeMeshArray.
-    // Early-out: when opacity is already stable (fully opaque or fully gone), skip traversal.
-    const _wallOpacityStable = Math.abs(_rideFade - (state.upperWallMat?.opacity ?? 1)) < 0.005;
-    if (!_wallOpacityStable || !state.upperWallMat) {
-      state.upperWalls.forEach(w => {
-        if (!w || !w.isObject3D) return;
-        if (w.material === state.upperWallMat) {
-          w.visible = state.upperWallMat.opacity > 0.02;
-          return;
-        }
-        if (w.material && w.material.transparent) {
-          try { w.material.opacity = THREE.MathUtils.lerp(w.material.opacity, _rideFade, 8 * dt); }
-          catch(e) {}
-          w.visible = w.material.opacity > 0.02;
-        } else {
-          w.visible = _rideFade > 0.5;
-        }
-      });
-    }
-
-    // Only call fadeMeshArray when the target changed or lerp hasn't finished.
-    // Returns true = still converging; false = all items at target, skip next frame.
-    if (_rideFade !== _roofFadeTarget) { _roofFadeTarget = _rideFade; _roofFadeActive = true; }
-    if (_roofFadeActive) _roofFadeActive = fadeMeshArray(state.roofMeshes, _rideFade, dt);
-  }
-
-  // Second-floor elements: visible only when the player is on the 2nd floor (Y > 5).
-  // Y-based (not room-membership) ensures the interior stays hidden on the ground floor
-  // whether the player is outdoors, in the lobby, or in a corridor.
-  // During the elevator ride, _rp drives the 0→1 fade.
-  if (nearBuilding) {
-    const _upperFloorFade = _rp > 0 ? _rp : (state.localPlayer?.y > 5 ? 1.0 : 0.0);
-    if (_upperFloorFade !== _f2FadeTarget) { _f2FadeTarget = _upperFloorFade; _f2FadeActive = true; }
-    if (_f2FadeActive) _f2FadeActive = fadeMeshArray(state.upperFloor, _upperFloorFade, dt);
-  }
+  updateFadeZones(dt);
 
   // ── Smooth indoor/outdoor lighting transition (RuneScape-style) ─────
   const targetMix = isInside ? 1 : 0;
@@ -321,7 +240,7 @@ export function animate() {
       if (shadowMoved) {
         _shadowLastPx = px;
         _shadowLastPz = pz;
-        const d = 24;
+        const d = 18;
         state.sceneSunLight.shadow.camera.left = px - d;
         state.sceneSunLight.shadow.camera.right = px + d;
         state.sceneSunLight.shadow.camera.top = pz - d;
@@ -473,10 +392,10 @@ export function initEngine() {
 
   state.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   state.renderer.setSize(window.innerWidth, window.innerHeight);
-  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
-  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  state.renderer.shadowMap.type = THREE.PCFShadowMap;
+  state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
 
   state.localPlayer.velocity = new THREE.Vector3();
@@ -504,11 +423,11 @@ export function initEngine() {
   state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 0.92);
   state.sceneSunLight.position.set(24, 48, 12);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 2048;
-  state.sceneSunLight.shadow.mapSize.height = 2048;
+  state.sceneSunLight.shadow.mapSize.width = 1024;
+  state.sceneSunLight.shadow.mapSize.height = 1024;
   state.sceneSunLight.shadow.camera.near = 0.5;
-  state.sceneSunLight.shadow.camera.far = 180;
-  const d = 24;
+  state.sceneSunLight.shadow.camera.far = 120;
+  const d = 18;
   state.sceneSunLight.shadow.camera.left = -d;
   state.sceneSunLight.shadow.camera.right = d;
   state.sceneSunLight.shadow.camera.top = d;

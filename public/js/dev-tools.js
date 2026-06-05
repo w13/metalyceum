@@ -37,8 +37,10 @@ export const devState = {
   // Auditor results
   auditIssues: [],
   staticAuditIssues: [],    // from auditStaticScenery()
+  zfightIssues: [],         // from auditZFighting()
   lastInspected: null,      // from alt+click inspector
   showStaticAuditMarkers: false,
+  showZFightMarkers: false,
 };
 // River coordinates (matching physics.js)
 import { RIVER_PTS } from './config.js';
@@ -517,7 +519,42 @@ export function rebuild3DHelpers() {
     });
   }
 
-  // 7. Last-inspected object marker (alt+click)
+  // 7. Z-fighting / shimmering markers
+  if (devState.showZFightMarkers && devState.zfightIssues?.length > 0) {
+    devState.zfightIssues.forEach(issue => {
+      const { x, y, z } = issue.worldPos;
+      const color = issue.severity === 'critical' ? '#ef4444'
+                  : issue.severity === 'high'     ? '#f97316'
+                  : issue.severity === 'medium'   ? '#eab308'
+                  : '#60a5fa'; // info
+
+      // Flat hexagon ring floating just above the problem surface — visible from above
+      const ringGeo = new THREE.RingGeometry(0.3, 0.65, 6);
+      const ringMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.85 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, y + 0.04, z);
+      devState.helpersGroup.add(ring);
+
+      // Vertical line showing the gap between terrain and the mesh (terrain-zfight only)
+      if (issue.type === 'terrain-zfight' && issue.terrainY !== undefined) {
+        const gapGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x, issue.terrainY, z),
+          new THREE.Vector3(x, y, z),
+        ]);
+        devState.helpersGroup.add(new THREE.Line(gapGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 })));
+      }
+
+      // Small upward spike to make it visible from any angle
+      const spikeGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, y + 0.04, z),
+        new THREE.Vector3(x, y + 1.2, z),
+      ]);
+      devState.helpersGroup.add(new THREE.Line(spikeGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 })));
+    });
+  }
+
+  // 8. Last-inspected object marker (alt+click)
   if (devState.lastInspected) {
     const { worldPos } = devState.lastInspected;
     const markerSphere = new THREE.Mesh(
@@ -1263,6 +1300,184 @@ function _auditStaticScenery(threshold = 0.4) {
   return issues;
 }
 
+// --- Z-Fighting / Shimmering Auditor ---
+//
+// Scans the scene for flat meshes (PlaneGeometry, CircleGeometry, thin BoxGeometry, etc.)
+// and flags those that sit too close to the terrain surface or to each other without
+// adequate polygonOffset — the two root causes of shimmering and z-fighting.
+//
+// Two checks:
+//  1. terrain-zfight  — flat mesh Y is within GAP_MEDIUM of terrain Y, no polygonOffset
+//  2. surface-zfight  — two flat meshes overlap in XZ with nearly equal Y (coplanar pair)
+//
+// Usage:
+//   metalyceumDev.auditZFighting()        → scan within 200u of player
+//   metalyceumDev.auditZFighting(80)      → scan within 80u of player
+//   metalyceumDev.getZFightIssues()       → return cached results
+//   Toggle "Show Z-Fight Markers" in lil-gui to see 3D overlay
+function _auditZFighting(radius = 200) {
+  if (!state.scene) return [];
+
+  const FLAT_Y_EXTENT  = 0.25;   // meshes with world Y extent < this are "flat"
+  const LARGE_XZ_SKIP  = 200;    // skip the terrain ground plane (huge footprint)
+  const GAP_CRITICAL   = 0.005;  // essentially coplanar — guaranteed shimmer
+  const GAP_HIGH       = 0.02;   // will shimmer at most view angles
+  const GAP_MEDIUM     = 0.06;   // may shimmer on slopes or at grazing angles
+
+  const issues = [];
+  const flat = [];   // candidate flat meshes
+
+  const _box  = new THREE.Box3();
+  const _tmp  = new THREE.Vector3();
+  const px = state.localPlayer?.x ?? 0;
+  const pz = state.localPlayer?.z ?? 0;
+
+  // ── Collect all flat, non-terrain, in-radius meshes ──────────────────────
+  state.scene.traverse((obj) => {
+    if (!obj.isMesh || !obj.visible || !obj.geometry) return;
+    _box.setFromObject(obj);
+
+    const extX = _box.max.x - _box.min.x;
+    const extY = _box.max.y - _box.min.y;
+    const extZ = _box.max.z - _box.min.z;
+
+    // Skip the terrain ground (identified by huge XZ footprint)
+    if (extX > LARGE_XZ_SKIP || extZ > LARGE_XZ_SKIP) return;
+    // Skip non-flat meshes
+    if (extY > FLAT_Y_EXTENT) return;
+    // Skip degenerate / point-like meshes
+    if (extX < 0.05 && extZ < 0.05) return;
+
+    const cx = (_box.min.x + _box.max.x) * 0.5;
+    const cz = (_box.min.z + _box.max.z) * 0.5;
+
+    // Skip if outside radius
+    if ((cx - px) * (cx - px) + (cz - pz) * (cz - pz) > radius * radius) return;
+
+    // Walk parent chain for landmark context
+    let parentChain = '';
+    let cur = obj.parent;
+    while (cur && cur !== state.scene) {
+      if (state.landmarkGroups) {
+        for (const [key, grp] of state.landmarkGroups.entries()) {
+          if (cur === grp) { parentChain = `landmark:${key}`; break; }
+        }
+      }
+      if (parentChain) break;
+      cur = cur.parent;
+    }
+
+    const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+    flat.push({
+      obj,
+      cx, cz,
+      minY:    _box.min.y,
+      centerY: (_box.min.y + _box.max.y) * 0.5,
+      extX, extZ,
+      hasOffset:    mat?.polygonOffset === true,
+      offsetFactor: mat?.polygonOffset === true ? (mat.polygonOffsetFactor ?? null) : null,
+      parentChain,
+      geo: obj.geometry.type,
+      bMinX: _box.min.x, bMaxX: _box.max.x,
+      bMinZ: _box.min.z, bMaxZ: _box.max.z,
+    });
+  });
+
+  // ── Check 1: terrain-vs-surface gap ──────────────────────────────────────
+  for (const m of flat) {
+    const terrainY = getTerrainHeight(m.cx, m.cz);
+    const gap = m.minY - terrainY;
+
+    // Skip meshes that are clearly and intentionally elevated
+    if (gap > GAP_MEDIUM) continue;
+    // Skip meshes deeply buried (already a different problem)
+    if (gap < -0.3) continue;
+
+    let severity = null;
+    if (!m.hasOffset) {
+      if (gap < GAP_CRITICAL)      severity = 'critical';
+      else if (gap < GAP_HIGH)     severity = 'high';
+      else if (gap < GAP_MEDIUM)   severity = 'medium';
+    } else {
+      // Has polygonOffset — still flag if essentially zero gap so we know it's relying on offset
+      if (gap < GAP_CRITICAL)      severity = 'info';
+    }
+    if (!severity) continue;
+
+    const ctx = m.parentChain ? ` [${m.parentChain}]` : '';
+    const offsetNote = m.hasOffset
+      ? ` polygonOffsetFactor:${m.offsetFactor}`
+      : ' ⚠ NO polygonOffset';
+    issues.push({
+      type: 'terrain-zfight',
+      severity,
+      geometry: m.geo,
+      worldPos: { x: +m.cx.toFixed(2), y: +m.minY.toFixed(4), z: +m.cz.toFixed(2) },
+      terrainY: +terrainY.toFixed(4),
+      gap: +gap.toFixed(4),
+      hasPolygonOffset: m.hasOffset,
+      polygonOffsetFactor: m.offsetFactor,
+      extents: { x: +m.extX.toFixed(2), z: +m.extZ.toFixed(2) },
+      parentChain: m.parentChain || 'scene-root',
+      fix: m.hasOffset
+        ? `raise Y by ${(GAP_HIGH - gap).toFixed(3)}u, or increase polygonOffsetFactor`
+        : `add polygonOffset:true, polygonOffsetFactor:-2 to material`,
+      x: m.cx, z: m.cz,
+      message: `terrain-zfight [${severity}]: ${m.geo}${ctx} @ (${m.cx.toFixed(1)}, ${m.cz.toFixed(1)}) — gap=${gap.toFixed(4)}u${offsetNote}`,
+    });
+  }
+
+  // ── Check 2: surface-on-surface (two flat meshes at same Y, XZ overlap) ──
+  for (let i = 0; i < flat.length; i++) {
+    for (let j = i + 1; j < flat.length; j++) {
+      const a = flat[i], b = flat[j];
+
+      const deltaY = Math.abs(a.minY - b.minY);
+      if (deltaY > GAP_HIGH) continue;
+
+      // Quick XZ AABB overlap test
+      if (a.bMaxX < b.bMinX || a.bMinX > b.bMaxX) continue;
+      if (a.bMaxZ < b.bMinZ || a.bMinZ > b.bMaxZ) continue;
+
+      const severity = (!a.hasOffset || !b.hasOffset) ? 'high' : 'info';
+      const cx = (a.cx + b.cx) * 0.5;
+      const cz = (a.cz + b.cz) * 0.5;
+      const labelA = a.parentChain || 'scene-root';
+      const labelB = b.parentChain || 'scene-root';
+      const offsetNote = (!a.hasOffset || !b.hasOffset) ? ' ⚠ missing polygonOffset' : '';
+
+      issues.push({
+        type: 'surface-zfight',
+        severity,
+        geometry: `${a.geo} ↔ ${b.geo}`,
+        worldPos: { x: +cx.toFixed(2), y: +a.minY.toFixed(4), z: +cz.toFixed(2) },
+        deltaY: +deltaY.toFixed(4),
+        hasPolygonOffset: a.hasOffset && b.hasOffset,
+        parentChain: `${labelA}  +  ${labelB}`,
+        fix: `add polygonOffset:true, polygonOffsetFactor:-2 to the upper mesh's material`,
+        x: cx, z: cz,
+        message: `surface-zfight [${severity}]: ${a.geo} [${labelA}] ↔ ${b.geo} [${labelB}] @ (${cx.toFixed(1)}, ${cz.toFixed(1)}) — ΔY=${deltaY.toFixed(4)}u${offsetNote}`,
+      });
+    }
+  }
+
+  // Sort by severity weight
+  const sev = { critical: 0, high: 1, medium: 2, info: 3 };
+  issues.sort((a, b) => (sev[a.severity] ?? 4) - (sev[b.severity] ?? 4));
+
+  devState.zfightIssues = issues;
+  devState.helpersDirty = true;
+
+  const bySev = {};
+  issues.forEach(i => { bySev[i.severity] = (bySev[i.severity] ?? 0) + 1; });
+  const sevSummary = Object.entries(bySev).map(([k, v]) => `${v} ${k}`).join(', ');
+  console.log(`[auditZFighting] ${flat.length} flat meshes scanned (r=${radius}u) → ${issues.length} issues${issues.length ? ` (${sevSummary})` : ' — clean!'}`);
+  issues.forEach(i => console.log(`  [${i.severity.toUpperCase()}] ${i.message}`));
+  if (issues.length) console.log(`%c Toggle devState.showZFightMarkers = true to see 3D overlays`, 'color:#60a5fa');
+
+  return issues;
+}
+
 // --- Global LLM-callable API ---
 function exposeLLMApi() {
   if (typeof window === 'undefined') return;
@@ -1570,6 +1785,31 @@ function exposeLLMApi() {
     auditStaticScenery: (threshold = 0.4) => _auditStaticScenery(threshold),
 
     /**
+     * Scan all flat meshes within `radius` units of the player for z-fighting
+     * and shimmering causes:
+     *   1. terrain-zfight  — mesh sits < 0.06u above terrain without polygonOffset
+     *   2. surface-zfight  — two flat meshes overlap in XZ with ΔY < 0.02u
+     *
+     * Severity: critical (<0.005u) · high (<0.02u) · medium (<0.06u) · info (offset present)
+     *
+     * Fix hints are included in each issue. Toggle showZFightMarkers to see 3D overlays.
+     *
+     *   metalyceumDev.auditZFighting()      // 200u radius
+     *   metalyceumDev.auditZFighting(60)    // just the area around the player
+     */
+    auditZFighting: (radius = 200) => _auditZFighting(radius),
+
+    /** Return cached results from the last auditZFighting() call. */
+    getZFightIssues: () => devState.zfightIssues,
+
+    /** Toggle 3D z-fighting markers on/off without re-running the scan. */
+    toggleZFightMarkers: (on) => {
+      devState.showZFightMarkers = on ?? !devState.showZFightMarkers;
+      devState.helpersDirty = true;
+      console.log(`[metalyceumDev] Z-fight markers: ${devState.showZFightMarkers ? 'ON' : 'OFF'}`);
+    },
+
+    /**
      * Detailed world-transform report for every object within `radius` units of
      * the player. Covers STATIC_SCENERY and placed dynamic assets.
      * Returns array sorted by distance — paste result into the diagnostics report
@@ -1755,6 +1995,91 @@ function exposeLLMApi() {
 
       items.sort((a, b) => a.edgeDist - b.edgeDist);
       return items.slice(0, topN);
+    },
+
+    // ── Build verification ─────────────────────────────────────────────────
+
+    /**
+     * One-shot area audit for use during development.
+     * Run this after adding or modifying any geometry in an area to catch
+     * z-fighting, floating objects, clipping, and terrain misalignment
+     * before committing the change.
+     *
+     * Pass the centre of the area being worked on and the radius to scan.
+     * Defaults to the player's current position if cx/cz are omitted.
+     *
+     *   metalyceumDev.buildAudit()             // area around player, 60u radius
+     *   metalyceumDev.buildAudit(130, -80, 80) // castle area, 80u radius
+     *
+     * Returns a structured report — every category that has issues is flagged.
+     * A clean report logs "✓ All clear" for each category.
+     */
+    buildAudit: (cx, cz, radius = 60) => {
+      if (cx === undefined) { cx = state.localPlayer?.x ?? 0; cz = state.localPlayer?.z ?? 0; }
+
+      console.group(`%c[buildAudit] Area (${cx.toFixed(1)}, ${cz.toFixed(1)}) r=${radius}u`, 'font-weight:bold;color:#38bdf8');
+
+      // ── Site context ───────────────────────────────────────────────────
+      const site = _worldQuery(cx, cz);
+      console.log('Site:', site);
+
+      // ── Terrain profile ────────────────────────────────────────────────
+      const terrain = _sampleTerrain(cx, cz, radius, 6);
+      console.log(`Terrain: min=${terrain.min}  max=${terrain.max}  slope=${terrain.maxSlope.toFixed(2)}u  flat=${terrain.isFlat}`);
+
+      // ── Z-fighting / shimmering ────────────────────────────────────────
+      const zf = _auditZFighting(radius);
+      const zfCrit    = zf.filter(i => i.severity === 'critical').length;
+      const zfHigh    = zf.filter(i => i.severity === 'high').length;
+      const zfMedium  = zf.filter(i => i.severity === 'medium').length;
+      if (zfCrit + zfHigh + zfMedium > 0) {
+        console.warn(`Z-fighting: ${zfCrit} critical, ${zfHigh} high, ${zfMedium} medium  — call auditZFighting() for details`);
+      } else {
+        console.log('%c✓ Z-fighting: clean', 'color:#22c55e');
+      }
+
+      // ── Placed-asset issues ────────────────────────────────────────────
+      runWorldAudit();
+      const placedIssues = devState.auditIssues.filter(i => {
+        const dx = (i.x ?? cx) - cx, dz = (i.z ?? cz) - cz;
+        return dx * dx + dz * dz <= radius * radius;
+      });
+      if (placedIssues.length > 0) {
+        const bySev = {};
+        placedIssues.forEach(i => { bySev[i.severity] = (bySev[i.severity] ?? 0) + 1; });
+        console.warn(`Placed assets: ${placedIssues.length} issues — ${Object.entries(bySev).map(([k,v])=>`${v} ${k}`).join(', ')}`);
+        placedIssues.forEach(i => console.warn(`  [${i.severity.toUpperCase()}] ${i.message}`));
+      } else {
+        console.log('%c✓ Placed assets: clean', 'color:#22c55e');
+      }
+
+      // ── Static scenery misalignment ────────────────────────────────────
+      _auditStaticScenery(0.4);
+      const sceneryIssues = devState.staticAuditIssues.filter(i => {
+        const dx = i.worldPos.x - cx, dz = i.worldPos.z - cz;
+        return dx * dx + dz * dz <= radius * radius;
+      });
+      if (sceneryIssues.length > 0) {
+        const bySev = {};
+        sceneryIssues.forEach(i => { bySev[i.severity] = (bySev[i.severity] ?? 0) + 1; });
+        console.warn(`Static scenery: ${sceneryIssues.length} issues — ${Object.entries(bySev).map(([k,v])=>`${v} ${k}`).join(', ')}`);
+        sceneryIssues.forEach(i => console.warn(`  [${i.severity.toUpperCase()}] ${i.message}`));
+      } else {
+        console.log('%c✓ Static scenery: clean', 'color:#22c55e');
+      }
+
+      const totalIssues = (zfCrit + zfHigh + zfMedium) + placedIssues.length + sceneryIssues.length;
+      console.log(`─── ${totalIssues === 0 ? '✓ Area is clean.' : `${totalIssues} total issues. Fix before committing.`}`);
+      console.groupEnd();
+
+      return {
+        site,
+        terrain: { min: terrain.min, max: terrain.max, maxSlope: terrain.maxSlope, isFlat: terrain.isFlat },
+        zfighting: { critical: zfCrit, high: zfHigh, medium: zfMedium, issues: zf.filter(i => i.severity !== 'info') },
+        placedAssets: { count: placedIssues.length, issues: placedIssues },
+        scenery: { count: sceneryIssues.length, issues: sceneryIssues },
+        summary: totalIssues === 0 ? 'CLEAN' : `${totalIssues} issues`,
+      };
     },
   };
 }

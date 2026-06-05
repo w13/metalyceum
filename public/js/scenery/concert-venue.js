@@ -3,6 +3,15 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { createBrickTexture, createStoneTexture, createCarpetTexture } from '../textures.js';
+import {
+  addFadeObjects,
+  createBoundsFadePredicate,
+  createFadeLayer,
+  createInsideOutsideTarget,
+  makeFadeMaterial,
+  makeObjectFadeable,
+  registerFadeZone
+} from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 
 const HALF_PI = Math.PI / 2;
@@ -37,8 +46,43 @@ export function buildConcertVenue() {
   const stageMat = new THREE.MeshStandardMaterial({ color: '#3d2b1f', roughness: 0.6, metalness: 0.08 });
   const frameMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.5, metalness: 0.2 });
   const screenMat = state.sharedScenery.screenMat;
+  const upperWallMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 }));
 
   const venueW = 46, venueD = 34, venueH = 10;
+  const venueRoofLayer = createFadeLayer({
+    id: 'roof',
+    getTargetOpacity: createInsideOutsideTarget({})
+  });
+  const venueUpperWallsLayer = createFadeLayer({
+    id: 'upper-walls',
+    sharedMaterial: upperWallMat,
+    getTargetOpacity: createInsideOutsideTarget({})
+  });
+  registerFadeZone({
+    id: 'concert-venue',
+    proximity: { x: vx, z: vz, r: 42 },
+    containsPlayer: createBoundsFadePredicate({
+      minX: vx - venueW / 2,
+      maxX: vx + venueW / 2,
+      minZ: vz - venueD / 2,
+      maxZ: vz + venueD / 2
+    }),
+    layers: [venueUpperWallsLayer, venueRoofLayer]
+  });
+
+  function pushVenueRoof(...objects) {
+    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
+    state.roofMeshes.push(...flat);
+    addFadeObjects(venueRoofLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
+
+  function pushVenueUpperWall(...objects) {
+    const flat = objects.flat().filter(Boolean);
+    state.upperWalls.push(...flat);
+    addFadeObjects(venueUpperWallsLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
 
   // Floor
   const floor = new THREE.Mesh(
@@ -80,12 +124,12 @@ export function buildConcertVenue() {
     lower.receiveShadow = true;
     group.add(lower);
     // Upper half (fades when player is inside)
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(w, upperH, d), state.upperWallMat);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(w, upperH, d), upperWallMat);
     upper.position.set(cx, baseY + splitY + upperH / 2, cz);
     upper.castShadow = true;
     upper.receiveShadow = true;
     group.add(upper);
-    state.upperWalls.push(upper);
+    pushVenueUpperWall(upper);
   }
 
   // Back Wall (West)
@@ -121,7 +165,7 @@ export function buildConcertVenue() {
   concertCeiling.position.set(vx, baseY + venueH, vz);
   concertCeiling.receiveShadow = true;
   group.add(concertCeiling);
-  state.roofMeshes.push(concertCeiling);
+  pushVenueRoof(concertCeiling);
 
   // Arched Windows
   const windowCount = 4;
@@ -182,7 +226,7 @@ export function buildConcertVenue() {
   domeBaseCollar.castShadow = true;
   domeBaseCollar.receiveShadow = true;
   group.add(domeBaseCollar);
-  state.roofMeshes.push(domeBaseCollar);
+  pushVenueRoof(domeBaseCollar);
 
   const dome = new THREE.Mesh(
     new THREE.SphereGeometry(15.0, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2),
@@ -192,7 +236,7 @@ export function buildConcertVenue() {
   dome.castShadow = true;
   dome.receiveShadow = true;
   group.add(dome);
-  state.roofMeshes.push(dome);
+  pushVenueRoof(dome);
 
   const spire = new THREE.Mesh(
     new THREE.CylinderGeometry(0.1, 0.4, 3.0, 8),
@@ -202,7 +246,7 @@ export function buildConcertVenue() {
   spire.castShadow = true;
   spire.receiveShadow = true;
   group.add(spire);
-  state.roofMeshes.push(spire);
+  pushVenueRoof(spire);
 
   const spireGlow = new THREE.Mesh(
     new THREE.SphereGeometry(0.3, 6, 6),
@@ -210,7 +254,7 @@ export function buildConcertVenue() {
   );
   spireGlow.position.set(vx, baseY + venueH + 1.45 + 15.0 + 3.0, vz);
   group.add(spireGlow);
-  state.roofMeshes.push(spireGlow);
+  pushVenueRoof(spireGlow);
 
   // Stage (against west wall)
   // stageW = north-south span, stageD = east-west depth — BoxGeometry maps to (X, Y, Z)

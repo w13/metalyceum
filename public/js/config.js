@@ -31,6 +31,9 @@ export const COVERED_BOUNDS = {
   maxZ: 40
 };
 
+export const MAIN_BUILDING_ELEVATOR_GROUND_Y = 0;
+export const MAIN_BUILDING_MEZZANINE_Y = 7.5;
+
 export const RIVER_PTS = [
   [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
   [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],

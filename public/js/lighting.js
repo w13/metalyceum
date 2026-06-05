@@ -2,10 +2,12 @@
 import { state } from './state.js';
 
 export function updateTorches(now) {
-  // Throttle to every 2nd frame — flicker is imperceptible at 30 vs 60 fps update rate
-  if ((now | 0) % 2 === 0) return;
+  // Throttle to every 4th frame — flicker is imperceptible at 15 vs 30 fps update rate
+  if ((now | 0) % 4 !== 0) return;
   const time = now * 0.005;
   state.torches.forEach((t) => {
+    // Skip torches attached to invisible parent groups (e.g. faded second-floor torches)
+    if (t.flame.parent && !t.flame.parent.visible) return;
     if (t.worldPos.distanceToSquared(state.camera.position) > 3600) return; // 60 units
     const flicker = Math.sin(time * 3 + t.seed) * Math.cos(time * 7 + t.seed) * 0.15;
     if (t.light) t.light.intensity = t.baseIntensity + flicker;

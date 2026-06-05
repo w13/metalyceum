@@ -1,9 +1,28 @@
 // Building Construction, Architecture, and Scenery Population for Metalyceum
 import * as THREE from 'three';
 import { state } from './state.js';
-import { ROOM_HEIGHT, MAP_SIZE, WORLD_CONFIG, ROOM_LAYOUTS } from './config.js';
+import {
+  ROOM_HEIGHT,
+  MAP_SIZE,
+  WORLD_CONFIG,
+  ROOM_LAYOUTS,
+  COVERED_BOUNDS,
+  MAIN_BUILDING_ELEVATOR_GROUND_Y,
+  MAIN_BUILDING_MEZZANINE_Y
+} from './config.js';
 import { getTerrainHeight } from './physics.js';
 import { vec2LengthAngle, samplePosition, createFloor } from './scenery/utils.js';
+import {
+  addFadeObjects,
+  createBoundsFadePredicate,
+  createFadeLayer,
+  createInsideOutsideTarget,
+  createPlayerYTarget,
+  makeFadeMaterial,
+  makeObjectFadeable,
+  registerFadeZone,
+  resetFadeZones
+} from './fade-system.js';
 import {
   initSceneryAssets,
   createBoulder,
@@ -82,11 +101,22 @@ function buildRoomScreen(room, frameMat, screenMat, screenY, wallOffset = 0.22, 
   }
 
   state.scene.add(screenGroup);
-  if (upperFloorArr) upperFloorArr.push(screenGroup);
+  if (upperFloorArr) {
+    if (typeof upperFloorArr === 'function') upperFloorArr(screenGroup);
+    else upperFloorArr.push(screenGroup);
+  }
   return screenGroup;
 }
 
 export function buildMap() {
+  resetFadeZones();
+  state.upperWalls = [];
+  state.upperFloor = [];
+  state.roofMeshes = [];
+  state.ceilingMat = null;
+  state.ceilingMesh = null;
+  state.upperWallMat = null;
+
   const grassTex = createGrassTexture();
   const groundGeo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, 280, 280);
   
@@ -274,7 +304,7 @@ export function buildMap() {
 }
 
 /** Batcher context — bundles the museum-batch system for addMesh / addOrientedBox. */
-function createBatcher() {
+function createBatcher(onUpperWall = null) {
   const batches = new Map();
   const tempObj = new THREE.Object3D();
 
@@ -319,7 +349,7 @@ function createBatcher() {
       instanced.castShadow = true;
       instanced.receiveShadow = true;
       state.scene.add(instanced);
-      if (batch.upper) state.upperWalls.push(instanced);
+      if (batch.upper && onUpperWall) onUpperWall(instanced);
     });
     batches.clear();
   }
@@ -334,7 +364,7 @@ export function buildBuilding() {
   const darkWoodTex = createDarkWoodTexture();
   
   const wallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 });
-  state.upperWallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85, transparent: true, opacity: 1.0 });
+  state.upperWallMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 }));
   const limestoneMat = state.sharedScenery.limestoneMat;
   const limestoneShadowMat = new THREE.MeshStandardMaterial({ color: '#cabfaa', roughness: 0.8 });
   const bronzeMat = state.sharedScenery.bronzeMat;
@@ -357,8 +387,61 @@ export function buildBuilding() {
   const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const frameMat = state.sharedScenery.frameMat;
   const screenMat = state.sharedScenery.screenMat;
+  const getElevatorFadeProgress = () => (state._elevatorIsRiding ? (state.elevatorRideProgress || 0) : 0);
+  const getMainUpperStoryOpacity = createPlayerYTarget({
+    minY: ROOM_HEIGHT,
+    insideOpacity: 1,
+    outsideOpacity: 0,
+    getProgress: getElevatorFadeProgress
+  });
 
-  const batcher = createBatcher();
+  const mainRoofLayer = createFadeLayer({
+    id: 'roof',
+    getTargetOpacity: createInsideOutsideTarget({
+      getProgress: getElevatorFadeProgress,
+      insideOpacity: 0,
+      outsideOpacity: 1
+    })
+  });
+  const mainUpperWallsLayer = createFadeLayer({
+    id: 'upper-walls',
+    sharedMaterial: state.upperWallMat,
+    getTargetOpacity: getMainUpperStoryOpacity
+  });
+  const mainUpperFloorLayer = createFadeLayer({
+    id: 'upper-floor',
+    getTargetOpacity: getMainUpperStoryOpacity
+  });
+
+  registerFadeZone({
+    id: 'main-building',
+    proximity: { x: 0, z: 0, r: 68 },
+    containsPlayer: createBoundsFadePredicate(COVERED_BOUNDS),
+    layers: [mainRoofLayer, mainUpperWallsLayer, mainUpperFloorLayer]
+  });
+
+  function pushRoof(...objects) {
+    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
+    state.roofMeshes.push(...flat);
+    addFadeObjects(mainRoofLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
+
+  function pushUpperWall(...objects) {
+    const flat = objects.flat().filter(Boolean);
+    state.upperWalls.push(...flat);
+    addFadeObjects(mainUpperWallsLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
+
+  function pushUpperFloor(...objects) {
+    const flat = objects.flat().filter(Boolean);
+    state.upperFloor.push(...flat);
+    addFadeObjects(mainUpperFloorLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
+
+  const batcher = createBatcher(pushUpperWall);
   const { addMesh, addOrientedBox, flush: flushBatches } = batcher;
 
   state.ROOMS.forEach((room) => {
@@ -515,7 +598,7 @@ export function buildBuilding() {
     // Upper wall (transparent for indoor/outdoor fade)
     if (upperHeight > 0.05) {
       const upperWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, lowerHeight, upperHeight, thickness, state.upperWallMat, baseboardMat, null);
-      state.upperWalls.push(upperWall);
+    pushUpperWall(upperWall);
     }
   }
 
@@ -635,8 +718,7 @@ export function buildBuilding() {
     createRoomIndicator(room);
   });
 
-  state.ceilingMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, transparent: true, opacity: 1.0, depthWrite: true });
-  state.roofMeshes = [];
+  state.ceilingMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, depthWrite: true }));
   const ceilingGeo = new THREE.PlaneGeometry(60, 80);
   state.ceilingMesh = new THREE.Mesh(ceilingGeo, state.ceilingMat);
   state.ceilingMesh.rotation.x = HALF_PI;
@@ -644,6 +726,7 @@ export function buildBuilding() {
   state.ceilingMesh.castShadow = true;
   state.ceilingMesh.receiveShadow = true;
   state.scene.add(state.ceilingMesh);
+  pushRoof(state.ceilingMesh);
 
   buildClassroomAssets();
 
@@ -657,7 +740,7 @@ export function buildBuilding() {
   signMesh.castShadow = true;
   signMesh.receiveShadow = true;
   state.scene.add(signMesh);
-  state.upperWalls.push(signMesh);
+  pushUpperWall(signMesh);
 
   const upperFloorHeight = 3.3;
   const secondFloorY = ROOM_HEIGHT;
@@ -768,7 +851,7 @@ export function buildBuilding() {
   const mahoganyMat = new THREE.MeshStandardMaterial({ color: '#3a1508', roughness: 0.35, metalness: 0.1 });
 
   const elevatorCar = new THREE.Group();
-  elevatorCar.position.set(0, 0, eZ);
+  elevatorCar.position.set(0, MAIN_BUILDING_ELEVATOR_GROUND_Y, eZ);
 
   const eMarble = new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.1, metalness: 0.05 });
   const eDarkMarble = new THREE.MeshStandardMaterial({ color: '#2a1a0a', roughness: 0.15, metalness: 0.12 });
@@ -836,7 +919,7 @@ export function buildBuilding() {
       new THREE.BoxGeometry(halfDoorW, eH - 0.7, 0.06),
       mahoganyMat
     );
-    door.position.set(side * halfDoorW / 2, (eH - 0.7) / 2, 0);
+    door.position.set(-side * halfDoorW / 2, (eH - 0.7) / 2, 0);
     pivot.add(door);
 
     // Gold inlay stripe
@@ -844,7 +927,7 @@ export function buildBuilding() {
       new THREE.BoxGeometry(halfDoorW - 0.2, eH - 1.0, 0.07),
       goldMat
     );
-    inlay.position.set(side * halfDoorW / 2, (eH - 0.7) / 2, 0.035);
+    inlay.position.set(-side * halfDoorW / 2, (eH - 0.7) / 2, 0.035);
     pivot.add(inlay);
 
     // Handle (brass pull)
@@ -853,7 +936,7 @@ export function buildBuilding() {
       brassMat
     );
     handle.rotation.x = HALF_PI;
-    handle.position.set(side * halfDoorW / 3, 1.3, 0.05);
+    handle.position.set(-side * halfDoorW / 3, 1.3, 0.05);
     pivot.add(handle);
 
     pivot.userData._side = side;
@@ -933,7 +1016,7 @@ export function buildBuilding() {
   state._elevatorDoorBox.userData = { _isElevatorDoor: true };
   state.WALLS.push(state._elevatorDoorBox);
   // ── Second floor ──────────────────────────────────────────────────────
-  const mezzY = 7.5;             // deck surface Y
+  const mezzY = MAIN_BUILDING_MEZZANINE_Y; // deck surface Y
   const f2Height = 3.3;          // interior height of second floor
   const f2Thickness = 0.5;       // wall thickness (matches ground floor)
   const f2BaseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
@@ -951,17 +1034,17 @@ export function buildBuilding() {
   // West wing (gallery side): x -30 → -5, z -40 → +40
   const westFloor = createFloor(25, 80, mezzSlateFloorMat, -17.5, mezzY, 0);
   state.scene.add(westFloor);
-  state.upperFloor.push(westFloor);
+  pushUpperFloor(westFloor);
 
   // East wing (interactive side): x +5 → +30, z -40 → +40
   const eastFloor = createFloor(25, 80, mezzFloorMat, 17.5, mezzY, 0);
   state.scene.add(eastFloor);
-  state.upperFloor.push(eastFloor);
+  pushUpperFloor(eastFloor);
 
   // Corridor: x -5 → +5, z -40 → +40
   const corridorFloor = createFloor(10, 80, mezzFloorMat, 0, mezzY, 0);
   state.scene.add(corridorFloor);
-  state.upperFloor.push(corridorFloor);
+  pushUpperFloor(corridorFloor);
 
   // Dark wood border strip along corridor edges (matches ground floor)
   const corridorBorderMat = new THREE.MeshStandardMaterial({ color: '#4a2c11', roughness: 0.6, metalness: 0.08 });
@@ -970,22 +1053,25 @@ export function buildBuilding() {
     border.rotation.x = FLAT;
     border.position.set(x, mezzY + 0.002, 0);
     state.scene.add(border);
-    state.upperFloor.push(border);
+    pushUpperFloor(border);
   });
 
   // ── Second-floor ceiling (underside of roof space) ──────────────────
-  const f2CeilingMat = new THREE.MeshStandardMaterial({ color: '#1e1510', roughness: 0.9, transparent: true, opacity: 1.0 });
+  const f2CeilingMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ color: '#1e1510', roughness: 0.9 }));
   const f2Ceiling = new THREE.Mesh(new THREE.PlaneGeometry(60, 80), f2CeilingMat);
   f2Ceiling.rotation.x = HALF_PI;
   f2Ceiling.position.set(0, mezzY + f2Height + 0.05, 0);
   f2Ceiling.receiveShadow = true;
   state.scene.add(f2Ceiling);
-  state.upperFloor.push(f2Ceiling);
+  pushUpperFloor(f2Ceiling);
 
   // ── Interior walls — second floor ───────────────────────────────────
   // Left corridor wall (x = -5), with 4u door gaps at same Z as ground floor rooms
-  const leftUpperDoorZs = state.ROOMS.filter((r) => r.x < 0 && !r.floor).map((r) => r.z);
-  const rightUpperDoorZs = state.ROOMS.filter((r) => r.x > 0 && !r.floor).map((r) => r.z);
+  // id < 8 excludes outdoor venues (amphitheater id=8, concert venue id=9, etc.)
+  // which would otherwise inject z=140+ into the corridor wall builder and create
+  // 100+ unit wall segments extending out through the front of the building.
+  const leftUpperDoorZs = state.ROOMS.filter((r) => r.x < 0 && !r.floor && r.id < 8).map((r) => r.z);
+  const rightUpperDoorZs = state.ROOMS.filter((r) => r.x > 0 && !r.floor && r.id < 8).map((r) => r.z);
 
   // Build corridor walls with door gaps (same pattern as ground floor addWallSegment calls)
   function addUpperCorridorWall(corridorX, doorZs, zMin = -40, zMax = 40) {
@@ -1022,10 +1108,10 @@ export function buildBuilding() {
   // ── Door frames on second-floor corridor openings ────────────────────
   state.ROOMS.filter((r) => !r.floor && r.id < 8).forEach((room) => {
     const dfGroup = createDoorFrame(room.x < 0 ? -5 : 5, room.z, 'V', f2Height, mezzY);
-    state.upperFloor.push(dfGroup);
+    pushUpperFloor(dfGroup);
   });
   // East-wing room divider door
-  state.upperFloor.push(createDoorFrame(17.5, -8, 'H', f2Height, mezzY));
+  pushUpperFloor(createDoorFrame(17.5, -8, 'H', f2Height, mezzY));
 
   // ── Second-floor columns aligned with ground-floor positions ─────────
   const f2ColHeight = f2Height - 0.6;  // 2.7u shaft
@@ -1062,7 +1148,7 @@ export function buildBuilding() {
   state.scene.add(f2ShaftInst);
   state.scene.add(f2EchinusInst);
   state.scene.add(f2AbacusInst);
-  state.upperFloor.push(f2ShaftInst, f2EchinusInst, f2AbacusInst);
+  pushUpperFloor(f2ShaftInst, f2EchinusInst, f2AbacusInst);
 
   // ── Glass railings — all open edges ─────────────────────────────────
   const glassRailMat = new THREE.MeshStandardMaterial({
@@ -1084,21 +1170,21 @@ export function buildBuilding() {
     gPanel.position.set(mx, mezzY + railGlassH / 2 + 0.05, mz);
     gPanel.rotation.y = -angle;
     state.scene.add(gPanel);
-    state.upperFloor.push(gPanel);
+    pushUpperFloor(gPanel);
 
     // Top handrail
     const topRail = new THREE.Mesh(new THREE.BoxGeometry(len + 0.12, railTopT, railTopT), mezzRailMat);
     topRail.position.set(mx, mezzY + railH, mz);
     topRail.rotation.y = -angle;
     state.scene.add(topRail);
-    state.upperFloor.push(topRail);
+    pushUpperFloor(topRail);
 
     // Bottom rail
     const botRail = new THREE.Mesh(new THREE.BoxGeometry(len + 0.12, railTopT, railTopT), mezzRailMat);
     botRail.position.set(mx, mezzY + 0.06, mz);
     botRail.rotation.y = -angle;
     state.scene.add(botRail);
-    state.upperFloor.push(botRail);
+    pushUpperFloor(botRail);
 
     // Posts every ~3.5u
     const postCount = Math.max(2, Math.round(len / 3.5) + 1);
@@ -1109,7 +1195,7 @@ export function buildBuilding() {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, railH, 6), mezzRailMat);
       post.position.set(px, mezzY + railH / 2, pz);
       state.scene.add(post);
-      state.upperFloor.push(post);
+      pushUpperFloor(post);
     }
   }
 
@@ -1129,8 +1215,8 @@ export function buildBuilding() {
   const f2TorchZs = [-34, -20, -4, 14, 32];
   f2TorchZs.forEach((z) => {
     // Push torch groups to upperFloor so they fade with the rest of the 2nd-floor interior
-    state.upperFloor.push(createWallTorch(-4.75, mezzY + 2.2, z, Math.PI / 2, null, true));
-    state.upperFloor.push(createWallTorch(4.75, mezzY + 2.2, z, -Math.PI / 2, null, true));
+    pushUpperFloor(createWallTorch(-4.75, mezzY + 2.2, z, Math.PI / 2, null, true));
+    pushUpperFloor(createWallTorch(4.75, mezzY + 2.2, z, -Math.PI / 2, null, true));
   });
 
   // ── Interactive screen for Room 10 — Upper Gallery (east wing south) ─
@@ -1142,13 +1228,13 @@ export function buildBuilding() {
     // wallOffset=0.22 → room.x + room.width/2 - 0.22 = 29.3 → room.x = 29.3 - 12.5 + 0.22 = 17.02
     // It's cleaner to just place the group manually after building it.
     const r10ScreenY = mezzY + f2Height * 0.55;
-    const r10Group = buildRoomScreen(room10, frameMat, screenMat, r10ScreenY, 0.22, state.upperFloor);
+    const r10Group = buildRoomScreen(room10, frameMat, screenMat, r10ScreenY, 0.22, pushUpperFloor);
     // Override position: buildRoomScreen placed it at room.x+room.width/2−0.22 ≈ 29.78; correct to 29.3
     r10Group.position.set(29.3, r10ScreenY, 8);
     createRoomIndicator(room10);
     // Torches flanking the screen
-    createWallTorch(29.3, mezzY + 2.2, 8 - 4, -Math.PI / 2, 10, true);
-    createWallTorch(29.3, mezzY + 2.2, 8 + 4, -Math.PI / 2, 10, false);
+    pushUpperFloor(createWallTorch(29.3, mezzY + 2.2, 8 - 4, -Math.PI / 2, 10, true));
+    pushUpperFloor(createWallTorch(29.3, mezzY + 2.2, 8 + 4, -Math.PI / 2, 10, false));
   }
 
   // ── Decorative step at the elevator opening onto the second floor ─────
@@ -1158,9 +1244,9 @@ export function buildBuilding() {
   elevLanding.position.set(0, mezzY + 0.06, -33.4);
   elevLanding.receiveShadow = true;
   state.scene.add(elevLanding);
-  state.upperFloor.push(elevLanding);
+  pushUpperFloor(elevLanding);
 
-  buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY });
+  buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY, registerRoofMesh: pushRoof });
 }
 
 export { createDoorFrame } from './building/doors.js';

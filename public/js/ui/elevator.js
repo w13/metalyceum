@@ -1,5 +1,9 @@
 // Elevator state machine: folding doors, ride sequence, and 2nd floor reveal
 import { state } from '../state.js';
+import {
+  MAIN_BUILDING_ELEVATOR_GROUND_Y,
+  MAIN_BUILDING_MEZZANINE_Y
+} from '../config.js';
 
 const ELEVATOR_Z = -36;
 const ELEVATOR_FRONT_Z = ELEVATOR_Z + 1.6; // front of the car
@@ -11,7 +15,7 @@ let doorProgress = 0;   // 0=closed, 1=open
 let doorTarget = 0;     // target doorProgress
 let rideProgress = 0;   // 0..1 during ride
 let rideStartY = 0;
-let rideEndY = 7.5;
+let rideEndY = MAIN_BUILDING_MEZZANINE_Y;
 let wasNear = false;
 let phase = 'idle';     // idle | opening | open | waiting | closing | riding | arrival
 let floorNum = 'L';
@@ -26,7 +30,7 @@ function animateDoors(openRatio) {
   if (!pivots) return;
   pivots.forEach((pivot) => {
     const side = pivot.userData._side || 1;
-    pivot.rotation.y = side * angle;
+    pivot.rotation.y = -side * angle;
   });
 }
 
@@ -52,10 +56,10 @@ export function initElevatorUI() {
   if (!panel || !floorDisplay || !upBtn || !downBtn) return;
 
   upBtn.addEventListener('click', () => {
-    startRide(0, 7.5, ELEVATOR_Z, '2');
+    startRide(0, MAIN_BUILDING_MEZZANINE_Y, ELEVATOR_Z, '2');
   });
   downBtn.addEventListener('click', () => {
-    startRide(0, 0.1, ELEVATOR_Z, 'L');
+    startRide(0, MAIN_BUILDING_ELEVATOR_GROUND_Y, ELEVATOR_Z, 'L');
   });
 
   // ── Per-frame tick ─────────────────────────────────────────────────────
@@ -66,6 +70,7 @@ export function initElevatorUI() {
       const diff = doorTarget - doorProgress;
       doorProgress += diff * Math.min(1, speed * dt);
       if (Math.abs(diff) < 0.002) doorProgress = doorTarget;
+      state._elevatorDoorOpen = doorProgress;
       animateDoors(doorProgress);
     }
 
@@ -109,6 +114,7 @@ export function initElevatorUI() {
       if (t >= 1) {
         phase = 'arrival';
         state._elevatorIsRiding = false;
+        state.elevatorRideProgress = 0;
         doorTarget = 1; // start opening doors
         // Snap player to final position
         if (state.localPlayer) {
@@ -125,6 +131,7 @@ export function initElevatorUI() {
     } else if (phase === 'arrival') {
       if (doorProgress > 0.995) {
         phase = 'open';
+        state.elevatorRideProgress = 0;
         // Re-enable the door collider for the new floor level
         const dc = state._elevatorDoorCollider;
         if (dc) {

@@ -2,6 +2,8 @@
 import { state } from './state.js';
 
 export function updateRoomIndicatorAnimations(now) {
+  // Throttle to every 3rd frame — pulsing is imperceptible at 20 vs 60 fps
+  if ((now | 0) % 3 !== 0) return;
   const time = now * 0.001;
   state.ROOM_INDICATORS.forEach((marker) => {
     if (!marker.group.visible) return;
@@ -47,9 +49,9 @@ export function updateRoomIndicatorAnimations(now) {
       }
 
       // ── Vertex-displacement waves on pool surfaces ────────────────────────
-      // Throttled to every 4th frame; computeVertexNormals skipped because
+      // Throttled to every 8th frame; computeVertexNormals skipped because
       // the surfaces are transparent DoubleSide planes where normals are imperceptible.
-      if (state.frameCount % 4 === 0) {
+      if (state.frameCount % 8 === 0) {
         if (data.poolSurface) {
           const mesh = data.poolSurface;
           const geo = mesh.geometry;

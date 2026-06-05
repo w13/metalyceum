@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
+import {
+  addFadeObjects,
+  createBoundsFadePredicate,
+  createFadeLayer,
+  createInsideOutsideTarget,
+  makeObjectFadeable,
+  registerFadeZone
+} from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 
 const HALF_PI = Math.PI / 2;
@@ -97,19 +105,22 @@ function addPointTorch(parent, x, y, z, rotationY, metalMat, woodMat, flameMat, 
 
 function addWallBattlements(parent, battMat, start, end, fixed, y, axis = 'x') {
   const step = 1.4 * S;
+  const battlements = [];
   for (let t = start; t <= end; t += step) {
     if (axis === 'x') {
-      addBox(parent, battMat, 0.62 * S, 0.72 * S, 0.72 * S, t, y, fixed);
+      battlements.push(addBox(parent, battMat, 0.62 * S, 0.72 * S, 0.72 * S, t, y, fixed));
     } else {
-      addBox(parent, battMat, 0.72 * S, 0.72 * S, 0.62 * S, fixed, y, t);
+      battlements.push(addBox(parent, battMat, 0.72 * S, 0.72 * S, 0.62 * S, fixed, y, t));
     }
   }
+  return battlements;
 }
 
 function addTowerCrenellations(parent, battMat, tx, ty, tz, radius) {
+  const battlements = [];
   for (let i = 0; i < 8; i++) {
     const a = (Math.PI * 2 * i) / 8;
-    addBox(
+    battlements.push(addBox(
       parent,
       battMat,
       0.46 * S,
@@ -119,8 +130,9 @@ function addTowerCrenellations(parent, battMat, tx, ty, tz, radius) {
       ty,
       tz + Math.sin(a) * radius * 0.82,
       { ry: a }
-    );
+    ));
   }
+  return battlements;
 }
 
 function addQuoins(parent, blockMat, cx, cz, width, depth, baseY, height) {
@@ -173,6 +185,7 @@ function addLancetWindow(parent, x, y, z, rotationY, frameMat, glassMat) {
   windowGroup.position.set(x, y, z);
   windowGroup.rotation.y = rotationY;
   parent.add(windowGroup);
+  return windowGroup;
 }
 
 function addCollider(minX, maxX, minZ, maxZ) {
@@ -182,6 +195,7 @@ function addCollider(minX, maxX, minZ, maxZ) {
 export function buildCastle() {
   const baseY = getTerrainHeight(CX, CZ);
   const group = new THREE.Group();
+  const fadeables = [];
 
   const stoneMat = new THREE.MeshStandardMaterial({ color: '#8f8072', roughness: 0.9 });
   const darkStoneMat = new THREE.MeshStandardMaterial({ color: '#67584c', roughness: 0.92 });
@@ -222,10 +236,32 @@ export function buildCastle() {
   const keepDoorX = KEEP_X + KEEP_W / 2 + 0.08 * S;
   const hallInnerW = KEEP_W - KEEP_WALL_T * 2.4;
   const hallInnerD = KEEP_D - KEEP_WALL_T * 2.4;
+  const castleRoofLayer = createFadeLayer({
+    id: 'roof',
+    getTargetOpacity: createInsideOutsideTarget({})
+  });
+  registerFadeZone({
+    id: 'castle',
+    proximity: { x: CX, z: CZ, r: 58 },
+    containsPlayer: createBoundsFadePredicate({
+      minX: KEEP_X - hallInnerW / 2,
+      maxX: KEEP_X + hallInnerW / 2,
+      minZ: CZ - hallInnerD / 2,
+      maxZ: CZ + hallInnerD / 2
+    }),
+    layers: [castleRoofLayer]
+  });
+
+  function pushCastleRoof(...objects) {
+    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
+    state.roofMeshes.push(...flat);
+    addFadeObjects(castleRoofLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
 
   // Courtyard and approaches
   addBox(group, darkStoneMat, OUTER_W + 2 * S, 0.42 * S, OUTER_D + 2 * S, CX, baseY - 0.2 * S, CZ);
-  addFloorSlab(group, floorMat, OUTER_W - 2.3 * S, OUTER_D - 2.3 * S, CX, baseY + 0.02, CZ, 0.1 * S);
+  addFloorSlab(group, floorMat, OUTER_W - 2.3 * S, OUTER_D - 2.3 * S, CX, baseY + 0.06, CZ, 0.1 * S);
   addFloorSlab(group, borderMat, OUTER_W - 8.4 * S, 2.1 * S, COURTYARD_X - 0.2 * S, baseY + 0.03, CZ, 0.05 * S);
   addFloorSlab(group, borderMat, 2.5 * S, OUTER_D - 8.4 * S, KEEP_X + KEEP_W / 2 + 1.2 * S, baseY + 0.03, CZ, 0.05 * S);
 
@@ -262,11 +298,14 @@ export function buildCastle() {
     CZ + (GATE_W / 2 + eastSegmentDepth / 2)
   );
 
-  addWallBattlements(group, battMat, CX - wallSpanX / 2, CX + wallSpanX / 2, CZ - OUTER_D / 2, baseY + OUTER_H + 0.36 * S, 'x');
-  addWallBattlements(group, battMat, CX - wallSpanX / 2, CX + wallSpanX / 2, CZ + OUTER_D / 2, baseY + OUTER_H + 0.36 * S, 'x');
-  addWallBattlements(group, battMat, CZ - wallSpanZ / 2, CZ + wallSpanZ / 2, CX - OUTER_W / 2, baseY + OUTER_H + 0.36 * S, 'z');
-  addWallBattlements(group, battMat, CZ - OUTER_D / 2 + 1.6 * S, CZ - GATE_W / 2 - 1.2 * S, gateWallX, baseY + OUTER_H + 0.36 * S, 'z');
-  addWallBattlements(group, battMat, CZ + GATE_W / 2 + 1.2 * S, CZ + OUTER_D / 2 - 1.6 * S, gateWallX, baseY + OUTER_H + 0.36 * S, 'z');
+  const outerBattlementY = baseY + OUTER_H + 0.34 * S;
+  fadeables.push(
+    ...addWallBattlements(group, battMat, CX - wallSpanX / 2, CX + wallSpanX / 2, CZ - OUTER_D / 2, outerBattlementY, 'x'),
+    ...addWallBattlements(group, battMat, CX - wallSpanX / 2, CX + wallSpanX / 2, CZ + OUTER_D / 2, outerBattlementY, 'x'),
+    ...addWallBattlements(group, battMat, CZ - wallSpanZ / 2, CZ + wallSpanZ / 2, CX - OUTER_W / 2, outerBattlementY, 'z'),
+    ...addWallBattlements(group, battMat, CZ - OUTER_D / 2 + 1.6 * S, CZ - GATE_W / 2 - 1.2 * S, gateWallX, outerBattlementY, 'z'),
+    ...addWallBattlements(group, battMat, CZ + GATE_W / 2 + 1.2 * S, CZ + OUTER_D / 2 - 1.6 * S, gateWallX, outerBattlementY, 'z')
+  );
 
   for (let x = CX - wallSpanX / 2 + 2.2 * S; x <= CX + wallSpanX / 2 - 2.2 * S; x += 3 * S) {
     addArrowSlits(group, x, CZ - OUTER_D / 2 - 0.02 * S, baseY + 2.1 * S, 1.6 * S, 2, 'z', ironMat);
@@ -287,8 +326,8 @@ export function buildCastle() {
   for (const [tx, tz] of towerPositions) {
     addMesh(group, new THREE.CylinderGeometry(TOWER_R * 0.92, TOWER_R, OUTER_H + 1.4 * S, 12), stoneMat, tx, baseY + (OUTER_H + 1.4 * S) / 2, tz);
     addBox(group, trimMat, TOWER_R * 2.1, 0.24 * S, TOWER_R * 2.1, tx, baseY + OUTER_H - 0.14 * S, tz);
-    addTowerCrenellations(group, battMat, tx, baseY + OUTER_H + 0.36 * S, tz, TOWER_R);
-    addMesh(group, new THREE.ConeGeometry(TOWER_R + 0.55 * S, 2.2 * S, 12), roofMat, tx, baseY + OUTER_H + 1.5 * S, tz);
+    fadeables.push(...addTowerCrenellations(group, battMat, tx, baseY + OUTER_H + 0.36 * S, tz, TOWER_R));
+    fadeables.push(addMesh(group, new THREE.ConeGeometry(TOWER_R + 0.55 * S, 2.2 * S, 12), roofMat, tx, baseY + OUTER_H + 1.5 * S, tz));
 
     for (let i = 0; i < 4; i++) {
       const a = (Math.PI * 2 * i) / 4 + Math.PI / 4;
@@ -303,9 +342,12 @@ export function buildCastle() {
   addBox(group, trimMat, GATE_PASSAGE_D + 0.45 * S, 0.18 * S, GATE_W + 1.3 * S, gatehouseX, baseY + 3.9 * S, CZ);
   addBox(group, battMat, GATE_PASSAGE_D + 0.7 * S, 0.2 * S, GATE_W + 1.5 * S, gatehouseX, baseY + GATEHOUSE_H + 0.08 * S, CZ);
   addFloorSlab(group, borderMat, GATE_PASSAGE_D - 0.55 * S, GATE_W - 0.45 * S, gatehouseX, baseY + 0.03, CZ, 0.06 * S);
-  addWallBattlements(group, battMat, CZ - GATE_W / 2 - 0.55 * S, CZ + GATE_W / 2 + 0.55 * S, gatehouseX - GATE_PASSAGE_D / 2 + 0.55 * S, baseY + GATEHOUSE_H + 0.36 * S, 'z');
-  addWallBattlements(group, battMat, CZ - GATE_W / 2 - 0.55 * S, CZ + GATE_W / 2 + 0.55 * S, gatehouseX + GATE_PASSAGE_D / 2 - 0.55 * S, baseY + GATEHOUSE_H + 0.36 * S, 'z');
-  addMesh(group, new THREE.ConeGeometry(2.5 * S, 1.9 * S, 4), roofMat, gatehouseX, baseY + GATEHOUSE_H + 1.0 * S, CZ, { ry: Math.PI / 4 });
+  const gateBattlementY = baseY + GATEHOUSE_H + 0.34 * S;
+  fadeables.push(
+    ...addWallBattlements(group, battMat, CZ - GATE_W / 2 - 0.55 * S, CZ + GATE_W / 2 + 0.55 * S, gatehouseX - GATE_PASSAGE_D / 2 + 0.55 * S, gateBattlementY, 'z'),
+    ...addWallBattlements(group, battMat, CZ - GATE_W / 2 - 0.55 * S, CZ + GATE_W / 2 + 0.55 * S, gatehouseX + GATE_PASSAGE_D / 2 - 0.55 * S, gateBattlementY, 'z'),
+    addMesh(group, new THREE.ConeGeometry(2.5 * S, 1.9 * S, 4), roofMat, gatehouseX, baseY + GATEHOUSE_H + 1.0 * S, CZ, { ry: Math.PI / 4 })
+  );
 
   addBox(group, darkWoodMat, 0.22 * S, gateDoorH, gateDoorPanelW, gateWallX + GATE_PASSAGE_D / 2 + 0.36 * S, baseY + gateDoorH / 2, CZ - GATE_W * 0.28, {
     ry: 0.95
@@ -334,19 +376,22 @@ export function buildCastle() {
   addBox(group, trimMat, KEEP_WALL_T, 1.1 * S, keepDoorW + 0.9 * S, KEEP_X + KEEP_W / 2 + 0.04 * S, baseY + keepDoorH + 0.48 * S, CZ);
   addBox(group, trimMat, KEEP_W + 0.15 * S, 0.22 * S, 0.34 * S, KEEP_X, baseY + 2.2 * S, CZ - KEEP_D / 2 - 0.06 * S);
   addBox(group, trimMat, KEEP_W + 0.15 * S, 0.22 * S, 0.34 * S, KEEP_X, baseY + 2.2 * S, CZ + KEEP_D / 2 + 0.06 * S);
-  addBox(group, trimMat, KEEP_W + 0.45 * S, 0.2 * S, KEEP_D + 0.45 * S, KEEP_X, baseY + KEEP_H + 0.08 * S, CZ);
-  addWallBattlements(group, battMat, KEEP_X - KEEP_W / 2 + 0.9 * S, KEEP_X + KEEP_W / 2 - 0.9 * S, CZ - KEEP_D / 2, baseY + KEEP_H + 0.36 * S, 'x');
-  addWallBattlements(group, battMat, KEEP_X - KEEP_W / 2 + 0.9 * S, KEEP_X + KEEP_W / 2 - 0.9 * S, CZ + KEEP_D / 2, baseY + KEEP_H + 0.36 * S, 'x');
-  addWallBattlements(group, battMat, CZ - KEEP_D / 2 + 0.9 * S, CZ - keepDoorW / 2 - 0.8 * S, KEEP_X + KEEP_W / 2, baseY + KEEP_H + 0.36 * S, 'z');
-  addWallBattlements(group, battMat, CZ + keepDoorW / 2 + 0.8 * S, CZ + KEEP_D / 2 - 0.9 * S, KEEP_X + KEEP_W / 2, baseY + KEEP_H + 0.36 * S, 'z');
-  addWallBattlements(group, battMat, CZ - KEEP_D / 2 + 0.9 * S, CZ + KEEP_D / 2 - 0.9 * S, KEEP_X - KEEP_W / 2, baseY + KEEP_H + 0.36 * S, 'z');
+  addBox(group, trimMat, KEEP_W + 0.45 * S, 0.2 * S, KEEP_D + 0.45 * S, KEEP_X, baseY + KEEP_H + 0.18 * S, CZ);
+  const keepBattlementY = baseY + KEEP_H + 0.34 * S;
+  fadeables.push(
+    ...addWallBattlements(group, battMat, KEEP_X - KEEP_W / 2 + 0.9 * S, KEEP_X + KEEP_W / 2 - 0.9 * S, CZ - KEEP_D / 2, keepBattlementY, 'x'),
+    ...addWallBattlements(group, battMat, KEEP_X - KEEP_W / 2 + 0.9 * S, KEEP_X + KEEP_W / 2 - 0.9 * S, CZ + KEEP_D / 2, keepBattlementY, 'x'),
+    ...addWallBattlements(group, battMat, CZ - KEEP_D / 2 + 0.9 * S, CZ - keepDoorW / 2 - 0.8 * S, KEEP_X + KEEP_W / 2, keepBattlementY, 'z'),
+    ...addWallBattlements(group, battMat, CZ + keepDoorW / 2 + 0.8 * S, CZ + KEEP_D / 2 - 0.9 * S, KEEP_X + KEEP_W / 2, keepBattlementY, 'z'),
+    ...addWallBattlements(group, battMat, CZ - KEEP_D / 2 + 0.9 * S, CZ + KEEP_D / 2 - 0.9 * S, KEEP_X - KEEP_W / 2, keepBattlementY, 'z')
+  );
   addQuoins(group, lightStoneMat, KEEP_X, CZ, KEEP_W, KEEP_D, baseY, KEEP_H);
 
   const keepRoof = addMesh(group, new THREE.ConeGeometry(Math.max(KEEP_W, KEEP_D) * 0.72, 2.8 * S, 4), roofMat, KEEP_X, baseY + KEEP_H + 1.45 * S, CZ, {
     ry: Math.PI / 4
   });
   const keepCeiling = addBox(group, darkStoneMat, hallInnerW, 0.18 * S, hallInnerD, KEEP_X, keepCeilingY, CZ, { castShadow: false });
-  state.roofMeshes.push(keepRoof, keepCeiling);
+  fadeables.push(keepRoof, keepCeiling);
 
   // Keep doors and exterior detailing
   addBox(group, darkWoodMat, 0.2 * S, keepDoorH, keepDoorW * 0.48, keepDoorX, baseY + keepDoorH / 2, CZ - keepDoorW * 0.3, {
@@ -357,20 +402,22 @@ export function buildCastle() {
   });
 
   for (let z = -1; z <= 1; z++) {
-    addPlane(group, borderMat, 1.2 * S, 0.6 * S, KEEP_X + KEEP_W / 2 + 0.65 * S + Math.abs(z) * 0.28 * S, baseY + 0.05, CZ + z * 0.82 * S);
+    addFloorSlab(group, borderMat, 1.2 * S, 0.52 * S, KEEP_X + KEEP_W / 2 + 0.65 * S + Math.abs(z) * 0.28 * S, baseY + 0.03, CZ + z * 0.82 * S, 0.05 * S);
   }
 
-  addLancetWindow(group, KEEP_X - KEEP_W / 2 - 0.04 * S, baseY + 4.65 * S, CZ, HALF_PI, trimMat, glassMat);
-  addLancetWindow(group, KEEP_X, baseY + 4.55 * S, CZ - KEEP_D / 2 - 0.04 * S, 0, trimMat, glassMat);
-  addLancetWindow(group, KEEP_X, baseY + 4.55 * S, CZ + KEEP_D / 2 + 0.04 * S, Math.PI, trimMat, glassMat);
+  fadeables.push(
+    addLancetWindow(group, KEEP_X - KEEP_W / 2 - 0.04 * S, baseY + 4.65 * S, CZ, HALF_PI, trimMat, glassMat),
+    addLancetWindow(group, KEEP_X, baseY + 4.55 * S, CZ - KEEP_D / 2 - 0.04 * S, 0, trimMat, glassMat),
+    addLancetWindow(group, KEEP_X, baseY + 4.55 * S, CZ + KEEP_D / 2 + 0.04 * S, Math.PI, trimMat, glassMat)
+  );
 
   for (const zOff of [-2.8 * S, -1.3 * S, 1.3 * S, 2.8 * S]) {
-    addArrowSlits(group, KEEP_X - KEEP_W / 2 - 0.02 * S, CZ + zOff, baseY + 2.1 * S, 1.8 * S, 2, 'x', ironMat);
-    addArrowSlits(group, KEEP_X + KEEP_W / 2 + 0.02 * S, CZ + zOff, baseY + 2.1 * S, 1.8 * S, 2, 'x', ironMat);
+    addArrowSlits(group, KEEP_X - KEEP_W / 2, CZ + zOff, baseY + 2.1 * S, 1.8 * S, 2, 'x', ironMat);
+    addArrowSlits(group, KEEP_X + KEEP_W / 2, CZ + zOff, baseY + 2.1 * S, 1.8 * S, 2, 'x', ironMat);
   }
   for (const xOff of [-2.4 * S, 2.4 * S]) {
-    addArrowSlits(group, KEEP_X + xOff, CZ - KEEP_D / 2 - 0.02 * S, baseY + 2.0 * S, 1.8 * S, 2, 'z', ironMat);
-    addArrowSlits(group, KEEP_X + xOff, CZ + KEEP_D / 2 + 0.02 * S, baseY + 2.0 * S, 1.8 * S, 2, 'z', ironMat);
+    addArrowSlits(group, KEEP_X + xOff, CZ - KEEP_D / 2, baseY + 2.0 * S, 1.8 * S, 2, 'z', ironMat);
+    addArrowSlits(group, KEEP_X + xOff, CZ + KEEP_D / 2, baseY + 2.0 * S, 1.8 * S, 2, 'z', ironMat);
   }
 
   // Great hall interior
@@ -456,6 +503,7 @@ export function buildCastle() {
   }
   chandelier.position.set(KEEP_X - 0.2 * S, keepCeilingY - 0.85 * S, CZ);
   group.add(chandelier);
+  fadeables.push(chandelier);
 
   // Courtyard accents
   addBox(group, stoneMat, 1.35 * S, 0.95 * S, 1.35 * S, COURTYARD_X - 0.4 * S, baseY + 0.48 * S, CZ - 3.2 * S);
@@ -514,6 +562,8 @@ export function buildCastle() {
   const roomIndex = state.ROOMS.findIndex((room) => room.id === 11);
   if (roomIndex === -1) state.ROOMS.push(keepRoom);
   else state.ROOMS[roomIndex] = keepRoom;
+
+  pushCastleRoof(fadeables);
 
   state.scene.add(group);
   state.landmarkGroups.set('castle', group);

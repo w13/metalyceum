@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
 import { state } from '../../public/js/state.js';
+import { MAIN_BUILDING_MEZZANINE_Y } from '../../public/js/config.js';
 import {
   getRoomIdForPosition,
   checkCollision,
@@ -120,6 +121,12 @@ describe('Client Physics & Room Queries', () => {
     it('returns 0 on the road to the concert venue (specifically at the clipping coordinate -17.98, 68.60)', () => {
       // Road 2 path points include (-18, 68) which should be fully flattened (0)
       expect(getTerrainHeight(-17.98, 68.60)).toBeCloseTo(0, 4);
+    });
+
+    it('uses the shared mezzanine height when sampling the upper floor', () => {
+      state.localPlayer.y = MAIN_BUILDING_MEZZANINE_Y;
+      expect(getTerrainHeight(0, 0)).toBe(MAIN_BUILDING_MEZZANINE_Y);
+      expect(getTerrainHeight(18, -12)).toBe(MAIN_BUILDING_MEZZANINE_Y);
     });
 
     it('calculates hilly height outside the flat safety zones', () => {

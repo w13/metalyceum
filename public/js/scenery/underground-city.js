@@ -2,6 +2,14 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
+import {
+  addFadeObjects,
+  createBoundsFadePredicate,
+  createFadeLayer,
+  createInsideOutsideTarget,
+  makeObjectFadeable,
+  registerFadeZone
+} from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 
 const HALF_PI = Math.PI / 2;
@@ -21,6 +29,29 @@ export function buildCaveAndUndergroundCity() {
 
   const UG_Y = -8;
   const UGW = 26, UGD = 36, UGH = 5.5;
+  const undergroundRoofLayer = createFadeLayer({
+    id: 'roof',
+    getTargetOpacity: createInsideOutsideTarget({})
+  });
+  registerFadeZone({
+    id: 'underground-city',
+    proximity: { x: cx, z: cz + 18, r: 32 },
+    containsPlayer: createBoundsFadePredicate({
+      minX: cx - UGW / 2,
+      maxX: cx + UGW / 2,
+      minZ: cz + 18 - UGD / 2,
+      maxZ: cz + 18 + UGD / 2,
+      maxY: -1
+    }),
+    layers: [undergroundRoofLayer]
+  });
+
+  function pushUndergroundRoof(...objects) {
+    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
+    state.roofMeshes.push(...flat);
+    addFadeObjects(undergroundRoofLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
 
   // ── Cave entrance ──────────────────────────────────────────────────
   // Grand archway at the mouth
@@ -108,7 +139,7 @@ export function buildCaveAndUndergroundCity() {
   ugCeiling.position.set(ugX, UG_Y + UGH, ugZ);
   ugCeiling.receiveShadow = true;
   group.add(ugCeiling);
-  state.roofMeshes.push(ugCeiling);
+  pushUndergroundRoof(ugCeiling);
 
   // Chamber walls
   const backW = new THREE.Mesh(new THREE.BoxGeometry(UGW, UGH, 0.4), stoneMat);
@@ -285,9 +316,9 @@ export function buildCaveAndUndergroundCity() {
   });
 
   // ── Room detection for ceiling fade ────────────────────────────────
-  if (!state.ROOMS.find((r) => r.id === 10)) {
+  if (!state.ROOMS.find((r) => r.id === 12)) {
     state.ROOMS.push({
-      id: 10, name: "Underground City",
+      id: 12, name: "Underground City",
       x: ugX, z: ugZ, width: UGW, depth: UGD,
       video: "", sourceValue: "", sourceType: "none",
       startTime: null, durationMinutes: 0, updatedAt: 0
