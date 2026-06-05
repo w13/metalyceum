@@ -237,7 +237,7 @@ export function buildFrontFountain() {
 
     // Promenade widened slightly so the new side gardens can move outward
     // without crowding the main entry axis.
-    const approachGeo = new THREE.PlaneGeometry(8.75, 12.5, 4, 10);
+    const approachGeo = new THREE.PlaneGeometry(8.75, 12.5, 16, 24);
     deformPlaneToTerrain(approachGeo, 50.25);
     const marbleApproach = new THREE.Mesh(approachGeo, marblePlazaMat.clone());
     marbleApproach.rotation.x = FLAT;

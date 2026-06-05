@@ -123,19 +123,18 @@ export function buildRoads() {
       const pz = brZ + tangent.z * localZ;
       const py = bridgeY + localY;
 
-      // Only draw if it's above the terrain bed
-      if (py > getTerrainHeight(px, pz, true) + 0.1) {
-        const block = new THREE.Mesh(
-          new THREE.BoxGeometry(4.6, 0.25, 1.0),
-          bridgeMat
-        );
-        block.position.set(px, py, pz);
-        block.rotation.y = roadAngle;
-        block.rotateX(theta - Math.PI / 2);
-        block.castShadow = true;
-        block.receiveShadow = true;
-        state.scene.add(block);
-      }
+      // Always render the arch block — if it's under the terrain it's invisible anyway,
+      // but skipping it leaves gaps in the arch at the edges where terrain meets the banks.
+      const block = new THREE.Mesh(
+        new THREE.BoxGeometry(4.6, 0.25, 1.0),
+        bridgeMat
+      );
+      block.position.set(px, py, pz);
+      block.rotation.y = roadAngle;
+      block.rotateX(theta - Math.PI / 2);
+      block.castShadow = true;
+      block.receiveShadow = true;
+      state.scene.add(block);
     }
 
     // 4. Side walls (parapets) + posts

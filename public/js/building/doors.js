@@ -89,4 +89,5 @@ export function createDoorFrame(cx, cz, dir, width, yBase = 0) {
 
   group.position.set(cx, yBase, cz);
   state.scene.add(group);
+  return group;
 }

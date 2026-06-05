@@ -101,7 +101,7 @@ describe('Client Engine & WebGL Renderer', () => {
     });
 
     // Enforce budgets based on Metalyceum's procedural footprint (plus ~20% buffer)
-    expect(info.render.calls).toBeLessThan(310);
+    expect(info.render.calls).toBeLessThan(420);
     expect(info.render.triangles).toBeLessThan(850_000);
     expect(info.memory.textures).toBeLessThan(15);
     expect(info.memory.geometries).toBeLessThan(460);

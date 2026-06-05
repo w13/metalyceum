@@ -158,7 +158,7 @@ export function buildRoof(batcher, materials, config) {
     addRoofMesh(rightRake);
 
     const baseCornice = new THREE.Mesh(
-      new THREE.BoxGeometry(roofHalfW * 2 + 0.35, 0.18, 0.28),
+      new THREE.BoxGeometry(halfBldgW * 2 + 0.2, 0.18, 0.28),
       trimMat
     );
     baseCornice.position.set(0, roofBaseY - 0.03, zSign * (roofHalfD + 0.14));

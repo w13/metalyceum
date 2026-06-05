@@ -896,6 +896,7 @@ export function buildBuilding() {
   state._elevatorCar = elevatorCar;
   state._elevatorDoorPivots = doorPivots;
   state._elevatorDoorOpen = 0; // 0=closed, 1=open
+  state._elevatorHalfHeight = eH / 2; // needed by engine.js to center the door collider
 
   // ── Elevator collision ────────────────────────────────────────────────
   // Room interior walls (3 sides — back, left, right)
@@ -929,6 +930,7 @@ export function buildBuilding() {
   state.scene.add(doorCollider);
   state._elevatorDoorCollider = doorCollider;
   state._elevatorDoorBox = new THREE.Box3().setFromObject(doorCollider);
+  state._elevatorDoorBox.userData = { _isElevatorDoor: true };
   state.WALLS.push(state._elevatorDoorBox);
   // ── Second floor ──────────────────────────────────────────────────────
   const mezzY = 7.5;             // deck surface Y
@@ -1002,9 +1004,9 @@ export function buildBuilding() {
   addUpperCorridorWall(5, rightUpperDoorZs);
 
   // North cap (z = -40) and south cap (z = +40)
-  addUpperWallSegment(-30, -40, 30, -40);
-  addUpperWallSegment(-30, 40, -2, 40);   // gap for main entrance
-  addUpperWallSegment(2, 40, 30, 40);
+  addUpperWallSegment(-30, -39.6, 30, -39.6);
+  addUpperWallSegment(-30, 39.6, -2, 39.6);   // gap for main entrance
+  addUpperWallSegment(2, 39.6, 30, 39.6);
 
   // Outer wall collision backs (interior face of the exterior limestone facade)
   // These add physics collision to the outside walls at the second-floor height
@@ -1019,10 +1021,11 @@ export function buildBuilding() {
 
   // ── Door frames on second-floor corridor openings ────────────────────
   state.ROOMS.filter((r) => !r.floor && r.id < 8).forEach((room) => {
-    createDoorFrame(room.x < 0 ? -5 : 5, room.z, 'V', f2Height, mezzY);
+    const dfGroup = createDoorFrame(room.x < 0 ? -5 : 5, room.z, 'V', f2Height, mezzY);
+    state.upperFloor.push(dfGroup);
   });
   // East-wing room divider door
-  createDoorFrame(17.5, -8, 'H', f2Height, mezzY);
+  state.upperFloor.push(createDoorFrame(17.5, -8, 'H', f2Height, mezzY));
 
   // ── Second-floor columns aligned with ground-floor positions ─────────
   const f2ColHeight = f2Height - 0.6;  // 2.7u shaft
@@ -1125,8 +1128,9 @@ export function buildBuilding() {
   // ── Torches on second-floor corridor walls ───────────────────────────
   const f2TorchZs = [-34, -20, -4, 14, 32];
   f2TorchZs.forEach((z) => {
-    createWallTorch(-4.75, mezzY + 2.2, z, Math.PI / 2, null, true);
-    createWallTorch(4.75, mezzY + 2.2, z, -Math.PI / 2, null, true);
+    // Push torch groups to upperFloor so they fade with the rest of the 2nd-floor interior
+    state.upperFloor.push(createWallTorch(-4.75, mezzY + 2.2, z, Math.PI / 2, null, true));
+    state.upperFloor.push(createWallTorch(4.75, mezzY + 2.2, z, -Math.PI / 2, null, true));
   });
 
   // ── Interactive screen for Room 10 — Upper Gallery (east wing south) ─

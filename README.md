@@ -173,3 +173,4 @@ npm run deploy
 *   **Additional Project Contexts**:
     *   Refer to [CLAUDE.md](CLAUDE.md) for development requirements and guidelines.
     *   Refer to [REASONIX.md](REASONIX.md) for tech stack constraints and conventions.
+    *   Refer to [scenery-physics-lighting-comparison.md](docs/scenery-physics-lighting-comparison.md) for a detailed history/comparison of the 3D, physics, and lighting changes between current and older versions.

@@ -60,6 +60,13 @@ export function updateLocalPlayer(dt, now) {
     return;
   }
 
+  // Lock XZ movement while riding the elevator — car + player Y are animated by elevator.js
+  if (state._elevatorIsRiding) {
+    state.localPlayer.velocity.x = 0;
+    state.localPlayer.velocity.z = 0;
+    state.localPlayer.isMoving = false;
+  }
+
   const oldPos = _oldPos.copy(state.localPlayer.mesh.position);
 
   const acceleration = 55.0;

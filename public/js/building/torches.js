@@ -39,7 +39,6 @@ export function createWallTorch(x, y, z, rotationY, roomId = null, withLight = t
     registerStaticScenery(torchGroup, { kind: 'room', roomId });
   }
   state.scene.add(torchGroup);
-
   state.torches.push({
     light,
     flame,
@@ -47,4 +46,5 @@ export function createWallTorch(x, y, z, rotationY, roomId = null, withLight = t
     seed: Math.random() * 100,
     worldPos: new THREE.Vector3(x, y, z)
   });
+  return torchGroup;
 }

@@ -11,7 +11,7 @@ import {
   ROOM_HEIGHT
 } from './config.js';
 import { getRoomIdForPosition, isLocalPlayerUnderRoof } from './physics.js';
-import { initCannon } from './physics-engine.js';
+import { initCannon, updateElevatorDoorCollider } from './physics-engine.js';
 import { loadHdriEnvironment } from './environment.js';
 import {
   spawnNpcs,
@@ -47,23 +47,26 @@ import { updateTorches } from './lighting.js';
 
 // Fade an array of Object3Ds toward a target opacity each frame.
 // Transparent materials lerp; opaque materials switch at 0.5 threshold.
+// Returns true if any transparent item is still lerping (not yet converged).
 function fadeMeshArray(arr, target, dt) {
+  let converging = false;
   for (let i = 0; i < arr.length; i++) {
     const m = arr[i];
     if (!m || !m.isObject3D) continue;
     if (m.material && m.material.transparent) {
       const prevOpacity = m.material.opacity;
       const newOpacity = THREE.MathUtils.lerp(prevOpacity, target, 8 * dt);
-      // Only flag needsUpdate when opacity meaningfully changed — avoids per-frame uniform re-upload
       if (Math.abs(newOpacity - prevOpacity) > 0.0005) {
         m.material.opacity = newOpacity;
         m.material.needsUpdate = true;
+        converging = true;
       }
       m.visible = m.material.opacity > 0.02;
     } else {
-      m.visible = target > 0.5;
+      if (m.visible !== (target > 0.5)) m.visible = target > 0.5;
     }
   }
+  return converging;
 }
 
 const _desiredCameraTarget = new THREE.Vector3();
@@ -73,12 +76,19 @@ const _elevatorBox3Scratch = new THREE.Box3();
 let _shadowLastPx = -99999;
 let _shadowLastPz = -99999;
 
+// Convergence tracking for fadeMeshArray — skip iterating when stable.
+// Set to NaN so the first-frame target always triggers an update.
+let _roofFadeTarget = NaN;
+let _roofFadeActive = false;
+let _f2FadeTarget = NaN;
+let _f2FadeActive = false;
+
 // Lighting transition colors (outdoor → indoor)
-const _hemiOutColor = new THREE.Color('#dcc878');
+const _hemiOutColor = new THREE.Color('#87ceeb');
 const _hemiInColor = new THREE.Color('#b89050');
-const _hemiGndOut = new THREE.Color('#5a4030');
+const _hemiGndOut = new THREE.Color('#080820');
 const _hemiGndIn = new THREE.Color('#3a2510');
-const _ambOutColor = new THREE.Color('#f5d4a0');
+const _ambOutColor = new THREE.Color('#ffffff');
 const _ambInColor = new THREE.Color('#e8a040');
 
 // Arrow-key camera angular velocity (RuneScape-style smooth orbit)
@@ -277,12 +287,20 @@ export function animate() {
       });
     }
 
-    fadeMeshArray(state.roofMeshes, _rideFade, dt);
+    // Only call fadeMeshArray when the target changed or lerp hasn't finished.
+    // Returns true = still converging; false = all items at target, skip next frame.
+    if (_rideFade !== _roofFadeTarget) { _roofFadeTarget = _rideFade; _roofFadeActive = true; }
+    if (_roofFadeActive) _roofFadeActive = fadeMeshArray(state.roofMeshes, _rideFade, dt);
   }
 
-  // Second-floor elements: fade in during elevator ride, or based on floor level
+  // Second-floor elements: visible only when the player is on the 2nd floor (Y > 5).
+  // Y-based (not room-membership) ensures the interior stays hidden on the ground floor
+  // whether the player is outdoors, in the lobby, or in a corridor.
+  // During the elevator ride, _rp drives the 0→1 fade.
   if (nearBuilding) {
-    fadeMeshArray(state.upperFloor, _rideFade, dt);
+    const _upperFloorFade = _rp > 0 ? _rp : (state.localPlayer?.y > 5 ? 1.0 : 0.0);
+    if (_upperFloorFade !== _f2FadeTarget) { _f2FadeTarget = _upperFloorFade; _f2FadeActive = true; }
+    if (_f2FadeActive) _f2FadeActive = fadeMeshArray(state.upperFloor, _upperFloorFade, dt);
   }
 
   // ── Smooth indoor/outdoor lighting transition (RuneScape-style) ─────
@@ -291,11 +309,11 @@ export function animate() {
   const mix = state._indoorMix;
 
   if (state.sceneSunLight) {
-    state.sceneSunLight.intensity = THREE.MathUtils.lerp(3.2, 0.12, mix);
+    state.sceneSunLight.intensity = THREE.MathUtils.lerp(0.92, 0.12, mix);
     if (state.localPlayer && state.localPlayer.mesh) {
       const px = state.localPlayer.x;
       const pz = state.localPlayer.z;
-      state.sceneSunLight.position.set(38 + px, 22, 12 + pz);
+      state.sceneSunLight.position.set(24 + px, 48, 12 + pz);
       state.sceneSunLight.target.position.set(px, 0, pz);
       // Only rebuild shadow frustum when player moves >2 units — updateProjectionMatrix
       // triggers a GPU uniform upload and was running 60×/s unnecessarily.
@@ -303,7 +321,7 @@ export function animate() {
       if (shadowMoved) {
         _shadowLastPx = px;
         _shadowLastPz = pz;
-        const d = 28;
+        const d = 24;
         state.sceneSunLight.shadow.camera.left = px - d;
         state.sceneSunLight.shadow.camera.right = px + d;
         state.sceneSunLight.shadow.camera.top = pz - d;
@@ -313,7 +331,7 @@ export function animate() {
     }
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = THREE.MathUtils.lerp(0.12, 0.05, mix);
+    state.sceneHemisphereLight.intensity = THREE.MathUtils.lerp(0.78, 0.25, mix);
     state.sceneHemisphereLight.color.lerpColors(_hemiOutColor, _hemiInColor, mix);
     state.sceneHemisphereLight.groundColor.lerpColors(_hemiGndOut, _hemiGndIn, mix);
   }
@@ -321,7 +339,7 @@ export function animate() {
     state.sceneIndoorLight.intensity = THREE.MathUtils.lerp(0, 0.4, mix);
   }
   if (state.sceneAmbientLight) {
-    state.sceneAmbientLight.intensity = THREE.MathUtils.lerp(0.045, 0.09, mix);
+    state.sceneAmbientLight.intensity = THREE.MathUtils.lerp(0.15, 0.08, mix);
     state.sceneAmbientLight.color.lerpColors(_ambOutColor, _ambInColor, mix);
   }
 
@@ -336,7 +354,8 @@ export function animate() {
     if (state._elevatorDoorCollider) {
       const dc = state._elevatorDoorCollider;
       if (state._elevatorCar) {
-        dc.position.y = state._elevatorCar.position.y;
+        // Offset by half the car height so the collider spans floor→ceiling, not underground→mid
+        dc.position.y = state._elevatorCar.position.y + (state._elevatorHalfHeight ?? 2.75);
       }
       // Sync the physics Box3 so WALLS collision follows the car.
       // When visible=false (doors open or riding), collapse the Box3 to zero
@@ -349,6 +368,9 @@ export function animate() {
           state._elevatorDoorBox.min.set(0, 0, 0);
           state._elevatorDoorBox.max.set(0, 0, 0);
         }
+        // Sync the Cannon dynamic body for the elevator door — Cannon uses its
+        // own body since its buildWallColliders skips tagged dynamic boxes.
+        updateElevatorDoorCollider(state._elevatorDoorBox.min, state._elevatorDoorBox.max);
       }
     }
 
@@ -444,8 +466,8 @@ export function onWindowResize() {
 
 export function initEngine() {
   state.scene = new THREE.Scene();
-  state.scene.background = new THREE.Color('#6b7a8a');
-  state.scene.fog = new THREE.FogExp2('#b8a888', 0.0028);
+  state.scene.background = new THREE.Color('#030712');
+  state.scene.fog = new THREE.FogExp2('#030712', 0.0075);
 
   state.camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -453,9 +475,9 @@ export function initEngine() {
   state.renderer.setSize(window.innerWidth, window.innerHeight);
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   state.renderer.shadowMap.enabled = true;
-  state.renderer.shadowMap.type = THREE.PCFShadowMap;
+  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  state.renderer.toneMappingExposure = 1.3;
+  state.renderer.toneMappingExposure = 1.0;
 
   state.localPlayer.velocity = new THREE.Vector3();
   state.localPlayer.displayVelocity = new THREE.Vector3();
@@ -472,18 +494,18 @@ export function initEngine() {
   state.controls.maxPolarAngle = Math.PI / 2 - 0.04;
   state.controls.minPolarAngle = 0.1;
 
-  state.sceneAmbientLight = new THREE.AmbientLight('#f5d4a0', 0.045);
+  state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.15);
   state.scene.add(state.sceneAmbientLight);
 
-  state.sceneHemisphereLight = new THREE.HemisphereLight('#dcc878', '#5a4030', 0.12);
+  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.78);
   state.sceneHemisphereLight.position.set(0, 50, 0);
   state.scene.add(state.sceneHemisphereLight);
 
-  state.sceneSunLight = new THREE.DirectionalLight('#f0c878', 3.2);
-  state.sceneSunLight.position.set(38, 22, 12);
+  state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 0.92);
+  state.sceneSunLight.position.set(24, 48, 12);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 1024;
-  state.sceneSunLight.shadow.mapSize.height = 1024;
+  state.sceneSunLight.shadow.mapSize.width = 2048;
+  state.sceneSunLight.shadow.mapSize.height = 2048;
   state.sceneSunLight.shadow.camera.near = 0.5;
   state.sceneSunLight.shadow.camera.far = 180;
   const d = 24;
@@ -491,13 +513,13 @@ export function initEngine() {
   state.sceneSunLight.shadow.camera.right = d;
   state.sceneSunLight.shadow.camera.top = d;
   state.sceneSunLight.shadow.camera.bottom = -d;
-  state.sceneSunLight.shadow.bias = -0.0008;
+  state.sceneSunLight.shadow.bias = -0.0003;
   state.sceneSunLight.shadow.normalBias = 0.02;
   state.scene.add(state.sceneSunLight);
   state.scene.add(state.sceneSunLight.target);
 
-  // Warm fill light from the opposite side — prevents pure-black shadows
-  const fillLight = new THREE.DirectionalLight('#d4a060', 0.10);
+  // Cool fill light from the opposite side — prevents pure-black shadows
+  const fillLight = new THREE.DirectionalLight('#8ab4f8', 0.18);
   fillLight.position.set(-28, 22, -14);
   state.scene.add(fillLight);
 
@@ -511,8 +533,8 @@ export function initEngine() {
     new THREE.SphereGeometry(450, 16, 16),
     new THREE.ShaderMaterial({
       uniforms: {
-        topColor: { value: new THREE.Color('#5070a0') },
-        bottomColor: { value: new THREE.Color('#d4b888') },
+        topColor: { value: new THREE.Color('#030712') },
+        bottomColor: { value: new THREE.Color('#080f25') },
         offset: { value: 33 },
         exponent: { value: 0.6 }
       },

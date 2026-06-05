@@ -22,6 +22,25 @@ const _sphere = new THREE.Sphere(new THREE.Vector3(), 0.4);
 const _sphereLoose = new THREE.Sphere(new THREE.Vector3(), 0.55);
 const _cBox = new THREE.Box3();
 
+// Terrain helpers — module-level so they are not recreated (as closures) on every
+// getTerrainHeight call. Previously defined inside the function which allocated new
+// Function objects each invocation.
+function _flatCircularH(x, z, cx, cz, rInner, rOuter) {
+  const dx = x - cx, dz = z - cz;
+  return 1 - _ss(rInner, rOuter, Math.sqrt(dx * dx + dz * dz));
+}
+
+// Loop instead of .map() + spread — eliminates 2 array allocations per call.
+function _flatPolylineH(x, z, segments, rInner, rOuter) {
+  let d = Infinity;
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    const sd = Math.sqrt(pointToSegmentDistSq(x, z, s[0], s[1], s[2], s[3]));
+    if (sd < d) d = sd;
+  }
+  return 1 - _ss(rInner, rOuter, d);
+}
+
 // Smooth cubic interpolation: returns 0 at t≤lo, 1 at t≥hi, S-curve between.
 function _ss(lo, hi, t) {
   const v = Math.max(0, Math.min(1, (t - lo) / (hi - lo)));
@@ -70,39 +89,30 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
   }
 
   // ── Contributors ──────────────────────────────────────────────────────
-  // Each named function computes ONE modification to the base terrain.
+  // Each line computes ONE modification to the base terrain.
   // Flat zones return 0..1 (1=fully flat). Depth/height modifiers return signed offsets.
+  // _flatCircularH / _flatPolylineH are module-level — no closure re-creation per call.
 
-  function _flatCircular(cx, cz, rInner, rOuter) {
-    const d = Math.sqrt((x - cx) ** 2 + (z - cz) ** 2);
-    return 1 - _ss(rInner, rOuter, d);
-  }
-  function _flatPolyline(segments, rInner, rOuter) {
-    const d = Math.min(...segments.map(([ax, az, bx, bz]) =>
-      Math.sqrt(pointToSegmentDistSq(x, z, ax, az, bx, bz))));
-    return 1 - _ss(rInner, rOuter, d);
-  }
-
-  const f1 = _flatCircular(0, 0, 50, 76);                              // main building
+  const f1 = _flatCircularH(x, z, 0, 0, 50, 76);                       // main building
 
   // Fountain approach corridor
   const corrX = Math.max(0, Math.abs(x) - 11);
   const corrZ = Math.max(0, z - 74) + Math.max(0, 44 - z);
   const f2 = 1 - _ss(0, 14, Math.sqrt(corrX * corrX + corrZ * corrZ));
 
-  const f3 = _flatPolyline(AMP_ROAD_SEGMENTS, 4, 11);                   // road → amphitheater
-  const f4 = _flatPolyline(CV_ROAD_SEGMENTS, 4, 11);                    // road → concert venue
+  const f3 = _flatPolylineH(x, z, AMP_ROAD_SEGMENTS, 4, 11);            // road → amphitheater
+  const f4 = _flatPolylineH(x, z, CV_ROAD_SEGMENTS, 4, 11);             // road → concert venue
 
   const d5 = Math.sqrt((x - 65) ** 2 + (z - 150) ** 2);
   const hillRise = _ss(6, 36, d5) * 9 * (1 - _ss(36, 52, d5));         // amphitheater bowl
-  const f5 = _flatCircular(65, 150, 0, 46);
+  const f5 = _flatCircularH(x, z, 65, 150, 0, 46);
 
   const d6 = Math.sqrt(((x + 85) / 28) ** 2 + ((z - 140) / 22) ** 2);  // concert venue (elliptical)
   const f6 = 1 - _ss(1.0, 1.8, d6);
 
-  const f7 = _flatCircular(160, 220, 30, 70);                          // airport
-  const f8 = _flatCircular(75, 25, 5, 22);                              // cave entrance
-  const f10 = _flatCircular(130, -80, 0, 80);                           // castle
+  const f7 = _flatCircularH(x, z, 160, 220, 30, 70);                    // airport
+  const f8 = _flatCircularH(x, z, 75, 25, 5, 22);                       // cave entrance
+  const f10 = _flatCircularH(x, z, 130, -80, 0, 80);                    // castle
 
   // Underground city cavity
   const d9 = Math.sqrt((x - 120) ** 2 + (z - 95) ** 2);

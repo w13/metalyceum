@@ -17,6 +17,7 @@ let phase = 'idle';     // idle | opening | open | waiting | closing | riding | 
 let floorNum = 'L';
 let panel = null;
 let floorDisplay = null;
+state._elevatorIsRiding = false;
 
 function animateDoors(openRatio) {
   // Fold/swing each door pivot: 0=closed (0°), 1=open (~82°)
@@ -83,6 +84,7 @@ export function initElevatorUI() {
       }
     } else if (phase === 'riding') {
       rideProgress += dt / RIDE_DURATION;
+      state._elevatorIsRiding = true;
       const t = Math.min(rideProgress, 1);
       // Smooth ease-in-out
       const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -106,6 +108,7 @@ export function initElevatorUI() {
 
       if (t >= 1) {
         phase = 'arrival';
+        state._elevatorIsRiding = false;
         doorTarget = 1; // start opening doors
         // Snap player to final position
         if (state.localPlayer) {
@@ -132,7 +135,7 @@ export function initElevatorUI() {
     }
 
     // ── Proximity + idle door logic ───────────────────────────────────────
-    if (phase === 'idle' || phase === 'open' || phase === 'waiting') {
+    if (phase === 'idle' || phase === 'opening' || phase === 'open' || phase === 'waiting') {
       if (!state.localPlayer) return;
 
       const dx = state.localPlayer.x;

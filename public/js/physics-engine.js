@@ -10,6 +10,7 @@ const PLAYER_RADIUS = 0.4;
 let CANNON = null;
 let world = null;
 let playerBody = null;
+let elevatorDoorBody = null; // dynamic Cannon body for the elevator door
 let initialized = false;
 let initPromise = null;
 
@@ -54,8 +55,13 @@ export async function initCannon() {
 }
 
 // ── Wall colliders (from state.WALLS Box3 array) ───────────────────────────────
+// The elevator door Box3 is tagged with _isElevatorDoor=true and handled
+// dynamically via updateElevatorDoorCollider() instead.
 function buildWallColliders() {
   state.WALLS.forEach((box3) => {
+    // Skip dynamic walls that are updated per-frame (elevator door, etc.)
+    if (box3.userData?._isElevatorDoor) return;
+
     const cx = (box3.min.x + box3.max.x) / 2;
     const cy = (box3.min.y + box3.max.y) / 2;
     const cz = (box3.min.z + box3.max.z) / 2;
@@ -137,6 +143,42 @@ export function getPlayerBodyRef() {
   return playerBody;
 }
 
+// ── Dynamic elevator door collider ─────────────────────────────────────────────
+// Called every frame from engine.js to keep the Cannon door body in sync with
+// the elevator car's Y position and the door open/closed state.
+export function updateElevatorDoorCollider(min, max) {
+  if (!initialized || !world || !CANNON) return;
+
+  const cx = (min.x + max.x) / 2;
+  const cy = (min.y + max.y) / 2;
+  const cz = (min.z + max.z) / 2;
+  const hx = (max.x - min.x) / 2;
+  const hy = (max.y - min.y) / 2;
+  const hz = (max.z - min.z) / 2;
+
+  if (hx < 0.01 || hy < 0.01 || hz < 0.01) {
+    // Door is open or collapsed — remove the body so player walks through
+    if (elevatorDoorBody) {
+      world.removeBody(elevatorDoorBody);
+      elevatorDoorBody = null;
+    }
+    return;
+  }
+
+  if (!elevatorDoorBody) {
+    // Create the door body on first use
+    elevatorDoorBody = new CANNON.Body({ mass: 0 });
+    elevatorDoorBody.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz)));
+    elevatorDoorBody.position.set(cx, cy, cz);
+    world.addBody(elevatorDoorBody);
+  } else {
+    // Update existing body — swap shape for new half-extents
+    elevatorDoorBody.removeShape(elevatorDoorBody.shapes[0]);
+    elevatorDoorBody.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz)));
+    elevatorDoorBody.position.set(cx, cy, cz);
+  }
+}
+
 // ── Rebuild asset colliders (after editor saves new assets) ───────────────────
 export function rebuildAssetColliders() {
   if (!initialized || !world) return;
@@ -152,6 +194,7 @@ export function resetCannon() {
   }
   world = null;
   playerBody = null;
+  elevatorDoorBody = null;
   initialized = false;
   initPromise = null;
 }

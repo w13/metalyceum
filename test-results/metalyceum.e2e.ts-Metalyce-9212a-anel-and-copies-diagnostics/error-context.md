@@ -39,7 +39,7 @@ Call log:
     - generic [ref=e5]:
       - button "Music player" [ref=e6] [cursor=pointer]:
         - generic [ref=e7]: 🎵
-        - generic [ref=e8]: Music
+        - generic [ref=e8]: ♪ On
       - button "Event board" [ref=e9] [cursor=pointer]:
         - generic [ref=e10]: 📅
         - generic [ref=e11]: Events
@@ -49,121 +49,113 @@ Call log:
       - button "Debug panel" [ref=e15] [cursor=pointer]:
         - generic [ref=e16]: 🐞
         - generic [ref=e17]: Debug
-    - generic [ref=e18]:
-      - generic [ref=e20]:
-        - generic [ref=e21]: Show
-        - button "All" [ref=e22] [cursor=pointer]
-        - button "Global" [ref=e23] [cursor=pointer]
-        - button "Room" [ref=e24] [cursor=pointer]
-      - generic [ref=e25]:
-        - generic [ref=e26]: Welcome to Metalyceum. Walk through rooms, chat with others, and open live events together.
-        - generic [ref=e27]:
-          - generic [ref=e28]: Global
-          - generic [ref=e29]: "Alice:"
-          - generic [ref=e30]: Hi Bob, can you hear me?
-        - generic [ref=e31]:
-          - generic [ref=e32]: Global
-          - generic [ref=e33]: "Bob:"
-          - generic [ref=e34]: Yes Alice, loud and clear!
-        - generic [ref=e35]:
-          - generic [ref=e36]: Global
-          - generic [ref=e37]: "Alice:"
-          - generic [ref=e38]: Hello world from test suite!
-        - generic [ref=e39]:
-          - generic [ref=e40]: Global
-          - generic [ref=e41]: "Alice:"
-          - generic [ref=e42]: Hello world from test suite!
-        - generic [ref=e43]:
-          - generic [ref=e44]: Global
-          - generic [ref=e45]: "Alice:"
-          - generic [ref=e46]: Hi Bob, can you hear me?
-        - generic [ref=e47]:
-          - generic [ref=e48]: Global
-          - generic [ref=e49]: "Bob:"
-          - generic [ref=e50]: Yes Alice, loud and clear!
-        - generic [ref=e51]:
-          - generic [ref=e52]: Global
-          - generic [ref=e53]: "Alice:"
-          - generic [ref=e54]: Hi Bob, can you hear me?
-        - generic [ref=e55]:
-          - generic [ref=e56]: Global
-          - generic [ref=e57]: "Bob:"
-          - generic [ref=e58]: Yes Alice, loud and clear!
-        - generic [ref=e59]:
-          - generic [ref=e60]: Global
-          - generic [ref=e61]: "Alice:"
-          - generic [ref=e62]: Hello world from test suite!
-        - generic [ref=e63]:
-          - generic [ref=e64]: Global
-          - generic [ref=e65]: "Alice:"
-          - generic [ref=e66]: Hi Bob, can you hear me?
-        - generic [ref=e67]:
-          - generic [ref=e68]: Global
-          - generic [ref=e69]: "Bob:"
-          - generic [ref=e70]: Yes Alice, loud and clear!
-        - generic [ref=e71]:
-          - generic [ref=e72]: Global
-          - generic [ref=e73]: "Alice:"
-          - generic [ref=e74]: Hello world from test suite!
-        - generic [ref=e75]:
-          - generic [ref=e76]: Global
-          - generic [ref=e77]: "Alice:"
-          - generic [ref=e78]: Hello world from test suite!
-        - generic [ref=e79]:
-          - generic [ref=e80]: Global
-          - generic [ref=e81]: "Alice:"
-          - generic [ref=e82]: Hello world from test suite!
-        - generic [ref=e83]:
-          - generic [ref=e84]: Global
-          - generic [ref=e85]: "Alice:"
-          - generic [ref=e86]: Hi Bob, can you hear me?
-        - generic [ref=e87]:
-          - generic [ref=e88]: Global
-          - generic [ref=e89]: "Bob:"
-          - generic [ref=e90]: Yes Alice, loud and clear!
-      - generic [ref=e91]:
-        - textbox "Message everyone in Metalyceum..." [ref=e92]
-        - button "Send" [ref=e93] [cursor=pointer]
-    - generic [ref=e94]:
-      - button "✕" [ref=e95] [cursor=pointer]
-      - generic [ref=e96]:
-        - heading "Room" [level=2] [ref=e97]
+      - button "Keyboard controls" [ref=e18] [cursor=pointer]:
+        - generic [ref=e19]: ⌨
+        - generic [ref=e20]: Controls
+    - generic [ref=e21]:
+      - generic [ref=e23]:
+        - generic [ref=e24]: Show
+        - button "All" [ref=e25] [cursor=pointer]
+        - button "Global" [ref=e26] [cursor=pointer]
+        - button "Room" [ref=e27] [cursor=pointer]
+      - generic [ref=e28]:
+        - generic [ref=e29]: Welcome to Metalyceum. Walk through rooms, chat with others, and open live events together.
+        - generic [ref=e30]:
+          - generic [ref=e31]: Global
+          - generic [ref=e32]: "Alice:"
+          - generic [ref=e33]: Hi Bob, can you hear me?
+        - generic [ref=e34]:
+          - generic [ref=e35]: Global
+          - generic [ref=e36]: "Bob:"
+          - generic [ref=e37]: Yes Alice, loud and clear!
+        - generic [ref=e38]:
+          - generic [ref=e39]: Global
+          - generic [ref=e40]: "Alice:"
+          - generic [ref=e41]: Hello world from test suite!
+        - generic [ref=e42]:
+          - generic [ref=e43]: Global
+          - generic [ref=e44]: "Alice:"
+          - generic [ref=e45]: Hello world from test suite!
+        - generic [ref=e46]:
+          - generic [ref=e47]: Global
+          - generic [ref=e48]: "Alice:"
+          - generic [ref=e49]: Hi Bob, can you hear me?
+        - generic [ref=e50]:
+          - generic [ref=e51]: Global
+          - generic [ref=e52]: "Bob:"
+          - generic [ref=e53]: Yes Alice, loud and clear!
+        - generic [ref=e54]:
+          - generic [ref=e55]: Global
+          - generic [ref=e56]: "Alice:"
+          - generic [ref=e57]: Hi Bob, can you hear me?
+        - generic [ref=e58]:
+          - generic [ref=e59]: Global
+          - generic [ref=e60]: "Bob:"
+          - generic [ref=e61]: Yes Alice, loud and clear!
+        - generic [ref=e62]:
+          - generic [ref=e63]: Global
+          - generic [ref=e64]: "Alice:"
+          - generic [ref=e65]: Hello world from test suite!
+        - generic [ref=e66]:
+          - generic [ref=e67]: Global
+          - generic [ref=e68]: "Alice:"
+          - generic [ref=e69]: Hi Bob, can you hear me?
+        - generic [ref=e70]:
+          - generic [ref=e71]: Global
+          - generic [ref=e72]: "Bob:"
+          - generic [ref=e73]: Yes Alice, loud and clear!
+        - generic [ref=e74]:
+          - generic [ref=e75]: Global
+          - generic [ref=e76]: "Alice:"
+          - generic [ref=e77]: Hello world from test suite!
+        - generic [ref=e78]:
+          - generic [ref=e79]: Global
+          - generic [ref=e80]: "Alice:"
+          - generic [ref=e81]: Hello world from test suite!
+        - generic [ref=e82]:
+          - generic [ref=e83]: Global
+          - generic [ref=e84]: "Alice:"
+          - generic [ref=e85]: Hello world from test suite!
+        - generic [ref=e86]:
+          - generic [ref=e87]: Global
+          - generic [ref=e88]: "Alice:"
+          - generic [ref=e89]: Hi Bob, can you hear me?
+        - generic [ref=e90]:
+          - generic [ref=e91]: Global
+          - generic [ref=e92]: "Bob:"
+          - generic [ref=e93]: Yes Alice, loud and clear!
+        - generic [ref=e94]:
+          - generic [ref=e95]: Global
+          - generic [ref=e96]: "Alice:"
+          - generic [ref=e97]: Hello world from test suite!
+        - generic [ref=e98]:
+          - generic [ref=e99]: Global
+          - generic [ref=e100]: "Alice:"
+          - generic [ref=e101]: Hi Bob, can you hear me?
+        - generic [ref=e102]:
+          - generic [ref=e103]: Global
+          - generic [ref=e104]: "Bob:"
+          - generic [ref=e105]: Yes Alice, loud and clear!
+        - generic [ref=e106]:
+          - generic [ref=e107]: Global
+          - generic [ref=e108]: "Alice:"
+          - generic [ref=e109]: Hello world from test suite!
+        - generic [ref=e110]: ❌ Connection lost. Reconnecting…
+      - generic [ref=e111]:
+        - textbox "Message everyone in Metalyceum..." [ref=e112]
+        - button "Send" [ref=e113] [cursor=pointer]
+    - generic [ref=e114]:
+      - button "✕" [ref=e115] [cursor=pointer]
+      - generic [ref=e116]:
+        - heading "Room" [level=2] [ref=e117]
         - text: 1 / 10 Players
-      - generic [ref=e99]: Idle
-      - button "📺 Open Theater Mode" [ref=e103] [cursor=pointer]:
-        - generic [ref=e104]: 📺 Open Theater Mode
-      - generic [ref=e105]:
-        - heading "Players in Room" [level=3] [ref=e106]
-        - list [ref=e107]
-      - button "Edit Room Event" [ref=e109] [cursor=pointer]
-  - generic [ref=e110]:
-    - generic [ref=e111]:
-      - generic [ref=e112]: W
-      - generic [ref=e113]: A
-      - generic [ref=e114]: S
-      - generic [ref=e115]: D
-      - generic [ref=e116]: Move
-    - generic [ref=e117]:
-      - generic [ref=e118]: Space
-      - generic [ref=e119]: Jump
-    - generic [ref=e120]:
-      - generic [ref=e121]: ▲
-      - generic [ref=e122]: ▼
-      - generic [ref=e123]: ◀
-      - generic [ref=e124]: ▶
-      - generic [ref=e125]: Orbit Camera
-    - generic [ref=e126]:
-      - generic [ref=e127]: Drag Mouse
-      - generic [ref=e128]: Rotate Camera
-    - generic [ref=e129]:
-      - generic [ref=e130]: Scroll
-      - generic [ref=e131]: Zoom
-    - generic [ref=e132]:
-      - generic [ref=e133]: "`"
-      - generic [ref=e134]: Toggle Debug
-    - generic [ref=e135]:
-      - generic [ref=e136]: M
-      - generic [ref=e137]: Toggle Map
+      - generic [ref=e119]: Idle
+      - button "📺 Open Theater Mode" [ref=e123] [cursor=pointer]:
+        - generic [ref=e124]: 📺 Open Theater Mode
+      - generic [ref=e125]:
+        - heading "Players in Room" [level=3] [ref=e126]
+        - list [ref=e127]
+      - button "Edit Room Event" [ref=e129] [cursor=pointer]
   - dialog:
     - generic:
       - button: ✕
@@ -172,22 +164,22 @@ Call log:
       - generic:
         - paragraph: Press Esc or click outside to close.
         - button: Close
-  - generic [ref=e139]:
-    - generic [ref=e140]:
-      - generic [ref=e141]: OTIS
-      - generic [ref=e142]: ELEVATOR CO.
+  - generic [ref=e131]:
+    - generic [ref=e132]:
+      - generic [ref=e133]: OTIS
+      - generic [ref=e134]: ELEVATOR CO.
+    - generic [ref=e135]:
+      - generic [ref=e136]: G
+      - generic [ref=e137]: FLOOR
+    - generic [ref=e138]:
+      - button [ref=e139] [cursor=pointer]:
+        - generic [ref=e140]: ▲
+      - button [ref=e141] [cursor=pointer]:
+        - generic [ref=e142]: ▼
     - generic [ref=e143]:
-      - generic [ref=e144]: G
-      - generic [ref=e145]: FLOOR
-    - generic [ref=e146]:
-      - button [ref=e147] [cursor=pointer]:
-        - generic [ref=e148]: ▲
-      - button [ref=e149] [cursor=pointer]:
-        - generic [ref=e150]: ▼
-    - generic [ref=e151]:
-      - generic [ref=e152]: PUSH
-      - generic [ref=e153]: TO
-      - generic [ref=e154]: CALL
+      - generic [ref=e144]: PUSH
+      - generic [ref=e145]: TO
+      - generic [ref=e146]: CALL
 ```
 
 # Test source

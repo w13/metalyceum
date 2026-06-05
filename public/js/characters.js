@@ -324,7 +324,15 @@ function moveNpcTowardTarget(npc, dt) {
   npc.x = nextX;
   npc.z = nextZ;
   npc.ry = angle;
-  npc.y = getTerrainHeight(npc.x, npc.z, true); // ignoreBridges=true skips the mezzanine override
+  // Only resample terrain when the NPC has moved >0.5 units — getTerrainHeight is
+  // expensive (river scan + trig) and NPC movement per frame is tiny (~0.02u at 60fps).
+  const dxTerrain = npc.x - (npc._lastTerrainX ?? npc.x + 1);
+  const dzTerrain = npc.z - (npc._lastTerrainZ ?? npc.z + 1);
+  if (dxTerrain * dxTerrain + dzTerrain * dzTerrain > 0.25) {
+    npc.y = getTerrainHeight(npc.x, npc.z, true);
+    npc._lastTerrainX = npc.x;
+    npc._lastTerrainZ = npc.z;
+  }
   npc.mesh.position.set(npc.x, npc.y, npc.z);
   npc.mesh.rotation.y = -npc.ry + Math.PI / 2;
 
