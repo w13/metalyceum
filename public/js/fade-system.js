@@ -164,6 +164,22 @@ export function createPlayerYTarget({ minY = -Infinity, maxY = Infinity, insideO
   };
 }
 
+export function createInsidePlayerYTarget({
+  minY = -Infinity,
+  maxY = Infinity,
+  insideOpacity = 1,
+  belowInsideOpacity = 0,
+  outsideOpacity = 1,
+  getProgress = null
+}) {
+  return ({ inside, player }) => {
+    const progress = typeof getProgress === 'function' ? getProgress() : 0;
+    if (progress > 0) return progress;
+    if (!inside) return outsideOpacity;
+    return player.y >= minY && player.y < maxY ? insideOpacity : belowInsideOpacity;
+  };
+}
+
 export function updateFadeZones(dt) {
   const player = state.localPlayer;
 

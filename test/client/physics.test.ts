@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
 import { state } from '../../public/js/state.js';
-import { MAIN_BUILDING_MEZZANINE_Y } from '../../public/js/config.js';
+import {
+  MAIN_BUILDING_MEZZANINE_Y,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
+} from '../../public/js/config.js';
 import {
   getRoomIdForPosition,
   checkCollision,
@@ -127,6 +130,14 @@ describe('Client Physics & Room Queries', () => {
       state.localPlayer.y = MAIN_BUILDING_MEZZANINE_Y;
       expect(getTerrainHeight(0, 0)).toBe(MAIN_BUILDING_MEZZANINE_Y);
       expect(getTerrainHeight(18, -12)).toBe(MAIN_BUILDING_MEZZANINE_Y);
+    });
+
+    it('switches to mezzanine sampling at the shared upper-level threshold', () => {
+      state.localPlayer.y = MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y - 0.01;
+      expect(getTerrainHeight(0, 0)).toBe(0);
+
+      state.localPlayer.y = MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y;
+      expect(getTerrainHeight(0, 0)).toBe(MAIN_BUILDING_MEZZANINE_Y);
     });
 
     it('calculates hilly height outside the flat safety zones', () => {

@@ -42,6 +42,8 @@ export const state = {
   fadeZones: [],
   /** Second-floor meshes — faded only when player is on the ground floor. */
   upperFloor: [],
+  /** Ground-floor items that should hide when the player is on the second floor (room indicators, screens, etc.) */
+  groundFloorItems: [],
   /** @type {any[]} */
   WALLS: [],
   /** @type {any[]} */

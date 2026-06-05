@@ -241,10 +241,10 @@ export function animate() {
         _shadowLastPx = px;
         _shadowLastPz = pz;
         const d = 18;
-        state.sceneSunLight.shadow.camera.left = px - d;
-        state.sceneSunLight.shadow.camera.right = px + d;
-        state.sceneSunLight.shadow.camera.top = pz - d;
-        state.sceneSunLight.shadow.camera.bottom = pz + d;
+        state.sceneSunLight.shadow.camera.left = -d;
+        state.sceneSunLight.shadow.camera.right = d;
+        state.sceneSunLight.shadow.camera.top = d;
+        state.sceneSunLight.shadow.camera.bottom = -d;
         state.sceneSunLight.shadow.camera.updateProjectionMatrix();
       }
     }
@@ -390,13 +390,14 @@ export function initEngine() {
 
   state.camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-  state.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  state.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
   state.renderer.setSize(window.innerWidth, window.innerHeight);
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFShadowMap;
   state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
+  state.renderer.sortObjects = false;
 
   state.localPlayer.velocity = new THREE.Vector3();
   state.localPlayer.displayVelocity = new THREE.Vector3();

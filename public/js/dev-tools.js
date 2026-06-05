@@ -5,6 +5,10 @@ import { MAP_SIZE, WORLD_ASSET_CATALOG, LANDMARK_REGISTRY, COVERED_BOUNDS } from
 import { getTerrainHeight, getRoomBounds, getRoomIdForPosition } from './physics.js';
 import { teleportPlayer } from './physics-engine.js';
 
+if (typeof window !== 'undefined') {
+  window.__state = state;
+}
+
 // Local developer tools state
 export const devState = {
   showMap: false,

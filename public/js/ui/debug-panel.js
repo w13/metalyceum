@@ -316,6 +316,9 @@ export function updateDebugPanel(now) {
     state.DEBUG_STATE.liveRooms = state.ROOMS.filter((room) => getRoomEventStatus(room).tone === 'live').length;
   }
 
+  // Throttle DOM writes to every 6th frame — reduces layout thrash from textContent assignments
+  if ((state.frameCount || 0) % 6 !== 0) return;
+
   // Update Player Position
   if (state.debugPlayerPosEl) {
     state.debugPlayerPosEl.textContent = `X: ${state.localPlayer.x.toFixed(2)} | Y: ${state.localPlayer.y.toFixed(2)} | Z: ${state.localPlayer.z.toFixed(2)}`;

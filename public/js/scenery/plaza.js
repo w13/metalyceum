@@ -130,6 +130,8 @@ export function createRoomIndicator(room) {
 
   registerStaticScenery(group, { kind: 'outdoor', distance: 120 });
   state.scene.add(group);
+  // Push to groundFloorItems so the fade layer hides this on the second floor
+  if (state.groundFloorItems) state.groundFloorItems.push(group);
 }
 
 export function buildExteriorPlaza() {

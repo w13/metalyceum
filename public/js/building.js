@@ -8,7 +8,13 @@ import {
   ROOM_LAYOUTS,
   COVERED_BOUNDS,
   MAIN_BUILDING_ELEVATOR_GROUND_Y,
-  MAIN_BUILDING_MEZZANINE_Y
+  MAIN_BUILDING_MEZZANINE_Y,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
+  MAIN_BUILDING_ELEVATOR_Z,
+  MAIN_BUILDING_ELEVATOR_W,
+  MAIN_BUILDING_ELEVATOR_D,
+  MAIN_BUILDING_ELEVATOR_H,
+  MAIN_BUILDING_ELEVATOR_FRONT_Z
 } from './config.js';
 import { getTerrainHeight } from './physics.js';
 import { vec2LengthAngle, samplePosition, createFloor } from './scenery/utils.js';
@@ -17,7 +23,7 @@ import {
   createBoundsFadePredicate,
   createFadeLayer,
   createInsideOutsideTarget,
-  createPlayerYTarget,
+  createInsidePlayerYTarget,
   makeFadeMaterial,
   makeObjectFadeable,
   registerFadeZone,
@@ -387,21 +393,31 @@ export function buildBuilding() {
   const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const frameMat = state.sharedScenery.frameMat;
   const screenMat = state.sharedScenery.screenMat;
-  const getElevatorFadeProgress = () => (state._elevatorIsRiding ? (state.elevatorRideProgress || 0) : 0);
-  const getMainUpperStoryOpacity = createPlayerYTarget({
-    minY: ROOM_HEIGHT,
+  const hideWhileElevatorMoving = (getTargetOpacity, rideOpacity = 0) => (context) => {
+    if (state._elevatorIsRiding) return rideOpacity;
+    return getTargetOpacity(context);
+  };
+  const baseMainUpperStoryOpacity = createInsidePlayerYTarget({
+    minY: MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
     insideOpacity: 1,
-    outsideOpacity: 0,
-    getProgress: getElevatorFadeProgress
+    belowInsideOpacity: 0,
+    outsideOpacity: 1
   });
+  const getMainUpperStoryOpacity = hideWhileElevatorMoving(baseMainUpperStoryOpacity, 0);
+  const baseGroundFloorOpacity = createInsidePlayerYTarget({
+    minY: MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
+    insideOpacity: 0,
+    belowInsideOpacity: 1,
+    outsideOpacity: 1
+  });
+  const getGroundFloorOpacity = hideWhileElevatorMoving(baseGroundFloorOpacity, 0);
 
   const mainRoofLayer = createFadeLayer({
     id: 'roof',
-    getTargetOpacity: createInsideOutsideTarget({
-      getProgress: getElevatorFadeProgress,
+    getTargetOpacity: hideWhileElevatorMoving(createInsideOutsideTarget({
       insideOpacity: 0,
       outsideOpacity: 1
-    })
+    }), 0)
   });
   const mainUpperWallsLayer = createFadeLayer({
     id: 'upper-walls',
@@ -412,12 +428,18 @@ export function buildBuilding() {
     id: 'upper-floor',
     getTargetOpacity: getMainUpperStoryOpacity
   });
+  // Ground-floor items (room indicators, screens) — visible only while outside
+  // or while inside below the shared upper-level threshold.
+  const mainGroundFloorLayer = createFadeLayer({
+    id: 'ground-floor',
+    getTargetOpacity: getGroundFloorOpacity
+  });
 
   registerFadeZone({
     id: 'main-building',
     proximity: { x: 0, z: 0, r: 68 },
     containsPlayer: createBoundsFadePredicate(COVERED_BOUNDS),
-    layers: [mainRoofLayer, mainUpperWallsLayer, mainUpperFloorLayer]
+    layers: [mainRoofLayer, mainUpperWallsLayer, mainUpperFloorLayer, mainGroundFloorLayer]
   });
 
   function pushRoof(...objects) {
@@ -438,6 +460,13 @@ export function buildBuilding() {
     const flat = objects.flat().filter(Boolean);
     state.upperFloor.push(...flat);
     addFadeObjects(mainUpperFloorLayer, ...flat);
+    return flat.length === 1 ? flat[0] : flat;
+  }
+
+  function pushGroundFloor(...objects) {
+    const flat = objects.flat().filter(Boolean);
+    state.groundFloorItems.push(...flat);
+    addFadeObjects(mainGroundFloorLayer, ...flat);
     return flat.length === 1 ? flat[0] : flat;
   }
 
@@ -710,7 +739,8 @@ export function buildBuilding() {
 
   state.ROOMS.forEach((room) => {
     if (room.id >= 8) return;
-    buildRoomScreen(room, frameMat, screenMat, 3.5);
+    const screen = buildRoomScreen(room, frameMat, screenMat, 3.5);
+    pushGroundFloor(screen);
     const torchX = room.x < 0 ? room.x - room.width / 2 + 0.25 : room.x + room.width / 2 - 0.25;
     const torchRy = room.x < 0 ? Math.PI / 2 : -Math.PI / 2;
     createWallTorch(torchX, 2.5, room.z - 4, torchRy, room.id, true);
@@ -844,8 +874,11 @@ export function buildBuilding() {
   flushBatches();
 
   // ── Animated Opulent Elevator (north end of lobby) ─────────────────────
-  const eZ = -36, eW = 3.2, eD = 3.2, eH = 5.5;
-  const eFrontZ = eZ + eD / 2;
+  const eZ = MAIN_BUILDING_ELEVATOR_Z;
+  const eW = MAIN_BUILDING_ELEVATOR_W;
+  const eD = MAIN_BUILDING_ELEVATOR_D;
+  const eH = MAIN_BUILDING_ELEVATOR_H;
+  const eFrontZ = MAIN_BUILDING_ELEVATOR_FRONT_Z;
   const goldMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.2, metalness: 0.8 });
   const brassMat = new THREE.MeshStandardMaterial({ color: '#cd7f32', roughness: 0.25, metalness: 0.7 });
   const mahoganyMat = new THREE.MeshStandardMaterial({ color: '#3a1508', roughness: 0.35, metalness: 0.1 });
@@ -911,7 +944,7 @@ export function buildBuilding() {
   for (let side = -1; side <= 1; side += 2) {
     // Pivot group at the hinge edge
     const pivot = new THREE.Group();
-    pivot.position.set(side * (eW / 2 - 0.04), 0, eFrontZ);
+    pivot.position.set(side * (eW / 2 - 0.04), 0, eD / 2);
     elevatorCar.add(pivot);
 
     // Door panel
@@ -1247,6 +1280,12 @@ export function buildBuilding() {
   pushUpperFloor(elevLanding);
 
   buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY, registerRoofMesh: pushRoof });
+
+  // Consume any items pushed to state.groundFloorItems during construction
+  // (room indicators from plaza.js, etc.) and register them with the fade layer.
+  for (const item of state.groundFloorItems) {
+    addFadeObjects(mainGroundFloorLayer, item);
+  }
 }
 
 export { createDoorFrame } from './building/doors.js';

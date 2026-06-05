@@ -6,6 +6,7 @@ import {
   COVERED_BOUNDS,
   LOBBY_BOUNDS,
   MAIN_BUILDING_MEZZANINE_Y,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
   RIVER_PTS
 } from './config.js';
 import { AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from './utils.js';
@@ -89,7 +90,7 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
     // so ground-floor players are not affected.
     if (
       Math.abs(x) <= 29.5 && z >= -40 && z <= 40 &&
-      state.localPlayer && state.localPlayer.y > 3.0
+      state.localPlayer && state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
     ) {
       return MAIN_BUILDING_MEZZANINE_Y; // Mezzanine deck surface
     }

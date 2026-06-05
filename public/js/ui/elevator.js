@@ -2,13 +2,16 @@
 import { state } from '../state.js';
 import {
   MAIN_BUILDING_ELEVATOR_GROUND_Y,
-  MAIN_BUILDING_MEZZANINE_Y
+  MAIN_BUILDING_MEZZANINE_Y,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
+  MAIN_BUILDING_ELEVATOR_FRONT_Z,
+  MAIN_BUILDING_ELEVATOR_INTERIOR_HALF_WIDTH,
+  MAIN_BUILDING_ELEVATOR_INTERIOR_BACK_Z,
+  MAIN_BUILDING_ELEVATOR_INTERIOR_FRONT_Z,
+  MAIN_BUILDING_ELEVATOR_PROXIMITY_DIST_SQ
 } from '../config.js';
 
-const ELEVATOR_Z = -36;
-const ELEVATOR_FRONT_Z = ELEVATOR_Z + 1.6; // front of the car
 const DOOR_SWING_ANGLE = Math.PI / 2.2; // ~82° — open enough to walk through
-const PROXIMITY_DIST_SQ = 25; // 5 units
 const RIDE_DURATION = 1.8; // seconds for ascent
 
 let doorProgress = 0;   // 0=closed, 1=open
@@ -34,7 +37,13 @@ function animateDoors(openRatio) {
   });
 }
 
-function startRide(targetX, targetY, targetZ, floor) {
+function isPlayerInsideElevator() {
+  return Math.abs(state.localPlayer.x) < MAIN_BUILDING_ELEVATOR_INTERIOR_HALF_WIDTH
+    && state.localPlayer.z > MAIN_BUILDING_ELEVATOR_INTERIOR_BACK_Z
+    && state.localPlayer.z < MAIN_BUILDING_ELEVATOR_INTERIOR_FRONT_Z;
+}
+
+function startRide(targetY, floor) {
   if (phase !== 'waiting' || !state.localPlayer) return;
   rideStartY = state.localPlayer.y;
   rideEndY = targetY;
@@ -56,10 +65,10 @@ export function initElevatorUI() {
   if (!panel || !floorDisplay || !upBtn || !downBtn) return;
 
   upBtn.addEventListener('click', () => {
-    startRide(0, MAIN_BUILDING_MEZZANINE_Y, ELEVATOR_Z, '2');
+    startRide(MAIN_BUILDING_MEZZANINE_Y, '2');
   });
   downBtn.addEventListener('click', () => {
-    startRide(0, MAIN_BUILDING_ELEVATOR_GROUND_Y, ELEVATOR_Z, 'L');
+    startRide(MAIN_BUILDING_ELEVATOR_GROUND_Y, 'L');
   });
 
   // ── Per-frame tick ─────────────────────────────────────────────────────
@@ -124,7 +133,7 @@ export function initElevatorUI() {
           }
         }
         // Force room re-detection on 2nd floor
-        if (rideEndY > 5) {
+        if (rideEndY >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y) {
           state.localPlayer.currentRoom = -1;
         }
       }
@@ -146,8 +155,8 @@ export function initElevatorUI() {
       if (!state.localPlayer) return;
 
       const dx = state.localPlayer.x;
-      const dz = state.localPlayer.z - ELEVATOR_FRONT_Z;
-      const near = dx * dx + dz * dz < PROXIMITY_DIST_SQ;
+      const dz = state.localPlayer.z - MAIN_BUILDING_ELEVATOR_FRONT_Z;
+      const near = dx * dx + dz * dz < MAIN_BUILDING_ELEVATOR_PROXIMITY_DIST_SQ;
 
       if (near && !wasNear) {
         // Player approaching — open doors, show panel
@@ -157,7 +166,7 @@ export function initElevatorUI() {
           panel.classList.add('elevator-visible');
           panel.setAttribute('aria-hidden', 'false');
         }
-        floorNum = state.localPlayer.y > 5 ? '2' : 'L';
+        floorNum = state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y ? '2' : 'L';
         if (floorDisplay) floorDisplay.textContent = floorNum;
         phase = 'opening';
       } else if (!near && wasNear) {
@@ -174,13 +183,11 @@ export function initElevatorUI() {
         phase = 'open';
       } else if (near && wasNear && phase === 'open') {
         // Player is near with doors open — check if they're inside the car
-        const inside = Math.abs(state.localPlayer.x) < 1.2
-          && state.localPlayer.z > ELEVATOR_Z - 1.2
-          && state.localPlayer.z < ELEVATOR_FRONT_Z - 0.2;
+        const inside = isPlayerInsideElevator();
         if (inside) {
           phase = 'waiting';
           // Show only the relevant button based on current floor
-          const onGround = state.localPlayer.y < 5;
+          const onGround = state.localPlayer.y < MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y;
           upBtn.style.display = onGround ? '' : 'none';
           downBtn.style.display = onGround ? 'none' : '';
           if (onGround) upBtn.classList.add('elevator-active');
@@ -188,9 +195,7 @@ export function initElevatorUI() {
         }
       } else if (phase === 'waiting') {
         // Check if player left the car
-        const inside = Math.abs(state.localPlayer.x) < 1.2
-          && state.localPlayer.z > ELEVATOR_Z - 1.2
-          && state.localPlayer.z < ELEVATOR_FRONT_Z - 0.2;
+        const inside = isPlayerInsideElevator();
         if (!inside) {
           phase = 'open';
           upBtn.classList.remove('elevator-active');
