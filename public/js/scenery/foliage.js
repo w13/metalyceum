@@ -5,9 +5,8 @@ import { getTerrainHeight } from '../physics.js';
 import { registerStaticScenery } from './visibility.js';
 import { initSceneryAssets } from './assets.js';
 import { createGroundedPatch, createGroundedRing, getTerrainCeiling, addSceneryCollider } from './utils.js';
+import { HALF_PI, FLAT } from '../math.js';
 
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
 
 export function createTrimmedBush(x, z, {
   scale = 1,

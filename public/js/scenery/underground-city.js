@@ -11,9 +11,7 @@ import {
   registerFadeZone
 } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
-
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
+import { HALF_PI, FLAT } from '../math.js';
 
 export function buildCaveAndUndergroundCity() {
   const cx = 120, cz = 80;

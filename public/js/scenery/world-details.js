@@ -5,9 +5,7 @@ import { getTerrainHeight } from '../physics.js';
 import { isFrontPlazaFootprint, isVenueRoadFootprint, AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from '../utils.js';
 import { registerStaticScenery } from './visibility.js';
 import { deformGroundGeometry, addSceneryCollider } from './utils.js';
-
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
+import { HALF_PI, FLAT } from '../math.js';
 
 export function buildWorldDetails() {
   const _t = new THREE.Object3D();

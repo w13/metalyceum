@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
+import { HALF_PI, FLAT } from '../math.js';
 import {
   addFadeObjects,
   createBoundsFadePredicate,
@@ -12,8 +13,6 @@ import {
 } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
 
 export function buildAirport() {
   const ax = 160, az = 220;

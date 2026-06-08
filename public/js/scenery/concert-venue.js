@@ -13,9 +13,8 @@ import {
   registerFadeZone
 } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
+import { HALF_PI, FLAT } from '../math.js';
 
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
 
 export function buildConcertVenue() {
   const vx = -85, vz = 140;

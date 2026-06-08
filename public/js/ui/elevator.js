@@ -79,7 +79,6 @@ export function initElevatorUI() {
       const diff = doorTarget - doorProgress;
       doorProgress += diff * Math.min(1, speed * dt);
       if (Math.abs(diff) < 0.002) doorProgress = doorTarget;
-      state._elevatorDoorOpen = doorProgress;
       animateDoors(doorProgress);
     }
 

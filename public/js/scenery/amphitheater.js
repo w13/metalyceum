@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
+import { HALF_PI, FLAT } from '../math.js';
 import { registerStaticScenery } from './visibility.js';
 
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
 
 export function buildAmphitheater() {
   const ax = 65, az = 150;

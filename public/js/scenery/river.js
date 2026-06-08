@@ -4,9 +4,7 @@ import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 
 import { RIVER_PTS } from '../config.js';
-
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
+import { HALF_PI, FLAT } from '../math.js';
 
 const RIVER_WIDTH = 8.0; // wider water mesh to fill the deepened channel
 const BRIDGE_X = 73, BRIDGE_Z = 8;

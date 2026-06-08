@@ -17,6 +17,7 @@ import {
   MAIN_BUILDING_ELEVATOR_FRONT_Z
 } from './config.js';
 import { getTerrainHeight } from './physics.js';
+import { HALF_PI, FLAT } from './math.js';
 import { vec2LengthAngle, samplePosition, createFloor } from './scenery/utils.js';
 import {
   addFadeObjects,
@@ -51,8 +52,6 @@ import { buildClassroomAssets } from './building/interiors.js';
 import { createWallTorch } from './building/torches.js';
 import { buildRoof } from './building/roof.js';
 
-const HALF_PI = Math.PI / 2;
-const FLAT = -HALF_PI;
 
 // Named building extents — used throughout buildBuilding() for facade, walls, and columns.
 const BLDG_X_MIN = -30;
@@ -627,7 +626,7 @@ export function buildBuilding() {
     // Upper wall (transparent for indoor/outdoor fade)
     if (upperHeight > 0.05) {
       const upperWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, lowerHeight, upperHeight, thickness, state.upperWallMat, baseboardMat, null);
-    pushUpperWall(upperWall);
+      pushUpperWall(upperWall);
     }
   }
 
@@ -837,29 +836,29 @@ export function buildBuilding() {
     }
   }
 
-  buildUpperFacade(-30, -40, 30, -40, 0, -1, true);
-  buildUpperFacade(-30, 40, 30, 40, 0, 1, true);
-  buildUpperFacade(-30, -40, -30, 40, -1, 0, true);
-  buildUpperFacade(30, -40, 30, 40, 1, 0, true);
-  buildUpperFacade(-5, -40, -5, 40, -1, 0, false);
-  buildUpperFacade(5, -40, 5, 40, 1, 0, false);
+  buildUpperFacade(BLDG_X_MIN, BLDG_Z_MIN, BLDG_X_MAX, BLDG_Z_MIN, 0, -1, true);
+  buildUpperFacade(BLDG_X_MIN, BLDG_Z_MAX, BLDG_X_MAX, BLDG_Z_MAX, 0, 1, true);
+  buildUpperFacade(BLDG_X_MIN, BLDG_Z_MIN, BLDG_X_MIN, BLDG_Z_MAX, -1, 0, true);
+  buildUpperFacade(BLDG_X_MAX, BLDG_Z_MIN, BLDG_X_MAX, BLDG_Z_MAX, 1, 0, true);
+  buildUpperFacade(-5, BLDG_Z_MIN, -5, BLDG_Z_MAX, -1, 0, false);
+  buildUpperFacade(5, BLDG_Z_MIN, 5, BLDG_Z_MAX, 1, 0, false);
 
-  addFacadeBand(-30, -40, 30, -40, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, 0, -1);
-  addFacadeBand(-30, 40, 30, 40, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, 0, 1);
-  addFacadeBand(-30, -40, -30, 40, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, -1, 0);
-  addFacadeBand(30, -40, 30, 40, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, 1, 0);
-  addFacadeBand(-30, -40, 30, -40, entablatureY, 0.6, corniceThickness, limestoneMat, 0, -1);
-  addFacadeBand(-30, 40, 30, 40, entablatureY, 0.6, corniceThickness, limestoneMat, 0, 1);
-  addFacadeBand(-30, -40, -30, 40, entablatureY, 0.6, corniceThickness, limestoneMat, -1, 0);
-  addFacadeBand(30, -40, 30, 40, entablatureY, 0.6, corniceThickness, limestoneMat, 1, 0);
+  addFacadeBand(BLDG_X_MIN, BLDG_Z_MIN, BLDG_X_MAX, BLDG_Z_MIN, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, 0, -1);
+  addFacadeBand(BLDG_X_MIN, BLDG_Z_MAX, BLDG_X_MAX, BLDG_Z_MAX, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, 0, 1);
+  addFacadeBand(BLDG_X_MIN, BLDG_Z_MIN, BLDG_X_MIN, BLDG_Z_MAX, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, -1, 0);
+  addFacadeBand(BLDG_X_MAX, BLDG_Z_MIN, BLDG_X_MAX, BLDG_Z_MAX, secondFloorY + 0.28, 0.26, 0.8, limestoneShadowMat, 1, 0);
+  addFacadeBand(BLDG_X_MIN, BLDG_Z_MIN, BLDG_X_MAX, BLDG_Z_MIN, entablatureY, 0.6, corniceThickness, limestoneMat, 0, -1);
+  addFacadeBand(BLDG_X_MIN, BLDG_Z_MAX, BLDG_X_MAX, BLDG_Z_MAX, entablatureY, 0.6, corniceThickness, limestoneMat, 0, 1);
+  addFacadeBand(BLDG_X_MIN, BLDG_Z_MIN, BLDG_X_MIN, BLDG_Z_MAX, entablatureY, 0.6, corniceThickness, limestoneMat, -1, 0);
+  addFacadeBand(BLDG_X_MAX, BLDG_Z_MIN, BLDG_X_MAX, BLDG_Z_MAX, entablatureY, 0.6, corniceThickness, limestoneMat, 1, 0);
 
   [-25.5, 25.5].forEach((x) => {
-    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, x, secondFloorY + upperFloorHeight / 2 + 0.2, -40, 0, limestoneShadowMat, 0, -1, 0.32, true);
-    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, x, secondFloorY + upperFloorHeight / 2 + 0.2, 40, 0, limestoneShadowMat, 0, 1, 0.32, true);
+    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, x, secondFloorY + upperFloorHeight / 2 + 0.2, BLDG_Z_MIN, 0, limestoneShadowMat, 0, -1, 0.32, true);
+    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, x, secondFloorY + upperFloorHeight / 2 + 0.2, BLDG_Z_MAX, 0, limestoneShadowMat, 0, 1, 0.32, true);
   });
   [-35.5, 35.5].forEach((z) => {
-    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, -30, secondFloorY + upperFloorHeight / 2 + 0.2, z, Math.PI / 2, limestoneShadowMat, -1, 0, 0.32, true);
-    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, 30, secondFloorY + upperFloorHeight / 2 + 0.2, z, Math.PI / 2, limestoneShadowMat, 1, 0, 0.32, true);
+    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, BLDG_X_MIN, secondFloorY + upperFloorHeight / 2 + 0.2, z, Math.PI / 2, limestoneShadowMat, -1, 0, 0.32, true);
+    addOrientedBox(1.2, upperFloorHeight + 1.0, 0.95, BLDG_X_MAX, secondFloorY + upperFloorHeight / 2 + 0.2, z, Math.PI / 2, limestoneShadowMat, 1, 0, 0.32, true);
   });
 
   addBanner(-17.5, 40, 0);
@@ -1011,7 +1010,6 @@ export function buildBuilding() {
   // State refs for elevator.js
   state._elevatorCar = elevatorCar;
   state._elevatorDoorPivots = doorPivots;
-  state._elevatorDoorOpen = 0; // 0=closed, 1=open
   state._elevatorHalfHeight = eH / 2; // needed by engine.js to center the door collider
 
   // ── Elevator collision ────────────────────────────────────────────────
@@ -1123,14 +1121,14 @@ export function buildBuilding() {
   addUpperCorridorWall(5, rightUpperDoorZs);
 
   // North cap (z = -40) and south cap (z = +40)
-  addUpperWallSegment(-30, -39.6, 30, -39.6);
+  addUpperWallSegment(BLDG_X_MIN, BLDG_Z_MIN + 0.4, BLDG_X_MAX, BLDG_Z_MIN + 0.4);
   addUpperWallSegment(-30, 39.6, -2, 39.6);   // gap for main entrance
-  addUpperWallSegment(2, 39.6, 30, 39.6);
+  addUpperWallSegment(2, BLDG_Z_MAX - 0.4, BLDG_X_MAX, BLDG_Z_MAX - 0.4);
 
   // Outer wall collision backs (interior face of the exterior limestone facade)
   // These add physics collision to the outside walls at the second-floor height
-  addUpperWallSegment(-29.5, -40, -29.5, 40);
-  addUpperWallSegment(29.5, -40, 29.5, 40);
+  addUpperWallSegment(BLDG_X_MIN + 0.5, BLDG_Z_MIN, BLDG_X_MIN + 0.5, BLDG_Z_MAX);
+  addUpperWallSegment(BLDG_X_MAX - 0.5, BLDG_Z_MIN, BLDG_X_MAX - 0.5, BLDG_Z_MAX);
 
   // East wing room divider with 4u door gap at x≈17.5 (centre of the wing)
   addUpperWallSegment(5, -8, 14, -8);     // west part of divider

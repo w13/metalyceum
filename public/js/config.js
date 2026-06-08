@@ -49,6 +49,11 @@ export const MAIN_BUILDING_ELEVATOR_INTERIOR_FRONT_Z =
   MAIN_BUILDING_ELEVATOR_FRONT_Z - 0.2;
 export const MAIN_BUILDING_ELEVATOR_PROXIMITY_DIST_SQ = 25;
 
+// Movement tuning constants
+export const FOOT_SPREAD = 0.3;
+export const TERRAIN_FOLLOW_RATE = 15;
+export const WATER_BOUNDS = { minX: -20, maxX: 130, minZ: -30, maxZ: 310 };
+
 export const RIVER_PTS = [
   [200, -200], [180, -175], [160, -150], [137, -125], [115, -100],
   [95, -77], [75, -55], [72, -32], [70, -10], [72, 7], [75, 25],
