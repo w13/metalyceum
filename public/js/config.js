@@ -254,3 +254,21 @@ export const SOUNDTRACK_LIBRARY = [
     ]
   }
 ];
+
+// NPC spawn definitions — where NPCs appear in the world
+export const NPC_SPAWNS = [
+  // Indoor NPCs
+  { x: -17, z: -30, room: 0, name: 'Alex',  color: '#3b82f6', hat: 'none', noBackpack: true,  glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 14,  z: -30, room: 4, name: 'Riley', color: '#a855f7', hat: 'none', noBackpack: true,  glasses: false, pants: '#4c1d95', shoes: '#2e1065', skin: '#fcd9b6' },
+  { x: 17,  z: 8,   room: 6, name: 'Quinn', color: '#06b6d4', hat: 'none', noBackpack: true,  glasses: true,  pants: '#155e75', shoes: '#18181b' },
+  // Lobby NPCs
+  { x: -3,  z: 35,  room: -1, name: 'Jay',   color: '#3b82f6', hat: 'none', noBackpack: false, glasses: true,  pants: '#1e293b', shoes: '#18181b' },
+  { x: 0,   z: -35, room: -1, name: 'River', color: '#22c55e', hat: 'none', noBackpack: false, glasses: false, pants: '#064e3b', shoes: '#18181b' },
+  { x: 3,   z: 38,  room: -1, name: 'Parker',color: '#14b8a6', hat: 'none', noBackpack: true,  glasses: false, pants: '#115e59', shoes: '#18181b' },
+  // Amphitheater
+  { x: 60,  z: 148, room: 8,  name: 'Ember', color: '#f97316', hat: 'none', noBackpack: true,  glasses: false, pants: '#1e293b', shoes: '#18181b' },
+  { x: 70,  z: 155, room: 8,  name: 'Vale',  color: '#a855f7', hat: 'none', noBackpack: false, glasses: true,  pants: '#4c1d95', shoes: '#2e1065' },
+  // Concert venue
+  { x: -80, z: 142, room: 9,  name: 'Lyric', color: '#06b6d4', hat: 'none', noBackpack: false, glasses: false, pants: '#155e75', shoes: '#18181b' },
+  { x: -90, z: 136, room: 9,  name: 'Echo',  color: '#ec4899', hat: 'none', noBackpack: true,  glasses: true,  pants: '#831843', shoes: '#18181b' },
+];

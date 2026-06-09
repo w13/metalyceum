@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { state } from './state.js';
 import { MAP_SIZE, WORLD_ASSET_CATALOG, LANDMARK_REGISTRY, COVERED_BOUNDS } from './config.js';
-import { getTerrainHeight, getRoomBounds, getRoomIdForPosition } from './physics.js';
+import { getTerrainHeight, getRoomBounds, getRoomIdForPosition, getRiverDistance } from './physics.js';
 import { teleportPlayer } from './physics-engine.js';
 
 if (typeof window !== 'undefined') {
@@ -49,29 +49,6 @@ export const devState = {
 // River coordinates (matching physics.js)
 import { RIVER_PTS } from './config.js';
 
-function pointToSegmentDistSq(px, pz, x1, z1, x2, z2) {
-  const dx = x2 - x1, dz = z2 - z1;
-  const lenSq = dx * dx + dz * dz;
-  if (lenSq === 0) {
-    const ddx = px - x1, ddz = pz - z1;
-    return ddx * ddx + ddz * ddz;
-  }
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
-  const cx = x1 + dx * t, cz = z1 + dz * t;
-  const ddx = px - cx, ddz = pz - cz;
-  return ddx * ddx + ddz * ddz;
-}
-
-// Helper: Point-to-segment distance
-// Get distance to closest point on the river (uses shared math)
-function getRiverDist(x, z) {
-  let best = Infinity;
-  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
-    const d = pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]);
-    if (d < best) best = d;
-  }
-  return Math.sqrt(best);
-}
 
 // Teleport developer helper
 export function devTeleport(x, z) {
@@ -156,7 +133,7 @@ export function runWorldAudit() {
     }
 
     // 2. Check River Encroachment
-    const rivDist = getRiverDist(a.x, a.z);
+    const rivDist = getRiverDistance(a.x, a.z);
     if (rivDist < 5.0) {
       devState.auditIssues.push({
         type: 'river',
@@ -249,7 +226,7 @@ export function runWorldAudit() {
       [room.x, room.z]
     ];
     for (const [cx, cz] of corners) {
-      const d = getRiverDist(cx, cz);
+      const d = getRiverDistance(cx, cz);
       if (d < 5.0) {
         devState.auditIssues.push({
           type: 'river-room',
@@ -271,7 +248,7 @@ export function runWorldAudit() {
     const groupOffX = lmGroup ? lmGroup.position.x : 0;
     const groupOffZ = lmGroup ? lmGroup.position.z : 0;
     const lx = lcx + groupOffX, lz = lcz + groupOffZ;
-    const d = getRiverDist(lx, lz);
+    const d = getRiverDistance(lx, lz);
     if (d < lmDef.approxRadius + 5) {
       devState.auditIssues.push({
         type: 'landmark-river',
@@ -1185,7 +1162,7 @@ function _worldQuery(x, z) {
   const terrainHeight = +getTerrainHeight(x, z).toFixed(3);
   const roomId = getRoomIdForPosition(x, z);
   const room = roomId !== -1 ? state.ROOMS.find(r => r.id === roomId) : null;
-  const riverDist = +getRiverDist(x, z).toFixed(2);
+  const riverDist = +getRiverDistance(x, z).toFixed(2);
   const isInRiver = riverDist < 5.0;
 
   let wallCollision = false;
@@ -1658,7 +1635,7 @@ function exposeLLMApi() {
               z >= COVERED_BOUNDS.minZ - radius && z <= COVERED_BOUNDS.maxZ + radius) continue;
 
           // Skip river
-          if (getRiverDist(x, z) < radius + 8) continue;
+          if (getRiverDistance(x, z) < radius + 8) continue;
 
           // Skip rooms
           let inRoom = false;

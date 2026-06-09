@@ -1,5 +1,6 @@
 // Security and Date Utilities for Metalyceum
 import { state } from './state.js';
+import { pointToSegmentDistSq } from './math.js';
 
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 // Exported flat segment arrays for physics terrain flattening (without width)
@@ -24,22 +25,6 @@ const VENUE_ROAD_SEGMENTS = [
   ...CV_ROAD_SEGMENTS.map(([x1, z1, x2, z2]) => ({ x1, z1, x2, z2, width: 4.5 })),
 ];
 
-function pointToSegmentDistanceSquared(px, pz, x1, z1, x2, z2) {
-  const dx = x2 - x1;
-  const dz = z2 - z1;
-  const lenSquared = dx * dx + dz * dz;
-  if (lenSquared === 0) {
-    const ddx = px - x1;
-    const ddz = pz - z1;
-    return ddx * ddx + ddz * ddz;
-  }
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSquared));
-  const cx = x1 + dx * t;
-  const cz = z1 + dz * t;
-  const ddx = px - cx;
-  const ddz = pz - cz;
-  return ddx * ddx + ddz * ddz;
-}
 
 function tryParseUrl(value) {
   if (typeof value !== 'string') return null;
@@ -278,7 +263,7 @@ export function isFrontPlazaFootprint(x, z) {
 export function isVenueRoadFootprint(x, z, margin = 0) {
   return VENUE_ROAD_SEGMENTS.some((segment) => {
     const radius = segment.width / 2 + margin;
-    return pointToSegmentDistanceSquared(x, z, segment.x1, segment.z1, segment.x2, segment.z2) < radius * radius;
+    return pointToSegmentDistSq(x, z, segment.x1, segment.z1, segment.x2, segment.z2) < radius * radius;
   });
 }
 

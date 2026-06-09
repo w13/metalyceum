@@ -14,6 +14,7 @@ import {
 } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 import { HALF_PI, FLAT } from '../math.js';
+import { createFloor } from './utils.js';
 
 
 export function buildConcertVenue() {
@@ -84,14 +85,7 @@ export function buildConcertVenue() {
   }
 
   // Floor
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(venueW, venueD),
-    floorMat
-  );
-  floor.rotation.x = FLAT;
-  floor.position.set(vx, baseY + 0.02, vz);
-  floor.receiveShadow = true;
-  group.add(floor);
+  group.add(createFloor(venueW, venueD, floorMat, vx, baseY + 0.02, vz));
 
   // Heavy Corner Buttresses
   const cornerPositions = [
@@ -156,13 +150,7 @@ export function buildConcertVenue() {
     color: '#1a1a2e', roughness: 0.8,
     transparent: true, opacity: 1.0
   });
-  const concertCeiling = new THREE.Mesh(
-    new THREE.PlaneGeometry(venueW - 1.0, venueD - 1.0),
-    concertCeilMat
-  );
-  concertCeiling.rotation.x = FLAT;
-  concertCeiling.position.set(vx, baseY + venueH, vz);
-  concertCeiling.receiveShadow = true;
+  const concertCeiling = createFloor(venueW - 1.0, venueD - 1.0, concertCeilMat, vx, baseY + venueH, vz);
   group.add(concertCeiling);
   pushVenueRoof(concertCeiling);
 

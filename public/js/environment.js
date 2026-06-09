@@ -14,9 +14,20 @@ let loaded = false;
 
 let _retryTimer = null;
 
+export function resetHdriLoader() {
+  clearTimeout(_retryTimer);
+  _retryTimer = null;
+  loaded = false;
+}
+
 export async function loadHdriEnvironment() {
   if (loaded) return;
   if (!state.renderer || !state.scene) {
+    if (typeof document !== 'undefined' && !document.getElementById('game-container')) {
+      clearTimeout(_retryTimer);
+      _retryTimer = null;
+      return;
+    }
     console.warn('[HDRI] Renderer or scene not ready yet, will retry in 2s');
     clearTimeout(_retryTimer);
     _retryTimer = setTimeout(() => loadHdriEnvironment(), 2000);

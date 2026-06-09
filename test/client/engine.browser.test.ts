@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { state } from '../../public/js/state.js';
 import { initEngine } from '../../public/js/engine.js';
+import { resetHdriLoader } from '../../public/js/environment.js';
 
 describe('Client Engine & WebGL Renderer', () => {
   beforeEach(() => {
@@ -64,6 +65,8 @@ describe('Client Engine & WebGL Renderer', () => {
     state.renderer = null;
     state.camera = null;
     state.controls = null;
+
+    resetHdriLoader();
   });
 
   it('procedurally constructs the campus world scene graph', () => {

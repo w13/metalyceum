@@ -9,7 +9,10 @@ import {
   CAMERA_TARGET_LOOK_AHEAD,
   CAMERA_TARGET_LOOK_HEIGHT,
   CAMERA_EXIT_WATCH_YAW,
-  CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET
+  CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
+  FOOT_SPREAD,
+  TERRAIN_FOLLOW_RATE,
+  WATER_BOUNDS
 } from '../config.js';
 import { getTerrainHeight, checkCollision, getWaterSurfaceHeight } from '../physics.js';
 import { isCannonReady, getPlayerBodyRef, teleportPlayer, syncBodyY, stepCannon } from '../physics-engine.js';
@@ -33,12 +36,9 @@ const _delta = new THREE.Vector3();
 const _desiredCameraPos = new THREE.Vector3();
 const _desiredCameraTarget = new THREE.Vector3();
 
-const _FOOT_SPREAD = 0.3;
-const _TERRAIN_FOLLOW_RATE = 15; // lerp rate for smooth Y follow (frame-independent)
-
-// Cached bounding box of all water bodies (river + lakes) — used as a cheap pre-check
-// before the full getWaterSurfaceHeight polyline scan. Updated once at startup.
-const _WATER_BOUNDS = { minX: -20, maxX: 130, minZ: -30, maxZ: 310 };
+const _FOOT_SPREAD = FOOT_SPREAD;
+const _TERRAIN_FOLLOW_RATE = TERRAIN_FOLLOW_RATE;
+const _WATER_BOUNDS = WATER_BOUNDS;
 
 function getFootAnchoredHeight(x, z, precise = true) {
   const h = getTerrainHeight(x, z);

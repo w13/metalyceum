@@ -12,6 +12,7 @@ import {
 } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 import { HALF_PI, FLAT } from '../math.js';
+import { createFloor } from './utils.js';
 
 export function buildCaveAndUndergroundCity() {
   const cx = 120, cz = 80;
@@ -112,11 +113,7 @@ export function buildCaveAndUndergroundCity() {
   const ugX = cx, ugZ = cz + 18;
 
   // Floor
-  const ugFloor = new THREE.Mesh(new THREE.PlaneGeometry(UGW, UGD), floorMat);
-  ugFloor.rotation.x = FLAT;
-  ugFloor.position.set(ugX, UG_Y + 0.02, ugZ);
-  ugFloor.receiveShadow = true;
-  group.add(ugFloor);
+  group.add(createFloor(UGW, UGD, floorMat, ugX, UG_Y + 0.02, ugZ));
 
   // Cobblestone street grid (east-west lanes)
   const cobbleMat = new THREE.MeshStandardMaterial({ color: '#5a4a3a', roughness: 0.9 });
@@ -132,10 +129,7 @@ export function buildCaveAndUndergroundCity() {
   }
 
   // Ceiling
-  const ugCeiling = new THREE.Mesh(new THREE.PlaneGeometry(UGW, UGD), ceilingMat);
-  ugCeiling.rotation.x = FLAT;
-  ugCeiling.position.set(ugX, UG_Y + UGH, ugZ);
-  ugCeiling.receiveShadow = true;
+  const ugCeiling = createFloor(UGW, UGD, ceilingMat, ugX, UG_Y + UGH, ugZ);
   group.add(ugCeiling);
   pushUndergroundRoof(ugCeiling);
 

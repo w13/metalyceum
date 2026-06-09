@@ -10,18 +10,18 @@ import {
   RIVER_PTS
 } from './config.js';
 import { AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from './utils.js';
+import { pointToSegmentDistSq } from './math.js';
 
-function pointToSegmentDistSq(px, pz, x1, z1, x2, z2) {
-  const dx = x2 - x1, dz = z2 - z1;
-  const lenSq = dx * dx + dz * dz;
-  if (lenSq === 0) {
-    const ddx = px - x1, ddz = pz - z1;
-    return ddx * ddx + ddz * ddz;
+// Get closest distance to the meandering river polyline
+export function getRiverDistance(x, z) {
+  let minDistanceSq = Infinity;
+  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
+    const dSq = pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]);
+    if (dSq < minDistanceSq) {
+      minDistanceSq = dSq;
+    }
   }
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
-  const cx = x1 + dx * t, cz = z1 + dz * t;
-  const ddx = px - cx, ddz = pz - cz;
-  return ddx * ddx + ddz * ddz;
+  return Math.sqrt(minDistanceSq);
 }
 
 // Scratch objects — zero allocations per frame
@@ -127,11 +127,7 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
   const cavity = _ss(14, 0, d9) * 8;
 
   // River channel — polyline distance with canyon + berm
-  let riverDist = Infinity;
-  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
-    const d = Math.sqrt(pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]));
-    if (d < riverDist) riverDist = d;
-  }
+  const riverDist = getRiverDistance(x, z);
   // Wider, deeper channel: inner 9u half-width, 7u deep; berm 9–13u, 1.5u deep
   const riverChannel = _ss(9.0, 0.0, riverDist) * 7.0
     + _ss(13.0, 9.0, riverDist) * 1.5;
@@ -237,11 +233,7 @@ export function getWaterSurfaceHeight(x, z) {
   // Coarse early-out: check bounding box of river + lakes (cheap)
   if (x > 310 || x < -250 || z > 330 || z < -310) return null;
 
-  let riverDist = Infinity;
-  for (let i = 0; i < RIVER_PTS.length - 1; i++) {
-    const d = Math.sqrt(pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]));
-    if (d < riverDist) riverDist = d;
-  }
+  const riverDist = getRiverDistance(x, z);
   // Water fills the inner 4.5u of the 9u half-width channel (some bank visible on each side)
   if (riverDist > 4.5) return null;
   // Find the closest river control point to sample terrain at the channel centre

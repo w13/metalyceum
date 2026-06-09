@@ -13,6 +13,9 @@ import {
 
 const DOOR_SWING_ANGLE = Math.PI / 2.2; // ~82° — open enough to walk through
 const RIDE_DURATION = 1.8; // seconds for ascent
+const CABIN_LIGHT_INTENSITY = 1.15;
+const CABIN_GLOW_INTENSITY = 1.35;
+const CABIN_LIGHT_FADE_RATE = 7.5;
 
 let doorProgress = 0;   // 0=closed, 1=open
 let doorTarget = 0;     // target doorProgress
@@ -24,6 +27,7 @@ let phase = 'idle';     // idle | opening | open | waiting | closing | riding | 
 let floorNum = 'L';
 let panel = null;
 let floorDisplay = null;
+let cabinLightLevel = 0;
 state._elevatorIsRiding = false;
 
 function animateDoors(openRatio) {
@@ -57,6 +61,29 @@ function startRide(targetY, floor) {
   if (state._elevatorDoorCollider) state._elevatorDoorCollider.visible = false;
 }
 
+function updateCabinLight(dt, isInsideElevator) {
+  const shouldBeOn = isInsideElevator || phase === 'closing' || phase === 'riding' || phase === 'arrival';
+  const target = shouldBeOn ? 1 : 0;
+  cabinLightLevel += (target - cabinLightLevel) * Math.min(1, CABIN_LIGHT_FADE_RATE * dt);
+
+  const light = state._elevatorCabinLight;
+  const glowMat = state._elevatorCabinGlowMat;
+  if (!light && !glowMat) return;
+
+  const transitionAmount = Math.abs(target - cabinLightLevel);
+  const flicker = transitionAmount > 0.03
+    ? 0.72 + Math.random() * 0.28 + Math.sin(performance.now() * 0.045) * 0.08
+    : 1;
+  const litLevel = Math.max(0, cabinLightLevel * flicker);
+
+  if (light) {
+    light.intensity = CABIN_LIGHT_INTENSITY * litLevel;
+  }
+  if (glowMat) {
+    glowMat.emissiveIntensity = 0.15 + CABIN_GLOW_INTENSITY * litLevel;
+  }
+}
+
 export function initElevatorUI() {
   panel = document.getElementById('elevator-panel');
   floorDisplay = document.getElementById('elevator-floor-num');
@@ -73,6 +100,9 @@ export function initElevatorUI() {
 
   // ── Per-frame tick ─────────────────────────────────────────────────────
   state._elevatorTick = (dt) => {
+    const insideElevator = !!state.localPlayer && isPlayerInsideElevator();
+    updateCabinLight(dt, insideElevator);
+
     // ── Door animation ────────────────────────────────────────────────────
     if (doorTarget !== doorProgress) {
       const speed = doorTarget > doorProgress ? 3.5 : 4.5;
@@ -182,8 +212,7 @@ export function initElevatorUI() {
         phase = 'open';
       } else if (near && wasNear && phase === 'open') {
         // Player is near with doors open — check if they're inside the car
-        const inside = isPlayerInsideElevator();
-        if (inside) {
+        if (insideElevator) {
           phase = 'waiting';
           // Show only the relevant button based on current floor
           const onGround = state.localPlayer.y < MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y;
@@ -194,8 +223,7 @@ export function initElevatorUI() {
         }
       } else if (phase === 'waiting') {
         // Check if player left the car
-        const inside = isPlayerInsideElevator();
-        if (!inside) {
+        if (!insideElevator) {
           phase = 'open';
           upBtn.classList.remove('elevator-active');
           downBtn.classList.remove('elevator-active');

@@ -77,6 +77,15 @@ export function buildRoof(batcher, materials, config) {
   // ── Pitched roof slope (one side at a time) ─────────────────────────────
   const roofHypotenuse = Math.sqrt(roofSlopeRun * roofSlopeRun + roofRise * roofRise);
 
+  // Pre-allocate one dummy object for matrix computation
+  const _capObj = new THREE.Object3D();
+
+  function buildCapPositions(zStart, zEnd, step) {
+    const positions = [];
+    for (let iz = zStart; iz < zEnd; iz += step) positions.push(iz);
+    return positions;
+  }
+
   function buildRoofSlope(xSign) {
     const slopeGeo = new THREE.BoxGeometry(roofHypotenuse + 0.28, 0.3, roofHalfD * 2 + 0.85);
     const slopeMesh = new THREE.Mesh(slopeGeo, roofMat);
@@ -92,14 +101,18 @@ export function buildRoof(batcher, materials, config) {
     eaveTrim.position.set(eaveX, roofBaseY + 0.03, 0);
     addRoofMesh(eaveTrim);
 
-    for (let iz = -roofHalfD + 2.2; iz < roofHalfD - 1.4; iz += 3.15) {
-      const tileCap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.22, 0.22, 1.05),
-        ridgeMat
-      );
-      tileCap.position.set(eaveX, roofBaseY + 0.16, iz);
-      addRoofMesh(tileCap);
-    }
+    // Tile caps as a single InstancedMesh instead of individual meshes
+    const capZs = buildCapPositions(-roofHalfD + 2.2, roofHalfD - 1.4, 3.15);
+    const tileCapInst = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.22, 0.22, 1.05), ridgeMat, capZs.length
+    );
+    capZs.forEach((iz, i) => {
+      _capObj.position.set(eaveX, roofBaseY + 0.16, iz);
+      _capObj.updateMatrix();
+      tileCapInst.setMatrixAt(i, _capObj.matrix);
+    });
+    tileCapInst.instanceMatrix.needsUpdate = true;
+    addRoofMesh(tileCapInst);
   }
 
   buildRoofSlope(-1);
@@ -113,14 +126,19 @@ export function buildRoof(batcher, materials, config) {
   ridgeBeam.position.set(0, roofRidgeY + 0.03, 0);
   addRoofMesh(ridgeBeam);
 
-  for (let iz = -roofHalfD + 2.2; iz < roofHalfD - 1.4; iz += 3.15) {
-    const cap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2),
-      ridgeMat
-    );
-    cap.position.set(0, roofRidgeY + 0.22, iz);
-    addRoofMesh(cap);
-  }
+  // Ridge caps as a single InstancedMesh
+  const ridgeCapZs = buildCapPositions(-roofHalfD + 2.2, roofHalfD - 1.4, 3.15);
+  const ridgeCapInst = new THREE.InstancedMesh(
+    new THREE.SphereGeometry(0.22, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+    ridgeMat, ridgeCapZs.length
+  );
+  ridgeCapZs.forEach((iz, i) => {
+    _capObj.position.set(0, roofRidgeY + 0.22, iz);
+    _capObj.updateMatrix();
+    ridgeCapInst.setMatrixAt(i, _capObj.matrix);
+  });
+  ridgeCapInst.instanceMatrix.needsUpdate = true;
+  addRoofMesh(ridgeCapInst);
 
   // ── Pediments (triangular gable ends on north/south facades) ────────────
   function buildPediment(zSign) {

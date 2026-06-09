@@ -114,6 +114,10 @@ function createPlayerBody() {
 // ── Per-frame step ─────────────────────────────────────────────────────────────
 export function stepCannon(dt) {
   if (!initialized || !world) return;
+  // Throttle to every 2nd frame — XZ collision at 30fps is imperceptibly
+  // different from 60fps for a walking-speed character. Saves ~50% CPU on
+  // 120-body constraint solving.
+  if ((state.frameCount || 0) % 2 !== 0) return;
   world.step(1 / 60, dt, 3);
 }
 

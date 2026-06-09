@@ -180,6 +180,103 @@ export function createInsidePlayerYTarget({
   };
 }
 
+/**
+ * Creates a complete multi-floor fade zone for a building and returns push helpers.
+ *
+ * Layers created:
+ *   roof        — invisible from inside, visible from outside
+ *   upper-walls — shared-material wall fade; visible above upperLevelThresholdY
+ *   upper-floor — arbitrary objects visible above upperLevelThresholdY
+ *   ground-floor— arbitrary objects visible below upperLevelThresholdY
+ *
+ * @param {object} opts
+ * @param {string}   opts.id                    — unique fade-zone id (e.g. 'main-building')
+ * @param {object}   opts.proximity             — { x, z, r } — only update when player is within r
+ * @param {object}   opts.bounds                — { minX, maxX, minZ, maxZ } passed to createBoundsFadePredicate
+ * @param {number}   opts.upperLevelThresholdY  — Y cutoff separating ground floor from upper floor
+ * @param {object}  [opts.upperWallMat]         — pre-created fadeable material for shared wall fading
+ * @param {Function}[opts.getRideProgress]      — () => 0..1; when > 0 overrides opacity for roof/upper layers
+ * @returns {{ pushRoof, pushUpperWall, pushUpperFloor, pushGroundFloor, consumeGroundFloorItems }}
+ */
+export function createBuildingFadeZone({
+  id,
+  proximity,
+  bounds,
+  upperLevelThresholdY,
+  upperWallMat = null,
+  upperWallsOutsideOpacity = 1,
+  upperFloorOutsideOpacity = 0,
+  getRideProgress = null
+}) {
+  const roofLayer = createFadeLayer({
+    id: `${id}:roof`,
+    getTargetOpacity: createInsideOutsideTarget({ insideOpacity: 0, outsideOpacity: 1, getProgress: getRideProgress })
+  });
+  const upperWallsLayer = createFadeLayer({
+    id: `${id}:upper-walls`,
+    sharedMaterial: upperWallMat,
+    getTargetOpacity: createInsidePlayerYTarget({
+      minY: upperLevelThresholdY,
+      insideOpacity: 1, belowInsideOpacity: 0, outsideOpacity: upperWallsOutsideOpacity,
+      getProgress: getRideProgress
+    })
+  });
+  const upperFloorLayer = createFadeLayer({
+    id: `${id}:upper-floor`,
+    getTargetOpacity: createInsidePlayerYTarget({
+      minY: upperLevelThresholdY,
+      insideOpacity: 1, belowInsideOpacity: 0, outsideOpacity: upperFloorOutsideOpacity,
+      getProgress: getRideProgress
+    })
+  });
+  const groundFloorLayer = createFadeLayer({
+    id: `${id}:ground-floor`,
+    getTargetOpacity: createInsidePlayerYTarget({
+      minY: upperLevelThresholdY,
+      insideOpacity: 0, belowInsideOpacity: 1, outsideOpacity: 1
+    })
+  });
+
+  registerFadeZone({
+    id,
+    proximity,
+    containsPlayer: createBoundsFadePredicate(bounds),
+    layers: [roofLayer, upperWallsLayer, upperFloorLayer, groundFloorLayer]
+  });
+
+  const flatFilter = (objects) => objects.flat().filter(Boolean);
+
+  return {
+    pushRoof(...objects) {
+      const flat = flatFilter(objects).map(o => makeObjectFadeable(o));
+      state.roofMeshes.push(...flat);
+      addFadeObjects(roofLayer, ...flat);
+      return flat.length === 1 ? flat[0] : flat;
+    },
+    pushUpperWall(...objects) {
+      const flat = flatFilter(objects);
+      state.upperWalls.push(...flat);
+      addFadeObjects(upperWallsLayer, ...flat);
+      return flat.length === 1 ? flat[0] : flat;
+    },
+    pushUpperFloor(...objects) {
+      const flat = flatFilter(objects);
+      addFadeObjects(upperFloorLayer, ...flat);
+      return flat.length === 1 ? flat[0] : flat;
+    },
+    pushGroundFloor(...objects) {
+      const flat = flatFilter(objects);
+      addFadeObjects(groundFloorLayer, ...flat);
+      return flat.length === 1 ? flat[0] : flat;
+    },
+    consumeGroundFloorItems() {
+      if (state.groundFloorItems) {
+        for (const item of state.groundFloorItems) addFadeObjects(groundFloorLayer, item);
+      }
+    }
+  };
+}
+
 export function updateFadeZones(dt) {
   const player = state.localPlayer;
 

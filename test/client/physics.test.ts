@@ -107,6 +107,31 @@ describe('Client Physics & Room Queries', () => {
       expect(checkCollision(11.8, 13)).toBe(true); // Hits boundary radius
       expect(checkCollision(0, 0)).toBe(false);
     });
+
+    it('prevents player from walking past the second-floor south-facing railing', () => {
+      // Simulate player on the second floor
+      state.localPlayer.y = MAIN_BUILDING_MEZZANINE_Y;
+
+      // Add the railing collider as it is added in buildBuilding
+      const f2Height = 3.3;
+      state.WALLS.push(new THREE.Box3(
+        new THREE.Vector3(-2.1, MAIN_BUILDING_MEZZANINE_Y, 39.5),
+        new THREE.Vector3(2.1, MAIN_BUILDING_MEZZANINE_Y + f2Height, 40.5)
+      ));
+
+      // At Z = 39.6 with player sphere of radius 0.4 (extends Z from 39.2 to 40.0),
+      // it should intersect the box [39.5, 40.5] and return true (collision).
+      expect(checkCollision(0, 39.6)).toBe(true);
+
+      // Farther south (e.g. Z = 40.0) should also collide
+      expect(checkCollision(0, 40.0)).toBe(true);
+
+      // Safe area (e.g. Z = 38.0) should not collide
+      expect(checkCollision(0, 38.0)).toBe(false);
+
+      // Off to the sides (e.g. X = 3.0) should not collide with this railing box
+      expect(checkCollision(3.0, 39.6)).toBe(false);
+    });
   });
 
   describe('getTerrainHeight', () => {

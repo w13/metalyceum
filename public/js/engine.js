@@ -8,7 +8,8 @@ import {
   CAMERA_TARGET_LOOK_HEIGHT,
   REMOTE_PLAYER_SMOOTHING,
   WORLD_CONFIG,
-  ROOM_HEIGHT
+  ROOM_HEIGHT,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
 } from './config.js';
 import { getRoomIdForPosition, isLocalPlayerUnderRoof } from './physics.js';
 import { initCannon, updateElevatorDoorCollider } from './physics-engine.js';
@@ -222,6 +223,19 @@ export function animate() {
   }
   updateFadeZones(dt);
 
+  // Safety net: ensure ground-floor ceiling and wall opacity follow
+  // the current fade target continuously (the fade zone is convergence-gated
+  // and skips frames when stable, which can leave shared materials stale).
+  if (state.ceilingMat) {
+    const targetOpacity = isInside ? 0.0 : 1.0;
+    state.ceilingMat.opacity = THREE.MathUtils.lerp(state.ceilingMat.opacity, targetOpacity, 8 * dt);
+    state.ceilingMesh.visible = state.ceilingMat.opacity > 0.02;
+  }
+  if (state.upperWallMat) {
+    const upperWallTarget = !isInside || state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y ? 1.0 : 0.0;
+    state.upperWallMat.opacity = THREE.MathUtils.lerp(state.upperWallMat.opacity, upperWallTarget, 8 * dt);
+  }
+
   // ── Smooth indoor/outdoor lighting transition (RuneScape-style) ─────
   const targetMix = isInside ? 1 : 0;
   state._indoorMix += (targetMix - state._indoorMix) * Math.min(1, 2.2 * dt);
@@ -386,7 +400,7 @@ export function onWindowResize() {
 export function initEngine() {
   state.scene = new THREE.Scene();
   state.scene.background = new THREE.Color('#030712');
-  state.scene.fog = new THREE.FogExp2('#030712', 0.0075);
+  state.scene.fog = new THREE.Fog('#030712', 200, 600);
 
   state.camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 1000);
 
@@ -398,6 +412,7 @@ export function initEngine() {
   state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
   state.renderer.sortObjects = false;
+  state.renderer.debug.checkShaderErrors = false;
 
   state.localPlayer.velocity = new THREE.Vector3();
   state.localPlayer.displayVelocity = new THREE.Vector3();

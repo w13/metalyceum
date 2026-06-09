@@ -22,10 +22,6 @@ export function updateRoomIndicatorAnimations(now) {
       // Skip banner sway when camera is far — imperceptible at distance
       if (state.camera && state.camera.position.distanceToSquared(item.object.position) > 14400) return;
       item.object.rotation.z = Math.sin(time * item.speed + item.seed) * item.amplitude;
-    } else if (item.type === 'spark') {
-      // Skip spark bob when camera is far
-      if (state.camera && state.camera.position.distanceToSquared(item.object.position) > 14400) return;
-      item.object.position.y = item.baseY + Math.sin(time * item.speed + item.seed) * item.amplitude;
     } else if (item.type === 'river' && item.update) {
       item.update(now);
     } else if (item.type === 'fountain') {

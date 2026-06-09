@@ -12,6 +12,7 @@ import {
   registerFadeZone
 } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
+import { createFloor } from './utils.js';
 
 
 export function buildAirport() {
@@ -34,11 +35,7 @@ export function buildAirport() {
 
   // ── Runway ──────────────────────────────────────────────────────────
   const runwayW = 12, runwayL = 100;
-  const rw = new THREE.Mesh(new THREE.PlaneGeometry(runwayW, runwayL), concMat);
-  rw.rotation.x = FLAT;
-  rw.position.set(ax, baseY + 0.04, az);
-  rw.receiveShadow = true;
-  g.add(rw);
+  g.add(createFloor(runwayW, runwayL, concMat, ax, baseY + 0.04, az));
 
   for (let i = -45; i <= 45; i += 10) {
     const mk = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 3), markingMat);
@@ -65,19 +62,11 @@ export function buildAirport() {
 
   // ── Taxiway ─────────────────────────────────────────────────────────
   const taxiMat = new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.8 });
-  const tw = new THREE.Mesh(new THREE.PlaneGeometry(6, 8), taxiMat);
-  tw.rotation.x = FLAT;
-  tw.position.set(ax + runwayW / 2 + 4, baseY + 0.04, az);
-  tw.receiveShadow = true;
-  g.add(tw);
+  g.add(createFloor(6, 8, taxiMat, ax + runwayW / 2 + 4, baseY + 0.04, az));
 
   // ── Terminal ────────────────────────────────────────────────────────
   const tX = ax + 18, tZ = az;
-  const tw2 = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), concMat);
-  tw2.rotation.x = FLAT;
-  tw2.position.set(tX, baseY + 0.02, tZ);
-  tw2.receiveShadow = true;
-  g.add(tw2);
+  g.add(createFloor(20, 12, concMat, tX, baseY + 0.02, tZ));
 
   [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([nx, nz]) => {
     const ww = nx !== 0 ? 0.3 : 12.3;
@@ -173,11 +162,7 @@ export function buildAirport() {
   }
 
   // Floor
-  const hFloor = new THREE.Mesh(new THREE.PlaneGeometry(hangW, hangD), concMat);
-  hFloor.rotation.x = FLAT;
-  hFloor.position.set(hx, baseY + 0.02, hz);
-  hFloor.receiveShadow = true;
-  g.add(hFloor);
+  g.add(createFloor(hangW, hangD, concMat, hx, baseY + 0.02, hz));
 
   // Back and side walls
   const hBack = new THREE.Mesh(new THREE.BoxGeometry(hangW, hangH, 0.3), hangarMat);
