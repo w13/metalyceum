@@ -48,11 +48,11 @@ import { createWallTorch } from './building/torches.js';
 import { buildRoof } from './building/roof.js';
 
 
-// Named building extents — used throughout buildBuilding() for facade, walls, and columns.
-const BLDG_X_MIN = -30;
-const BLDG_X_MAX = 30;
-const BLDG_Z_MIN = -40;
-const BLDG_Z_MAX = 40;
+// Named building extents — aliased from COVERED_BOUNDS in config.js
+const BLDG_X_MIN = COVERED_BOUNDS.minX;
+const BLDG_X_MAX = COVERED_BOUNDS.maxX;
+const BLDG_Z_MIN = COVERED_BOUNDS.minZ;
+const BLDG_Z_MAX = COVERED_BOUNDS.maxZ;
 
 /**
  * Creates and registers a standard interactive room screen group.
@@ -116,6 +116,7 @@ export function buildMap() {
   resetFadeZones();
   state.upperWalls = [];
   state.upperFloor = [];
+  state.groundFloorItems = [];
   state.roofMeshes = [];
   state.ceilingMat = null;
   state.ceilingMesh = null;
@@ -398,12 +399,16 @@ export function buildBuilding() {
       bounds: COVERED_BOUNDS,
       upperLevelThresholdY: MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
       upperWallMat: state.upperWallMat,
-      getRideProgress: () => state._elevatorIsRiding ? (state.elevatorRideProgress || 0) : 0
+      getRideProgress: () => state._elevatorIsRiding ? (state.elevatorRideProgress || 0) : 0,
+      isRideActive: () => !!state._elevatorIsRiding
     });
 
   const batcher = createBatcher(pushUpperWall);
   const { addMesh, addOrientedBox, flush: flushBatches } = batcher;
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 1: Room floors
+  // ════════════════════════════════════════════════════════════════
   state.ROOMS.forEach((room) => {
     const isWood = room.id % 2 === 0;
     const mat = isWood ? woodFloorMat : stoneFloorMat;
@@ -412,6 +417,9 @@ export function buildBuilding() {
     buildRoomInteriorSet(room);
   });
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 2: Lobby, entrance, and ground floor decoration
+  // ════════════════════════════════════════════════════════════════
   // ── Grand wood-floored atrium ──────────────────────────────────────────
   state.scene.add(createFloor(10, 80, darkWoodFloorMat, 0, 0.015, 0));
 
@@ -487,6 +495,9 @@ export function buildBuilding() {
     state.scene.add(endCap);
   });
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 3: Wall system — shared slab builder & room walls
+  // ════════════════════════════════════════════════════════════════
   // Shared wall slab builder — used by both addWallSegment and addUpperWallSegment.
   // baseY: Y position of the bottom of the slab.
   // stateArr: optional debug collection array to append the mesh into.
@@ -566,6 +577,9 @@ export function buildBuilding() {
   });
   createDoorFrame(0, 40, 'H', 4);
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 4: Corridor columns
+  // ════════════════════════════════════════════════════════════════
   // Torches along the main building hallway
   const hallwayTorchZs = [-36, -20, -2, 17, 34];
   hallwayTorchZs.forEach((z) => {
@@ -650,6 +664,9 @@ export function buildBuilding() {
     createRoomIndicator(room);
   });
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 5: Ground-floor ceiling & sign
+  // ════════════════════════════════════════════════════════════════
   state.ceilingMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, depthWrite: true }));
   const ceilingGeo = new THREE.PlaneGeometry(60, 80);
   state.ceilingMesh = new THREE.Mesh(ceilingGeo, state.ceilingMat);
@@ -674,6 +691,9 @@ export function buildBuilding() {
   state.scene.add(signMesh);
   pushUpperWall(signMesh);
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 6: Upper facade & portico (batcher-based instanced geometry)
+  // ════════════════════════════════════════════════════════════════
   const upperFloorHeight = 3.3;
   const secondFloorY = ROOM_HEIGHT;
   const entablatureY = secondFloorY + upperFloorHeight + 0.35;
@@ -773,6 +793,9 @@ export function buildBuilding() {
   addMesh(new THREE.BoxGeometry(7.3, 0.28, 1.4), limestoneMat, +2.92, ROOM_HEIGHT + 1.74, porticoFriezeZ - 0.02, 0, 0, -0.34, true);
   flushBatches();
 
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 7: Elevator car, doors, and collision
+  // ════════════════════════════════════════════════════════════════
   // ── Animated Opulent Elevator (north end of lobby) ─────────────────────
   const eZ = MAIN_BUILDING_ELEVATOR_Z;
   const eW = MAIN_BUILDING_ELEVATOR_W;
@@ -950,6 +973,9 @@ export function buildBuilding() {
   state._elevatorDoorBox = new THREE.Box3().setFromObject(doorCollider);
   state._elevatorDoorBox.userData = { _isElevatorDoor: true };
   state.WALLS.push(state._elevatorDoorBox);
+  // ════════════════════════════════════════════════════════════════
+  // SECTION 8: Second floor construction
+  // ════════════════════════════════════════════════════════════════
   // ── Second floor ──────────────────────────────────────────────────────
   const mezzY = MAIN_BUILDING_MEZZANINE_Y; // deck surface Y
   const f2Height = 3.3;          // interior height of second floor

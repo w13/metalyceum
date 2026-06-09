@@ -35,7 +35,8 @@ export function buildAirport() {
 
   // ── Runway ──────────────────────────────────────────────────────────
   const runwayW = 12, runwayL = 100;
-  g.add(createFloor(runwayW, runwayL, concMat, ax, baseY + 0.04, az));
+  const runway = createFloor(runwayW, runwayL, concMat, ax, baseY + 0.04, az);
+  g.add(runway);
 
   for (let i = -45; i <= 45; i += 10) {
     const mk = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 3), markingMat);
@@ -419,6 +420,6 @@ export function buildAirport() {
 
   state.scene.add(g);
   state.landmarkGroups.set('airport', g);
-  registerStaticScenery(rw,   { kind: 'outdoor', distance: 180 });
+  registerStaticScenery(runway, { kind: 'outdoor', distance: 180 });
   registerStaticScenery(troof, { kind: 'outdoor', distance: 150 });
 }

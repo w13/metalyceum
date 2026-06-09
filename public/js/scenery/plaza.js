@@ -186,6 +186,9 @@ export function buildFrontFountain() {
   const fx = FOUNTAIN_X, fz = FOUNTAIN_Z;
   const fountainBaseY = getTerrainCeiling(fx, fz, 3.7, 3.7);
 
+  // ════════════════════════════════════════════════════════════════
+  // FOUNTAIN PHASE 1: Marble plaza slab & foundation
+  // ════════════════════════════════════════════════════════════════
   // ── Materials ──────────────────────────────────────────────────────────
   const stoneTex = createStoneTexture();
   const brickTex = createBrickTexture();
@@ -265,6 +268,9 @@ export function buildFrontFountain() {
     state.scene.add(slabRim);
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // FOUNTAIN PHASE 2: Masonry structure & water volumes
+  // ════════════════════════════════════════════════════════════════
   // ── Masonry base wall ──────────────────────────────────────────────────
   // Outer ring with slight taper
   const baseWall = new THREE.Mesh(
@@ -428,6 +434,9 @@ export function buildFrontFountain() {
   finial.position.set(fx, fountainBaseY + 0.8 + 0.35 + 0.5 + 1.2 + 0.55 + 0.08, fz);
   state.scene.add(finial);
 
+  // ════════════════════════════════════════════════════════════════
+  // FOUNTAIN PHASE 3: Landscaping & collision barriers
+  // ════════════════════════════════════════════════════════════════
   // ── Bushes around the fountain plaza ─────────────────────────────────────
   [
     { x: fx - 13.5, z: fz + 3.1, scale: 0.86, id: 'fountain-bush-west-back' },
@@ -452,6 +461,9 @@ export function buildFrontFountain() {
     new THREE.Vector3(fx + 3.8, 2.5, fz + 3.8)
   ));
 
+  // ════════════════════════════════════════════════════════════════
+  // FOUNTAIN PHASE 4: Animated water surfaces & registration
+  // ════════════════════════════════════════════════════════════════
   // ── Enhanced animated water surfaces ────────────────
   const waterAnimGroup = new THREE.Group();
   waterAnimGroup.position.set(fx, fountainBaseY, fz);
@@ -763,6 +775,9 @@ export function buildFrontFountain() {
     amplitude: 0.02
   });
 
+  // ════════════════════════════════════════════════════════════════
+  // FOUNTAIN PHASE 5: Fish & animated scenery registration
+  // ════════════════════════════════════════════════════════════════
   // Fish
   const fishColors = ['#f97316', '#f43f5e', '#eab308', '#38bdf8', '#a855f7'];
   for (let i = 0; i < 3; i++) {

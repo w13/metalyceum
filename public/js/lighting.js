@@ -2,8 +2,7 @@
 import { state } from './state.js';
 
 export function updateTorches(now) {
-  // Throttle to every 4th frame — flicker is imperceptible at 15 vs 30 fps update rate
-  if ((now | 0) % 4 !== 0) return;
+  if (state.frameCount % 4 !== 0) return;
   const time = now * 0.005;
   state.torches.forEach((t) => {
     // Skip torches attached to invisible parent groups (e.g. faded second-floor torches)
