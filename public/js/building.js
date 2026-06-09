@@ -4,17 +4,12 @@ import { state } from './state.js';
 import {
   ROOM_HEIGHT,
   MAP_SIZE,
-  WORLD_CONFIG,
-  ROOM_LAYOUTS,
   COVERED_BOUNDS,
-  MAIN_BUILDING_ELEVATOR_GROUND_Y,
-  MAIN_BUILDING_MEZZANINE_Y,
   MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
   MAIN_BUILDING_ELEVATOR_Z,
   MAIN_BUILDING_ELEVATOR_W,
   MAIN_BUILDING_ELEVATOR_D,
-  MAIN_BUILDING_ELEVATOR_H,
-  MAIN_BUILDING_ELEVATOR_FRONT_Z
+  MAIN_BUILDING_ELEVATOR_H
 } from './config.js';
 import { getTerrainHeight } from './physics.js';
 import { HALF_PI, FLAT } from './math.js';
@@ -22,31 +17,27 @@ import { vec2LengthAngle, samplePosition, createFloor } from './scenery/utils.js
 import {
   createBuildingFadeZone,
   makeFadeMaterial,
-  makeObjectFadeable,
   resetFadeZones
 } from './fade-system.js';
 import {
   initSceneryAssets,
   createBoulder,
-  createRoomIndicator,
   buildExteriorPlaza,
-  buildRoomInteriorSet,
   buildOutdoorVenues,
   buildWorldDetails,
+  initLazyVenueLoading,
 } from './scenery.js';
-import {
-  createGrassTexture, createSignBoardTexture,
-  createMarbleTileTexture
-} from './textures.js';
+import { createGrassTexture } from './textures.js';
 import { createMainBuildingMaterials } from './building/materials.js';
 import { buildElevator } from './building/elevator.js';
 
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createDoorFrame } from './building/doors.js';
-import { buildClassroomAssets } from './building/interiors.js';
 import { createWallTorch } from './building/torches.js';
 import { buildRoof } from './building/roof.js';
-import { buildUpperFloorFurnishings } from './building/upstairs.js';
+
+import { buildGroundFloor } from './building/ground-floor.js';
+import { buildGroundWalls, buildUpperWalls } from './building/walls.js';
+import { buildUpperFloor } from './building/upper-floor.js';
 
 
 // Named building extents — aliased from COVERED_BOUNDS in config.js
@@ -55,59 +46,7 @@ const BLDG_X_MAX = COVERED_BOUNDS.maxX;
 const BLDG_Z_MIN = COVERED_BOUNDS.minZ;
 const BLDG_Z_MAX = COVERED_BOUNDS.maxZ;
 
-/**
- * Creates and registers a standard interactive room screen group.
- * Used for both ground-floor and upper-floor rooms to avoid duplication.
- *
- * @param {object} room        - room definition from state.ROOMS
- * @param {object} frameMat    - THREE.Material for the outer frame
- * @param {object} screenMat   - THREE.Material prototype to clone for the screen
- * @param {number} screenY     - world Y position for the screen center
- * @param {number} wallOffset  - distance from the inner wall face to the screen
- * @param {object[]|null} upperFloorArr - if non-null, push group into this array too
- * @returns {THREE.Group} the screen group (already added to scene)
- */
-function buildRoomScreen(room, frameMat, screenMat, screenY, wallOffset = 0.22, upperFloorArr = null) {
-  const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent };
-  const screenGroup = new THREE.Group();
 
-  const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(7, 4, 0.2), frameMat);
-  outerFrame.castShadow = true;
-  screenGroup.add(outerFrame);
-
-  const innerGeo = new THREE.BoxGeometry(6.6, 3.6, 0.05);
-  const innerScreenMat = screenMat.clone();
-  const innerScreen = new THREE.Mesh(innerGeo, innerScreenMat);
-  innerScreen.position.z = 0.1;
-  innerScreen.userData = { roomId: room.id };
-  state.clickableScreens.push(innerScreen);
-  state.roomScreens.set(room.id, {
-    material: innerScreenMat,
-    baseColor: innerScreenMat.color.clone(),
-    baseEmissive: innerScreenMat.emissive.clone()
-  });
-  screenGroup.add(innerScreen);
-
-  const screenBorder = new THREE.Mesh(innerGeo, new THREE.MeshBasicMaterial({ color: layout.themeColor, wireframe: true }));
-  screenBorder.position.z = 0.11;
-  screenBorder.scale.set(1.02, 1.02, 1.02);
-  screenGroup.add(screenBorder);
-
-  if (room.x < 0) {
-    screenGroup.position.set(room.x - room.width / 2 + wallOffset, screenY, room.z);
-    screenGroup.rotation.y = Math.PI / 2;
-  } else {
-    screenGroup.position.set(room.x + room.width / 2 - wallOffset, screenY, room.z);
-    screenGroup.rotation.y = -Math.PI / 2;
-  }
-
-  state.scene.add(screenGroup);
-  if (upperFloorArr) {
-    if (typeof upperFloorArr === 'function') upperFloorArr(screenGroup);
-    else upperFloorArr.push(screenGroup);
-  }
-  return screenGroup;
-}
 
 export async function buildMap(onProgress) {
   // Guard against double-build — if reinitialized, the old scene would leak
@@ -313,6 +252,7 @@ export async function buildMap(onProgress) {
   onProgress?.('Populating the world…');
   await new Promise(r => setTimeout(r, 0));
   buildOutdoorVenues();
+  initLazyVenueLoading();  // starts polling for far landmarks (airport, castle, cave)
   buildWorldDetails();
 }
 
@@ -392,9 +332,6 @@ export function buildBuilding() {
   } = materials;
   state.upperWallMat = materials.upperWallMat;
 
-  // Merge buffers: lower wall slabs + their baseboards are collected here and flushed to two merged meshes
-  const _lowerMerge = { slabs: [], boards: [] };
-
   const { pushRoof, pushUpperWall, pushUpperFloor, pushGroundFloor } =
     createBuildingFadeZone({
       id: 'main-building',
@@ -409,226 +346,25 @@ export function buildBuilding() {
   const batcher = createBatcher(pushUpperWall);
   const { addMesh, addOrientedBox, flush: flushBatches } = batcher;
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 1: Room floors
-  // ════════════════════════════════════════════════════════════════
-  state.ROOMS.forEach((room) => {
-    const isWood = room.id % 2 === 0;
-    const mat = isWood ? woodFloorMat : stoneFloorMat;
-    state.scene.add(createFloor(room.width, room.depth, mat, room.x, 0.005, room.z));
+  // ── 1. Ground Floor ─────────────────────────────────────────────────
+  buildGroundFloor(state.scene, state, materials, pushGroundFloor, pushUpperWall);
 
-    buildRoomInteriorSet(room);
-  });
+  // ── 2. Ground Floor Walls ───────────────────────────────────────────
+  buildGroundWalls(state.scene, state, materials, pushUpperWall);
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 2: Lobby, entrance, and ground floor decoration
-  // ════════════════════════════════════════════════════════════════
-  // ── Grand wood-floored atrium ──────────────────────────────────────────
-  state.scene.add(createFloor(10, 80, darkWoodFloorMat, 0, 0.015, 0));
-
-  // Decorative border strip around the lobby floor edge
-  const lobbyBorderMat = new THREE.MeshStandardMaterial({ color: '#4a2c11', roughness: 0.6, metalness: 0.08 });
-  state.scene.add(createFloor(10.2, 80.2, lobbyBorderMat, 0, 0.012, 0, false));
-
-  // Entrance medallion — a dark circular accent at the main door (z=40)
-  const medallionMat = new THREE.MeshStandardMaterial({ color: '#5c3a1e', roughness: 0.7, metalness: 0.05 });
-  const medallion = new THREE.Mesh(new THREE.CircleGeometry(1.8, 24), medallionMat);
-  medallion.rotation.x = FLAT;
-  medallion.position.set(0, 0.018, 38);
-  state.scene.add(medallion);
-
-  const medallionRing = new THREE.Mesh(
-    new THREE.RingGeometry(1.75, 2.0, 24),
-    new THREE.MeshStandardMaterial({ color: '#8b5a2b', roughness: 0.5, metalness: 0.1 })
-  );
-  medallionRing.rotation.x = FLAT;
-  medallionRing.position.set(0, 0.019, 38);
-  state.scene.add(medallionRing);
-
-  // ── Entrance threshold & stone landing ─────────────────────────────────
-  const landingMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.72, metalness: 0.06, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const landingStep = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.10, 3.2), landingMat);
-  landingStep.position.set(0, 0.07, 41.6);
-  landingStep.receiveShadow = true;
-  landingStep.castShadow = true;
-  state.scene.add(landingStep);
-
-  const trimBorderMat = new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.5, metalness: 0.3 });
-  const trimBorder = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.04, 3.3), trimBorderMat);
-  trimBorder.position.set(0, 0.04, 41.6);
-  state.scene.add(trimBorder);
-
-  const sill = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.06, 0.8), landingMat);
-  sill.position.set(0, 0.05, 40.2);
-  sill.receiveShadow = true;
-  state.scene.add(sill);
-
-  const marbleTex = createMarbleTileTexture();
-  const marbleMat = new THREE.MeshStandardMaterial({ map: marbleTex, color: '#ede8dc', roughness: 0.12, metalness: 0.08, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-
-  state.scene.add(createFloor(11.5, 5.2, marbleMat, 0, 0.025, 37.4));
-
-  state.scene.add(createFloor(11.5, 5.0, marbleMat, 0, 0.125, 42.5));
-
-  const carpetMat = new THREE.MeshStandardMaterial({ color: '#7a1a1a', roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const borderMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.45, metalness: 0.35, side: THREE.DoubleSide });
-
-  state.scene.add(createFloor(3.2, 2.0, carpetMat, 0, 0.12, 41.0));
-
-  [-1.6, 1.6].forEach((xOff) => {
-    const border = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 2.0), borderMat);
-    border.rotation.x = FLAT;
-    border.position.set(xOff, 0.121, 41.0);
-    state.scene.add(border);
-  });
-
-  state.scene.add(createFloor(3.2, 78, carpetMat, 0, 0.03, 0));
-
-  [-1.6, 1.6].forEach((xOff) => {
-    const border = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 78), borderMat);
-    border.rotation.x = FLAT;
-    border.position.set(xOff, 0.031, 0);
-    state.scene.add(border);
-  });
-
-  [-1, 1].forEach((zOff) => {
-    const endCap = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.06), borderMat);
-    endCap.rotation.x = FLAT;
-    endCap.position.set(0, 0.031, zOff * 39);
-    state.scene.add(endCap);
-  });
-
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 3: Wall system — shared slab builder & room walls
-  // ════════════════════════════════════════════════════════════════
-  // Shared wall slab builder — used by both addWallSegment and addUpperWallSegment.
-  // baseY: Y position of the bottom of the slab.
-  // stateArr: optional debug collection array to append the mesh into.
-  // mergeTarget: if provided, geometry is collected world-space into mergeTarget.slabs / .boards
-  //              instead of adding the mesh to the scene (physics Box3 is still computed).
-  function _addWallSlabAt(xStart, zStart, xEnd, zEnd, baseY, height, thickness, material, baseboardMat, stateArr, castShadow = true, mergeTarget = null) {
-    const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
-    if (len < 0.01) return;
-    const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(len, height, thickness), material);
-    wallMesh.position.set((xStart + xEnd) / 2, baseY + height / 2, (zStart + zEnd) / 2);
-    wallMesh.rotation.y = -angle;
-    wallMesh.castShadow = castShadow;
-    wallMesh.receiveShadow = castShadow;
-
-    if (!mergeTarget) state.scene.add(wallMesh);
-    if (stateArr) stateArr.push(wallMesh);
-
-    const bbH = 0.3, bbT = 0.07;
-    const bbGeo = new THREE.BoxGeometry(len, bbH, bbT);
-    [thickness / 2 + bbT / 2, -(thickness / 2 + bbT / 2)].forEach((zOff) => {
-      const bb = new THREE.Mesh(bbGeo, baseboardMat);
-      bb.position.set(0, -(height / 2) + bbH / 2, zOff);
-      wallMesh.add(bb);
-    });
-
-    wallMesh.updateWorldMatrix(true, false);
-    state.WALLS.push(new THREE.Box3().setFromObject(wallMesh));
-
-    if (mergeTarget) {
-      // Collect world-space geometry; mesh stays out of the scene
-      const slabGeo = wallMesh.geometry.clone();
-      slabGeo.applyMatrix4(wallMesh.matrixWorld);
-      mergeTarget.slabs.push(slabGeo);
-
-      wallMesh.children.forEach(child => {
-        if (!child.isMesh) return;
-        child.updateMatrix();
-        const bbWorldGeo = child.geometry.clone();
-        bbWorldGeo.applyMatrix4(
-          new THREE.Matrix4().multiplyMatrices(wallMesh.matrixWorld, child.matrix)
-        );
-        mergeTarget.boards.push(bbWorldGeo);
-      });
-    }
-
-    return wallMesh;
-  }
-
-  function addWallSegment(xStart, zStart, xEnd, zEnd, height = ROOM_HEIGHT) {
-    const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
-    if (len < 0.01) return;
-
-    const thickness = 0.5;
-    const lowerHeight = 3.5;
-    const upperHeight = height - lowerHeight;
-
-    // Lower wall — collected into _lowerMerge, flushed to one merged mesh after all segments
-    _addWallSlabAt(xStart, zStart, xEnd, zEnd, 0, lowerHeight, thickness, wallMat, sharedBaseboardMat, null, true, _lowerMerge);
-
-    // Upper wall — added to scene individually (fade-system controlled via shared upperWallMat)
-    if (upperHeight > 0.05) {
-      const upperWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, lowerHeight, upperHeight, thickness, state.upperWallMat, sharedBaseboardMat, null);
-      pushUpperWall(upperWall);
-    }
-  }
-
-  state.ROOMS.forEach((room) => {
-    if (room.id >= 8) return;
-    const xMin = room.x - room.width / 2;
-    const xMax = room.x + room.width / 2;
-    const zMin = room.z - room.depth / 2;
-    const zMax = room.z + room.depth / 2;
-    if (room.x < 0) { addWallSegment(xMin, zMin, xMin, zMax); }
-    else { addWallSegment(xMax, zMin, xMax, zMax); }
-    addWallSegment(xMin, zMin, xMax, zMin);
-    addWallSegment(xMin, zMax, xMax, zMax);
-    const corridorX = room.x < 0 ? -5 : 5;
-    addWallSegment(corridorX, zMin, corridorX, room.z - 2);
-    addWallSegment(corridorX, room.z + 2, corridorX, zMax);
-  });
-
-  addWallSegment(-5, -20, -5, -18);
-  addWallSegment(-5, -2, -5, 2);
-  addWallSegment(-5, 14, -5, 18);
-  addWallSegment(-5, 34, -5, 40);
-  addWallSegment(5, -40, 5, -38);
-  addWallSegment(5, -22, 5, -18);
-  addWallSegment(5, -6, 5, -2);
-  addWallSegment(5, 18, 5, 20);
-  addWallSegment(5, 36, 5, 40);
-  addWallSegment(-5, -40, 5, -40);
-  addWallSegment(-5, 40, -2, 40);
-  addWallSegment(2, 40, 5, 40);
-
-  // Flush lower walls: merge collected geometries into two draw calls (slabs + baseboards)
-  if (_lowerMerge.slabs.length) {
-    const m = new THREE.Mesh(mergeGeometries(_lowerMerge.slabs), wallMat);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    state.scene.add(m);
-    _lowerMerge.slabs.forEach(g => g.dispose());
-    _lowerMerge.slabs.length = 0;
-  }
-  if (_lowerMerge.boards.length) {
-    const m = new THREE.Mesh(mergeGeometries(_lowerMerge.boards), sharedBaseboardMat);
-    m.receiveShadow = true;
-    state.scene.add(m);
-    _lowerMerge.boards.forEach(g => g.dispose());
-    _lowerMerge.boards.length = 0;
-  }
-
+  // ── 3. Ground Floor Door Frames & Hallway Torches ───────────────────
   state.ROOMS.forEach((room) => {
     createDoorFrame(room.x < 0 ? -5 : 5, room.z, 'V', 4);
   });
   createDoorFrame(0, 40, 'H', 4);
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 4: Corridor columns
-  // ════════════════════════════════════════════════════════════════
-  // Torches along the main building hallway
   const hallwayTorchZs = [-36, -20, -2, 17, 34];
   hallwayTorchZs.forEach((z) => {
-    // Left wall of hallway (facing right)
     createWallTorch(-4.75, 2.8, z, Math.PI / 2, null, true);
-    // Right wall of hallway (facing left)
     createWallTorch(4.75, 2.8, z, -Math.PI / 2, null, true);
   });
 
+  // ── 4. Ground Floor Corridor Columns ────────────────────────────────
   const columnColor = '#f1f5f9';
   const columnMat = new THREE.MeshStandardMaterial({ color: columnColor, roughness: 0.6, metalness: 0.1 });
   const columnHeight = ROOM_HEIGHT;
@@ -693,20 +429,7 @@ export function buildBuilding() {
   state.scene.add(echinusInstances);
   state.scene.add(abacusInstances);
 
-  state.ROOMS.forEach((room) => {
-    if (room.id >= 8) return;
-    const screen = buildRoomScreen(room, frameMat, screenMat, 3.5);
-    pushGroundFloor(screen);
-    const torchX = room.x < 0 ? room.x - room.width / 2 + 0.25 : room.x + room.width / 2 - 0.25;
-    const torchRy = room.x < 0 ? Math.PI / 2 : -Math.PI / 2;
-    createWallTorch(torchX, 2.5, room.z - 4, torchRy, room.id, true);
-    createWallTorch(torchX, 2.5, room.z + 4, torchRy, room.id, false);
-    createRoomIndicator(room, pushGroundFloor);
-  });
-
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 5: Ground-floor ceiling & sign
-  // ════════════════════════════════════════════════════════════════
+  // ── 5. Ground Floor Ceiling ─────────────────────────────────────────
   state.ceilingMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9, depthWrite: true }));
   const ceilingGeo = new THREE.PlaneGeometry(60, 80);
   state.ceilingMesh = new THREE.Mesh(ceilingGeo, state.ceilingMat);
@@ -717,23 +440,35 @@ export function buildBuilding() {
   state.scene.add(state.ceilingMesh);
   pushRoof(state.ceilingMesh);
 
-  buildClassroomAssets();
+  // ── 6. Animated Opulent Elevator ───────────────────────────────────
+  state.elevator = buildElevator(state.scene, materials);
+  state.WALLS.push(state.elevator.doorBox);
 
-  const signTex = createSignBoardTexture();
-  state.signFrontMat = new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.6, transparent: true, opacity: 1.0 });
-  state.signSideMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.8, transparent: true, opacity: 1.0 });
-  const signMaterials = [state.signSideMat, state.signSideMat, state.signSideMat, state.signSideMat, state.signFrontMat, state.signSideMat];
-  const signGeo = new THREE.BoxGeometry(10.5, 1.4, 0.1);
-  const signMesh = new THREE.Mesh(signGeo, signMaterials);
-  signMesh.position.set(0, 4.4, 41.5);
-  signMesh.castShadow = true;
-  signMesh.receiveShadow = true;
-  state.scene.add(signMesh);
-  pushUpperWall(signMesh);
+  // Elevator collision
+  const collHalfW = MAIN_BUILDING_ELEVATOR_W / 2 - 0.2;
+  const collHalfD = MAIN_BUILDING_ELEVATOR_D / 2 - 0.2;
+  const collH = MAIN_BUILDING_ELEVATOR_H;
+  const eZ = MAIN_BUILDING_ELEVATOR_Z;
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(-collHalfW, 0, eZ - collHalfD - 0.05),
+    new THREE.Vector3(collHalfW, collH, eZ - collHalfD + 0.05)
+  ));
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(-collHalfW - 0.05, 0, eZ - collHalfD),
+    new THREE.Vector3(-collHalfW + 0.05, collH, eZ + collHalfD)
+  ));
+  state.WALLS.push(new THREE.Box3(
+    new THREE.Vector3(collHalfW - 0.05, 0, eZ - collHalfD),
+    new THREE.Vector3(collHalfW + 0.05, collH, eZ + collHalfD)
+  ));
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 6: Upper facade & portico (batcher-based instanced geometry)
-  // ════════════════════════════════════════════════════════════════
+  // ── 7. Upper Floor Walls ───────────────────────────────────────────
+  buildUpperWalls(state.scene, state, materials, pushUpperFloor);
+
+  // ── 8. Upper Floor structure & items ───────────────────────────────
+  buildUpperFloor(state.scene, state, materials, pushUpperFloor);
+
+  // ── 9. Upper Facade & Portico ──────────────────────────────────────
   const upperFloorHeight = 3.3;
   const secondFloorY = ROOM_HEIGHT;
   const entablatureY = secondFloorY + upperFloorHeight + 0.35;
@@ -752,12 +487,6 @@ export function buildBuilding() {
     const rodOffsetZ = Math.cos(rotY) * rodDepth * 0.5;
     addMesh(new THREE.BoxGeometry(3.55, 0.12, 0.16), bronzeMat, x + rodOffsetX, secondFloorY + 4.15, z + rodOffsetZ, 0, rotY, 0, true);
     addMesh(new THREE.BoxGeometry(3.55, 0.12, 0.16), bronzeMat, x + rodOffsetX, secondFloorY - 0.65, z + rodOffsetZ, 0, rotY, 0, true);
-  }
-
-  function addAcroterion(x, z) {
-    addMesh(new THREE.BoxGeometry(0.9, 0.35, 0.9), limestoneMat, x, entablatureY + 0.15, z, 0, 0, 0, true);
-    addMesh(new THREE.CylinderGeometry(0.18, 0.26, 0.55, 12), bronzeMat, x, entablatureY + 0.58, z, 0, 0, 0, true);
-    addMesh(new THREE.SphereGeometry(0.22, 12, 10), bronzeMat, x, entablatureY + 0.95, z, 0, 0, 0, true);
   }
 
   function buildUpperFacade(xStart, zStart, xEnd, zEnd, normalX, normalZ, decorative = true) {
@@ -795,7 +524,6 @@ export function buildBuilding() {
       addOrientedBox(0.16, windowHeight + 0.12, thickness + 0.18, mx - tangentX * windowWidth * 0.24, secondFloorY + upperFloorHeight * 0.54, mz - tangentZ * windowWidth * 0.24, angle, bronzeMat, normalX, normalZ, 0.2, true);
       addOrientedBox(0.16, windowHeight + 0.12, thickness + 0.18, mx + tangentX * windowWidth * 0.24, secondFloorY + upperFloorHeight * 0.54, mz + tangentZ * windowWidth * 0.24, angle, bronzeMat, normalX, normalZ, 0.2, true);
       addOrientedBox(windowWidth + 0.15, 0.12, thickness + 0.18, mx, secondFloorY + upperFloorHeight * 0.54, mz, angle, bronzeMat, normalX, normalZ, 0.2, true);
-
     }
   }
 
@@ -833,278 +561,8 @@ export function buildBuilding() {
   addMesh(new THREE.BoxGeometry(7.3, 0.28, 1.4), limestoneMat, +2.92, ROOM_HEIGHT + 1.74, porticoFriezeZ - 0.02, 0, 0, -0.34, true);
   flushBatches();
 
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 7: Elevator car, doors, and collision
-  // ════════════════════════════════════════════════════════════════
-  // ── Animated Opulent Elevator (north end of lobby) ─────────────────────
-  state.elevator = buildElevator(state.scene, materials);
-  state.WALLS.push(state.elevator.doorBox);
-
-  // ── Elevator collision ────────────────────────────────────────────────
-  // Room interior walls (3 sides — back, left, right)
-  const collHalfW = MAIN_BUILDING_ELEVATOR_W / 2 - 0.2;
-  const collHalfD = MAIN_BUILDING_ELEVATOR_D / 2 - 0.2;
-  const collH = MAIN_BUILDING_ELEVATOR_H;
-  const eZ = MAIN_BUILDING_ELEVATOR_Z;
-  // These walls are always active — they define the elevator room boundaries
-  // Back wall
-  state.WALLS.push(new THREE.Box3(
-    new THREE.Vector3(-collHalfW, 0, eZ - collHalfD - 0.05),
-    new THREE.Vector3(collHalfW, collH, eZ - collHalfD + 0.05)
-  ));
-  // Left wall
-  state.WALLS.push(new THREE.Box3(
-    new THREE.Vector3(-collHalfW - 0.05, 0, eZ - collHalfD),
-    new THREE.Vector3(-collHalfW + 0.05, collH, eZ + collHalfD)
-  ));
-  // Right wall
-  state.WALLS.push(new THREE.Box3(
-    new THREE.Vector3(collHalfW - 0.05, 0, eZ - collHalfD),
-    new THREE.Vector3(collHalfW + 0.05, collH, eZ + collHalfD)
-  ));
-  // ════════════════════════════════════════════════════════════════
-  // SECTION 8: Second floor construction
-  // ════════════════════════════════════════════════════════════════
-  // ── Second floor ──────────────────────────────────────────────────────
-  const mezzY = MAIN_BUILDING_MEZZANINE_Y; // deck surface Y
-  const f2Height = 3.3;          // interior height of second floor
-  const f2Thickness = 0.5;       // wall thickness (matches ground floor)
-  const f2BaseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
-
-  // Helper — add a wall slab that starts at mezzY (not ground).
-  // Delegates to the shared _addWallSlabAt builder defined in the outer scope.
-  function addUpperWallSegment(xStart, zStart, xEnd, zEnd, height = f2Height) {
-    // castShadow=false: second-floor interior walls are enclosed and never shadow outdoor terrain
-    const wall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, mezzY, height, f2Thickness, wallMat, f2BaseboardMat, state.upperFloor, false);
-    if (wall) pushUpperFloor(wall);
-  }
-
-  // ── Floor slabs ─────────────────────────────────────────────────────
-  const mezzFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.35, metalness: 0.08 });
-  const mezzSlateFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8 });
-
-  // West wing (gallery side): x -30 → -5, z -40 → +40
-  const westFloor = createFloor(25, 80, mezzSlateFloorMat, -17.5, mezzY, 0);
-  state.scene.add(westFloor);
-  pushUpperFloor(westFloor);
-
-  // East wing (interactive side): x +5 → +30, z -40 → +40
-  const eastFloor = createFloor(25, 80, mezzFloorMat, 17.5, mezzY, 0);
-  state.scene.add(eastFloor);
-  pushUpperFloor(eastFloor);
-
-  // Corridor: x -5 → +5, z -40 → +40
-  const corridorFloor = createFloor(10, 80, mezzFloorMat, 0, mezzY, 0);
-  state.scene.add(corridorFloor);
-  pushUpperFloor(corridorFloor);
-
-  // Dark wood border strip along corridor edges (matches ground floor)
-  const corridorBorderMat = new THREE.MeshStandardMaterial({ color: '#4a2c11', roughness: 0.6, metalness: 0.08 });
-  [-5.1, 5.1].forEach((x) => {
-    const border = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 80), corridorBorderMat);
-    border.rotation.x = FLAT;
-    border.position.set(x, mezzY + 0.002, 0);
-    state.scene.add(border);
-    pushUpperFloor(border);
-  });
-
-  // ── Second-floor ceiling (underside of roof space) ──────────────────
-  const f2CeilingMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ color: '#1e1510', roughness: 0.9 }));
-  const f2Ceiling = new THREE.Mesh(new THREE.PlaneGeometry(60, 80), f2CeilingMat);
-  f2Ceiling.rotation.x = HALF_PI;
-  f2Ceiling.position.set(0, mezzY + f2Height + 0.05, 0);
-  f2Ceiling.receiveShadow = true;
-  state.scene.add(f2Ceiling);
-  pushUpperFloor(f2Ceiling);
-
-  // ── Interior walls — second floor ───────────────────────────────────
-  // Left corridor wall (x = -5), with 4u door gaps at same Z as ground floor rooms
-  // id < 8 excludes outdoor venues (amphitheater id=8, concert venue id=9, etc.)
-  // which would otherwise inject z=140+ into the corridor wall builder and create
-  // 100+ unit wall segments extending out through the front of the building.
-  const leftUpperDoorZs = state.ROOMS.filter((r) => r.x < 0 && !r.floor && r.id < 8).map((r) => r.z);
-  const rightUpperDoorZs = state.ROOMS.filter((r) => r.x > 0 && !r.floor && r.id < 8).map((r) => r.z);
-
-  // Build corridor walls with door gaps (same pattern as ground floor addWallSegment calls)
-  function addUpperCorridorWall(corridorX, doorZs, zMin = -40, zMax = 40) {
-    const sorted = [...doorZs].sort((a, b) => a - b);
-    let cursor = zMin;
-    sorted.forEach((dz) => {
-      const gapStart = dz - 2;
-      const gapEnd = dz + 2;
-      if (gapStart > cursor) addUpperWallSegment(corridorX, cursor, corridorX, gapStart);
-      cursor = Math.max(cursor, gapEnd);
-    });
-    if (zMax > cursor) addUpperWallSegment(corridorX, cursor, corridorX, zMax);
-  }
-
-  addUpperCorridorWall(-5, leftUpperDoorZs);
-  addUpperCorridorWall(5, rightUpperDoorZs);
-
-  // North cap (z = -40) and south cap (z = +40)
-  addUpperWallSegment(BLDG_X_MIN, BLDG_Z_MIN + 0.4, BLDG_X_MAX, BLDG_Z_MIN + 0.4);
-  addUpperWallSegment(-30, 39.6, -2, 39.6);   // gap for main entrance
-  addUpperWallSegment(2, BLDG_Z_MAX - 0.4, BLDG_X_MAX, BLDG_Z_MAX - 0.4);
-
-  // Outer wall collision backs (interior face of the exterior limestone facade)
-  // These add physics collision to the outside walls at the second-floor height
-  addUpperWallSegment(BLDG_X_MIN + 0.5, BLDG_Z_MIN, BLDG_X_MIN + 0.5, BLDG_Z_MAX);
-  addUpperWallSegment(BLDG_X_MAX - 0.5, BLDG_Z_MIN, BLDG_X_MAX - 0.5, BLDG_Z_MAX);
-
-  // East wing room divider with 4u door gap at x≈17.5 (centre of the wing)
-  addUpperWallSegment(5, -8, 14, -8);     // west part of divider
-  addUpperWallSegment(21, -8, 30, -8);    // east part of divider
-
-  // West wing is open plan — full gallery from z=-40 to z=+40
-
-  // ── Door frames on second-floor corridor openings ────────────────────
-  state.ROOMS.filter((r) => !r.floor && r.id < 8).forEach((room) => {
-    const dfGroup = createDoorFrame(room.x < 0 ? -5 : 5, room.z, 'V', f2Height, mezzY);
-    pushUpperFloor(dfGroup);
-  });
-  // East-wing room divider door
-  pushUpperFloor(createDoorFrame(17.5, -8, 'H', f2Height, mezzY));
-
-  // ── Second-floor columns aligned with ground-floor positions ─────────
-  const f2ColHeight = f2Height - 0.6;  // 2.7u shaft
-  const f2EchinusH = 0.28;
-  const f2AbacusH = 0.28;
-  const f2ShaftGeo = new THREE.CylinderGeometry(0.28, 0.34, f2ColHeight, 16);
-  const f2EchinusGeo = new THREE.CylinderGeometry(0.46, 0.28, f2EchinusH, 16);
-  const f2AbacusGeo = new THREE.BoxGeometry(1.0, f2AbacusH, 1.0);
-  const f2ColMat = new THREE.MeshStandardMaterial({ color: '#f1f5f9', roughness: 0.6, metalness: 0.1 });
-
-  // Reuse the same column Z positions as the ground floor corridor columns
-  const f2ColPositions = [];
-  getCorridorColumnZs(leftUpperDoorZs).forEach((z) => f2ColPositions.push({ x: -4.2, z }));
-  getCorridorColumnZs(rightUpperDoorZs).forEach((z) => f2ColPositions.push({ x: 4.2, z }));
-
-  const f2TotalCols = f2ColPositions.length;
-  const f2ShaftInst = new THREE.InstancedMesh(f2ShaftGeo, f2ColMat, f2TotalCols);
-  const f2EchinusInst = new THREE.InstancedMesh(f2EchinusGeo, f2ColMat, f2TotalCols);
-  const f2AbacusInst = new THREE.InstancedMesh(f2AbacusGeo, f2ColMat, f2TotalCols);
-  f2ShaftInst.castShadow = true; f2ShaftInst.receiveShadow = true;
-  f2EchinusInst.castShadow = true; f2EchinusInst.receiveShadow = true;
-  f2AbacusInst.castShadow = true; f2AbacusInst.receiveShadow = true;
-
-  const f2TempObj = new THREE.Object3D();
-  for (let i = 0; i < f2TotalCols; i++) {
-    const pos = f2ColPositions[i];
-    f2TempObj.position.set(pos.x, mezzY + f2ColHeight / 2, pos.z);
-    f2TempObj.updateMatrix(); f2ShaftInst.setMatrixAt(i, f2TempObj.matrix);
-    f2TempObj.position.set(pos.x, mezzY + f2ColHeight + f2EchinusH / 2, pos.z);
-    f2TempObj.updateMatrix(); f2EchinusInst.setMatrixAt(i, f2TempObj.matrix);
-    f2TempObj.position.set(pos.x, mezzY + f2ColHeight + f2EchinusH + f2AbacusH / 2, pos.z);
-    f2TempObj.updateMatrix(); f2AbacusInst.setMatrixAt(i, f2TempObj.matrix);
-  }
-  state.scene.add(f2ShaftInst);
-  state.scene.add(f2EchinusInst);
-  state.scene.add(f2AbacusInst);
-  pushUpperFloor(f2ShaftInst, f2EchinusInst, f2AbacusInst);
-
-  // ── Glass railings — all open edges ─────────────────────────────────
-  const glassRailMat = new THREE.MeshStandardMaterial({
-    color: '#38bdf8', roughness: 0.05, metalness: 0.6,
-    transparent: true, opacity: 0.28, side: THREE.DoubleSide
-  });
-  const mezzRailMat = new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.5, metalness: 0.05 });
-  const railH = 1.05;       // railing height above deck
-  const railGlassH = 0.9;   // glass panel height
-  const railTopT = 0.1;     // top handrail thickness
-
-  function addRailingSegment(x1, z1, x2, z2) {
-    const { len, angle } = vec2LengthAngle(x1, z1, x2, z2);
-    if (len < 0.5) return;
-    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
-
-    // Glass panel
-    const gPanel = new THREE.Mesh(new THREE.BoxGeometry(len, railGlassH, 0.06), glassRailMat);
-    gPanel.position.set(mx, mezzY + railGlassH / 2 + 0.05, mz);
-    gPanel.rotation.y = -angle;
-    state.scene.add(gPanel);
-    pushUpperFloor(gPanel);
-
-    // Top handrail
-    const topRail = new THREE.Mesh(new THREE.BoxGeometry(len + 0.12, railTopT, railTopT), mezzRailMat);
-    topRail.position.set(mx, mezzY + railH, mz);
-    topRail.rotation.y = -angle;
-    state.scene.add(topRail);
-    pushUpperFloor(topRail);
-
-    // Bottom rail
-    const botRail = new THREE.Mesh(new THREE.BoxGeometry(len + 0.12, railTopT, railTopT), mezzRailMat);
-    botRail.position.set(mx, mezzY + 0.06, mz);
-    botRail.rotation.y = -angle;
-    state.scene.add(botRail);
-    pushUpperFloor(botRail);
-
-    // Posts every ~3.5u
-    const postCount = Math.max(2, Math.round(len / 3.5) + 1);
-    for (let i = 0; i < postCount; i++) {
-      const t = postCount > 1 ? i / (postCount - 1) : 0.5;
-      const px = x1 + (x2 - x1) * t;
-      const pz = z1 + (z2 - z1) * t;
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, railH, 6), mezzRailMat);
-      post.position.set(px, mezzY + railH / 2, pz);
-      state.scene.add(post);
-      pushUpperFloor(post);
-    }
-  }
-
-  // South-facing opening above main entrance — spans only the door gap to avoid protruding through facade
-  addRailingSegment(-2, 40, 2, 40);
-  state.WALLS.push(new THREE.Box3(
-    new THREE.Vector3(-2.1, mezzY, 39.5),
-    new THREE.Vector3(2.1, mezzY + f2Height, 40.5)
-  ));
-  // East wing — south open edge (Room 10 south wall, no exterior wall here)
-  // West gallery — perimeter railings are covered by the exterior facade, no extra needed
-  // Corridor north open edge (above elevator vestibule, overlooking elevator lobby)
-  addRailingSegment(-4.8, -38, 4.8, -38);
-  // East wing north-end railing (above elevator approach)
-  addRailingSegment(5, -38, 29.5, -38);
-  // West gallery north-end railing
-  addRailingSegment(-29.5, -38, -5, -38);
-  // South edges removed — they looked like trusses extending from the front of the building
-
-  // ── Torches on second-floor corridor walls ───────────────────────────
-  const f2TorchZs = [-34, -20, -4, 14, 32];
-  f2TorchZs.forEach((z) => {
-    // Push torch groups to upperFloor so they fade with the rest of the 2nd-floor interior
-    pushUpperFloor(createWallTorch(-4.75, mezzY + 2.2, z, Math.PI / 2, null, true));
-    pushUpperFloor(createWallTorch(4.75, mezzY + 2.2, z, -Math.PI / 2, null, true));
-  });
-
-  // ── Interactive screen for Room 10 — Upper Gallery (east wing south) ─
-  const room10 = state.ROOMS.find((r) => r.id === 10);
-  if (room10) {
-    // Room 10 screen is mounted on the east outer wall (x≈29.3) rather than the
-    // room's inner wall face, so we call buildRoomScreen with an explicit override
-    // by temporarily patching room.x to make the positioning formula yield x=29.3.
-    // wallOffset=0.22 → room.x + room.width/2 - 0.22 = 29.3 → room.x = 29.3 - 12.5 + 0.22 = 17.02
-    // It's cleaner to just place the group manually after building it.
-    const r10ScreenY = mezzY + f2Height * 0.55;
-    const r10Group = buildRoomScreen(room10, frameMat, screenMat, r10ScreenY, 0.22, pushUpperFloor);
-    // Override position: buildRoomScreen placed it at room.x+room.width/2−0.22 ≈ 29.78; correct to 29.3
-    r10Group.position.set(29.3, r10ScreenY, 8);
-    createRoomIndicator(room10, pushUpperFloor);
-    // Torches flanking the screen
-    pushUpperFloor(createWallTorch(29.3, mezzY + 2.2, 8 - 4, -Math.PI / 2, 10, true));
-    pushUpperFloor(createWallTorch(29.3, mezzY + 2.2, 8 + 4, -Math.PI / 2, 10, false));
-  }
-
-  // ── Decorative step at the elevator opening onto the second floor ─────
-  // A small stone landing plate at the elevator exit (z = -33.4, the front of the shaft)
-  const elevLandingMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.72, metalness: 0.06 });
-  const elevLanding = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.12, 2.0), elevLandingMat);
-  elevLanding.position.set(0, mezzY + 0.06, -33.4);
-  elevLanding.receiveShadow = true;
-  state.scene.add(elevLanding);
-  pushUpperFloor(elevLanding);
-
+  // ── 10. Roof ────────────────────────────────────────────────────────
   buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY, registerRoofMesh: pushRoof });
-
-  buildUpperFloorFurnishings(pushUpperFloor);
 }
 
 export { createDoorFrame } from './building/doors.js';

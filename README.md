@@ -35,7 +35,13 @@ The entire backend infrastructure runs on a single Cloudflare Worker backed by t
 
 *   **Animated Fountain & Environment**: A multi-tiered fountain with vertex-displaced water surfaces, rising bubbles, cascade streams, ripple rings, a glowing water apple, and orbiting fish. A meandering river with custom-shader water and waterfall completes the outdoor scene.
 
-*   **Elevator**: A fully functional elevator at the north end of the lobby with swinging mahogany doors, brass trim, marble floor, crown molding, chandelier, and gold pediment. Rides between ground floor and mezzanine with smooth camera transitions and second-floor environment fade.
+*   **Elevator**: A fully functional elevator at the north end of the lobby with swinging mahogany doors, brass trim, marble floor, crown molding, chandelier, and gold pediment. Rides between ground floor and mezzanine with smooth transitions and second-floor environment fade. Proximity-based door animation with a ride-side menu panel.
+
+*   **Jetpack & Cascade-Fan Wings**: Toggle jetpack flight with `T`. Wings with 4 trapezoidal fan-segments per side cascade open on takeoff and fold on landing, with metallic sheen matching your avatar's shirt color.
+
+*   **RuneScape-Style Lighting**: Warm golden-hour atmosphere with a `#5070a0` to `#d4b888` sky gradient, warm sand fog (`#b8a888`), and smooth indoor/outdoor lighting transitions via interpolated `_indoorMix` — no harsh pop when walking through doorways.
+
+*   **Lazy-Loaded Distant Scenery**: Landmarks far from spawn (airport, castle, underground city) are dynamically imported via `import()` only when the player approaches within ~100-120 units. Saves ~30% of startup geometry.
 
 *   **Collaborative World Editor**: Admin-locked in-world layout editor using Three.js `TransformControls` for placing, moving, scaling, rotating, duplicating, and deleting custom meshes in real-time. Changes persist via WebSocket to SQLite.
 
@@ -88,8 +94,11 @@ The entire backend infrastructure runs on a single Cloudflare Worker backed by t
 │   │   ├── engine/
 │   │   │   ├── movement.js       # Local player kinematics, collision, jetpack
 │   │   │   └── camera.js         # Orbit controls, exit watch, auto-align
-│   │   ├── building.js           # Main building geometry (~825 lines, 8 sections)
+│   │   ├── building.js           # Main building coordinator (orchestrates sub-modules, ~530 lines)
 │   │   ├── building/
+│   │   │   ├── ground-floor.js   # Ground floor tiles, medallion, screens, indicators
+│   │   │   ├── walls.js          # Wall slabs, corridor walls, lower wall merging
+│   │   │   ├── upper-floor.js    # Mezzanine floors, columns, glass railings, ceilings
 │   │   │   ├── roof.js           # Gabled terracotta roof with pediments
 │   │   │   ├── doors.js          # Door frame geometry
 │   │   │   ├── torches.js        # Wall torch geometry + lights
@@ -104,6 +113,7 @@ The entire backend infrastructure runs on a single Cloudflare Worker backed by t
 │   │   │   ├── underground-city.js # Cave entrance + subterranean city
 │   │   │   ├── river.js          # Meandering river with waterfall + bridge
 │   │   │   ├── roads.js          # Terrain-following roads + bridge
+│   │   │   ├── lazy-venues.js    # Proximity-based dynamic import for distant landmarks
 │   │   │   ├── foliage.js        # Bushes, ornamental trees, flower clusters
 │   │   │   ├── world-details.js  # Trees, ponds, wildflowers, grass patches
 │   │   │   ├── assets.js         # Shared geometries, sprites, boulders
@@ -278,14 +288,15 @@ npm run deploy
 | Key | Action |
 |:---:|--------|
 | **W/A/S/D** | Walk forward/left/backward/right |
-| **Space** | Jump |
+| **Space** | Jump (ground) / ascend (flight) |
 | **Shift** | Sprint (ground) / descend (flight) |
 | **T** | Toggle jetpack takeoff |
-| **Y** | Toggle jetpack landing |
+| **Y** | Toggle jetpack landing / crash |
 | **Arrow Keys** | Orbit camera |
-| **Backtick (`)** | Toggle debug panel |
+| **⌨ icon** | Toggle controls panel |
+| **Backtick (`)** | Toggle debug panel (FPS, position, scene stats) |
 | **Click on screen** | Open room media / interact |
-| **E** | Open elevator panel (near elevator) |
+| **Walk near elevator** | Opens doors automatically; ride panel appears on right |
 
 ---
 

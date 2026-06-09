@@ -19,6 +19,8 @@ import {
   prepareSoundtrackLoginTransition
 } from './js/audio.js';
 import { initMinimap } from './js/minimap.js';
+// Dev-tools: only active on localhost or when ?debug is in the URL
+const _isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.search.includes('debug');
 import { initDevTools } from './js/dev-tools.js';
 
 // Global Callback called by YouTube SDK iframe API script loading
@@ -128,7 +130,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Build the 3D world — async so yields allow loading-screen text to update without freezing the tab
   await initEngine();
   initMinimap();
-  initDevTools();
+  if (_isDev) initDevTools();
   initDebugPanel();
   initSoundtrackUi();
   initUiHandlers();

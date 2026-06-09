@@ -87,3 +87,37 @@ This document provides a detailed comparison of the **3D scenery, physics engine
   * 25 River boulders $\rightarrow$ 1 `InstancedMesh`.
   * 50 Daffodils (stems & heads) $\rightarrow$ 2 `InstancedMesh` batches.
   * Stone Arch Bridge (voussoirs, parapets, ramp steps) $\rightarrow$ batched into `InstancedMesh` objects.
+
+---
+
+## 5. Current Session — Refactoring & Lazy Loading
+
+### Code Deduplication (Major Cleanup)
+* **River polyline:** The 21-point river path was hardcoded identically in 4 places (`physics.js` × 2, `river.js`, `dev-tools.js`). Now exported once from `config.js` as `RIVER_PTS` and imported everywhere.
+* **Point-to-segment distance:** Written 4× with different names (`_ptSegDist`, `_ptSegDist2`, `ptSegDist`, `pointToSegmentDistanceSquared`). Now a single `pointToSegmentDistSq` in `math.js` with all callers migrated.
+* **Wood textures:** Two 80%-identical functions (`createWoodTexture`, `createDarkWoodTexture`) collapsed into one shared `_createWoodTexture(config)` helper.
+* **HUD icon handlers:** 4 copy-paste click handlers (music, events, debug, controls) replaced with a config array loop.
+* **Road segment data:** Amphitheater and concert venue road polylines were duplicated between `utils.js` and `physics.js`. Now exported once from `utils.js`.
+* **`scenery/utils.js` function loss:** The last commit (`9619f97`) accidentally dropped 7 critical utility functions (`deformPlaneToTerrain`, `createGroundedPatch`, `addSceneryCollider`, `vec2LengthAngle`, etc.). Recovered from `HEAD~1` and restored.
+
+### Rotation Constants
+* **66 hardcoded** `rotation.x = -Math.PI / 2` and `rotation.x = Math.PI / 2` replaced with `FLAT` / `HALF_PI` constants across 10 files.
+
+### Lazy-Loaded Distant Scenery
+* **Before:** All 15 scenery modules statically imported and constructed at page load, including airport (272u from spawn), castle (152u), and underground city (144u).
+* **Now:** A proximity-based lazy loader (`lazy-venues.js`) polls the player's position every 2 seconds. Airport, castle, and underground city are dynamically imported via `import()` only when the player approaches within 95-120 units. Eager build now serves 12 modules instead of 15.
+
+### Lighting Refinements
+* **RuneScape-style warm golden-hour:** Sky changed from dark navy (`#0a1628` → `#101c38`) to warm blue-tan (`#5070a0` → `#d4b888`). Fog from dark (`#030712`, density 0.0075) to warm haze (`#b8a888`, density 0.0028).
+* **Smooth indoor/outdoor transitions:** Added `state._indoorMix` (0→1) that smoothly lerps all light intensities and colors over ~0.5 seconds when entering/exiting the building. Sun fades from 3.2 to 0.12, hemisphere shifts to warm bounce light, indoor point light rises to 0.4.
+
+### Jetpack Cascade-Fan Wings
+* **New:** 8 wing segments (4 per side) attached to the player's back/shoulder area. Each trapezoidal panel folds/unfolds in sequence with a staggered cascade animation (0.12s delay per segment). Bronze trim accents, color matches player's shirt.
+
+### Elevator Refactor
+* **Before:** Two conflicting animation systems (`engine.js` + `elevator.js`), doors slid linearly, no room collision, doors stayed at ground level when car rose.
+* **Now:** Single state machine (`idle → opening → open → waiting → closing → riding → arrival → open`). Doors swing on hinge pivots as children of the car. Proper room collision (3 Box3 walls + dynamic door blocker). Ride-side menu shows only the relevant button (▲ up on ground, ▼ down on 2nd floor). Upper floor fade follows ride progress.
+
+### Dev-Tools Production Guard
+* **Before:** `initDevTools()` ran unconditionally on `metalyceum.app`, consuming CPU for runtime inspection and audit markers never seen by end users.
+* **Now:** Gated behind `_isDev` check — only activates on `localhost`, `127.0.0.1`, or when `?debug` is in the URL.

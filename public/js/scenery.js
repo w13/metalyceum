@@ -64,3 +64,6 @@ export {
   spawnNpcs,
   updateNpcs
 } from './characters.js';
+
+// 8. Lazy-loaded venue loading (dynamic import for far landmarks)
+export { initLazyVenueLoading } from './scenery/lazy-venues.js';
