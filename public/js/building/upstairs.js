@@ -294,5 +294,270 @@ export function buildUpperFloorFurnishings(pushUpperFloor) {
   }
 
   // ── Zone builders ──────────────────────────────────────────────────────
-  // (populated in subsequent tasks)
+
+  // ════════════════════════════════════════════════════════════════
+  // WEST WING ZONE 1 — The Atelier (centered at -17.5, -26)
+  // ════════════════════════════════════════════════════════════════
+  function buildWestZone1() {
+    const CX = -17.5, CZ = -26;
+    const accentColor = '#1e40af';
+
+    // Rug (deep navy)
+    const rugMat = new THREE.MeshStandardMaterial({
+      color: '#1e3a5f', emissive: '#1e3a5f', emissiveIntensity: 0.04, roughness: 0.82
+    });
+    const rug = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.03, 32), rugMat);
+    rug.position.set(CX, MEZZ_Y + 0.01, CZ);
+    rug.receiveShadow = true;
+    state.scene.add(rug);
+    pushUpperFloor(rug);
+
+    const borderMat = new THREE.MeshStandardMaterial({
+      color: accentColor, emissive: accentColor, emissiveIntensity: 0.22, roughness: 0.60
+    });
+    const border = new THREE.Mesh(new THREE.RingGeometry(6.8, 7.2, 36), borderMat);
+    border.rotation.x = FLAT;
+    border.position.set(CX, MEZZ_Y + 0.015, CZ);
+    state.scene.add(border);
+    pushUpperFloor(border);
+
+    // Two circle tables with 6 chairs each
+    [-11, 11].forEach((tz) => {
+      placeTableWithChairs(CX, CZ + tz, 1.6, 6, 2.4, accentColor, walnutMat);
+    });
+
+    // Two benches flanking the rug (north/south edges)
+    [-15, 15].forEach((bz) => {
+      const bench = createBench(-17.5, CZ + bz, 3.0, HALF_PI);
+      state.scene.add(bench);
+      pushUpperFloor(bench);
+    });
+
+    // Decorative screen on west wall (faces east, rotY = HALF_PI)
+    const screen = createDecorScreen(-29.5, CZ, HALF_PI, 7.0, 4.0, '#14120c');
+    state.scene.add(screen);
+    pushUpperFloor(screen);
+
+    // Floor accent strip at base of west wall
+    const stripMat = new THREE.MeshStandardMaterial({
+      color: accentColor, emissive: accentColor, emissiveIntensity: 0.35, roughness: 0.60
+    });
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 24), stripMat);
+    strip.position.set(-29.4, MEZZ_Y + 0.02, CZ);
+    state.scene.add(strip);
+    pushUpperFloor(strip);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // WEST WING ZONES 2 & 3 — Seminar & Roundtable (shared builder)
+  // ════════════════════════════════════════════════════════════════
+  function buildWestZone(cfg) {
+    const { cx, cz, rugColor, accentColor, emissiveColor, tableZs, plantZs, screenEmissive } = cfg;
+
+    const rugMat = new THREE.MeshStandardMaterial({
+      color: rugColor, emissive: rugColor, emissiveIntensity: 0.04, roughness: 0.82
+    });
+    const rug = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.03, 32), rugMat);
+    rug.position.set(cx, MEZZ_Y + 0.01, cz);
+    rug.receiveShadow = true;
+    state.scene.add(rug);
+    pushUpperFloor(rug);
+
+    const borderMat = new THREE.MeshStandardMaterial({
+      color: accentColor, emissive: accentColor, emissiveIntensity: 0.22, roughness: 0.60
+    });
+    const border = new THREE.Mesh(new THREE.RingGeometry(6.8, 7.2, 36), borderMat);
+    border.rotation.x = FLAT;
+    border.position.set(cx, MEZZ_Y + 0.015, cz);
+    state.scene.add(border);
+    pushUpperFloor(border);
+
+    tableZs.forEach((tz) => {
+      placeTableWithChairs(cx, tz, 1.6, 6, 2.4, accentColor, walnutMat);
+    });
+
+    plantZs.forEach((pz) => {
+      const plant = createPlant(-28.5, pz);
+      state.scene.add(plant);
+      pushUpperFloor(plant);
+    });
+
+    const screen = createDecorScreen(-29.5, cz, HALF_PI, 7.0, 4.0, screenEmissive);
+    state.scene.add(screen);
+    pushUpperFloor(screen);
+
+    const stripMat = new THREE.MeshStandardMaterial({
+      color: accentColor, emissive: accentColor, emissiveIntensity: 0.35, roughness: 0.60
+    });
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 26), stripMat);
+    strip.position.set(-29.4, MEZZ_Y + 0.02, cz);
+    state.scene.add(strip);
+    pushUpperFloor(strip);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // EAST WING — Executive Director's Office
+  // ════════════════════════════════════════════════════════════════
+  function buildExecutiveOffice() {
+    const CX = 17.5, CZ = -24;
+
+    const rugMat = new THREE.MeshStandardMaterial({
+      color: '#052e16', emissive: '#052e16', emissiveIntensity: 0.04, roughness: 0.82
+    });
+    const rug = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 0.03, 32), rugMat);
+    rug.position.set(CX, MEZZ_Y + 0.01, CZ);
+    rug.receiveShadow = true;
+    state.scene.add(rug);
+    pushUpperFloor(rug);
+
+    const brassBorderMat = new THREE.MeshStandardMaterial({
+      color: '#b8860b', emissive: '#b8860b', emissiveIntensity: 0.18, roughness: 0.30, metalness: 0.60
+    });
+    const border = new THREE.Mesh(new THREE.RingGeometry(7.8, 8.2, 36), brassBorderMat);
+    border.rotation.x = FLAT;
+    border.position.set(CX, MEZZ_Y + 0.015, CZ);
+    state.scene.add(border);
+    pushUpperFloor(border);
+
+    // Round mahogany conference table + 6 executive chairs
+    const confTable = createCircleTable(13, CZ, 2.2, mahoganyMat);
+    state.scene.add(confTable);
+    pushUpperFloor(confTable);
+    addSceneryCollider(13 - 2.6, 13 + 2.6, CZ - 2.6, CZ + 2.6, 'exec-conf-table');
+
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * 2 * i) / 6;
+      const chX = 13 + Math.cos(a) * 3.2;
+      const chZ = CZ + Math.sin(a) * 3.2;
+      const chair = createChair(chX, chZ, a, '#b8860b', true);
+      state.scene.add(chair);
+      pushUpperFloor(chair);
+    }
+
+    // Executive desk (mahogany)
+    const deskTop = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.12, 2.0), mahoganyMat);
+    deskTop.position.set(24, MEZZ_Y + 1.0, CZ);
+    deskTop.castShadow = true;
+    deskTop.receiveShadow = true;
+    state.scene.add(deskTop);
+    pushUpperFloor(deskTop);
+
+    [-0.8, 0.8].forEach((zOff) => {
+      const pedestal = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.0, 0.80), mahoganyMat);
+      pedestal.position.set(24, MEZZ_Y + 0.50, CZ + zOff);
+      pedestal.castShadow = true;
+      state.scene.add(pedestal);
+      pushUpperFloor(pedestal);
+    });
+
+    const deskTrim = new THREE.Mesh(new THREE.BoxGeometry(4.55, 0.06, 2.04), brassMat);
+    deskTrim.position.set(24, MEZZ_Y + 0.94, CZ);
+    state.scene.add(deskTrim);
+    pushUpperFloor(deskTrim);
+    addSceneryCollider(24 - 2.25 - 0.2, 24 + 2.25 + 0.2, CZ - 1.0 - 0.2, CZ + 1.0 + 0.2, 'exec-desk');
+
+    // Executive chair (east of desk, facing west)
+    const execChair = createChair(27.0, CZ, 0, '#b8860b', true);
+    state.scene.add(execChair);
+    pushUpperFloor(execChair);
+
+    // Bookshelf units along north wall (z ≈ -38)
+    [10, 22].forEach((bx) => {
+      const shelf = createBookshelf(bx, -38, 0);
+      state.scene.add(shelf);
+      pushUpperFloor(shelf);
+      addSceneryCollider(bx - 1.5 - 0.1, bx + 1.5 + 0.1, -38 - 0.2, -38 + 0.2 + 0.4, 'exec-shelf');
+    });
+
+    // Corner plants (large)
+    [[7, -38], [28, -38]].forEach(([px, pz]) => {
+      const plant = createPlant(px, pz, true);
+      state.scene.add(plant);
+      pushUpperFloor(plant);
+    });
+
+    // Decorative screen on east wall
+    const screen = createDecorScreen(29.3, CZ, -HALF_PI, 7.0, 4.0, '#14120c');
+    state.scene.add(screen);
+    pushUpperFloor(screen);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // EAST WING — Room 10 Seminar
+  // ════════════════════════════════════════════════════════════════
+  function buildRoom10Seminar() {
+    const CX = 17.5, CZ = 8;
+
+    const rugMat = new THREE.MeshStandardMaterial({
+      color: '#78350f', emissive: '#78350f', emissiveIntensity: 0.04, roughness: 0.82
+    });
+    const rug = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 0.03, 32), rugMat);
+    rug.position.set(CX, MEZZ_Y + 0.01, CZ);
+    rug.receiveShadow = true;
+    state.scene.add(rug);
+    pushUpperFloor(rug);
+
+    const borderMat = new THREE.MeshStandardMaterial({
+      color: '#f59e0b', emissive: '#f59e0b', emissiveIntensity: 0.22, roughness: 0.55
+    });
+    const border = new THREE.Mesh(new THREE.RingGeometry(6.8, 7.2, 36), borderMat);
+    border.rotation.x = FLAT;
+    border.position.set(CX, MEZZ_Y + 0.015, CZ);
+    state.scene.add(border);
+    pushUpperFloor(border);
+
+    // Two circle tables + 6 chairs each
+    placeTableWithChairs(CX, 2,  1.6, 6, 2.4, '#f59e0b', walnutMat);
+    placeTableWithChairs(CX, 14, 1.6, 6, 2.4, '#f59e0b', walnutMat);
+
+    // Podium near screen, presenter faces west
+    const podium = createLectern(27.0, CZ, -HALF_PI);
+    state.scene.add(podium);
+    pushUpperFloor(podium);
+    addSceneryCollider(26.6, 27.4, CZ - 0.4, CZ + 0.4, 'room10-podium');
+
+    // Corner plants
+    [[7, -5], [7, 21]].forEach(([px, pz]) => {
+      const plant = createPlant(px, pz);
+      state.scene.add(plant);
+      pushUpperFloor(plant);
+    });
+
+    // Emissive accent strip along east wall (Room 10 theme: #f59e0b)
+    const stripMat = new THREE.MeshStandardMaterial({
+      color: '#f59e0b', emissive: '#f59e0b', emissiveIntensity: 0.35, roughness: 0.55
+    });
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 28), stripMat);
+    strip.position.set(29.4, MEZZ_Y + 0.02, CZ);
+    state.scene.add(strip);
+    pushUpperFloor(strip);
+  }
+
+  // ── Build all zones ────────────────────────────────────────────────────
+  buildWestZone1();
+
+  // Zone 2 — The Seminar (middle)
+  buildWestZone({
+    cx: -17.5, cz: 0,
+    rugColor:     '#7a1a1a',
+    accentColor:  '#991b1b',
+    emissiveColor:'#991b1b',
+    tableZs:      [-6, 6],
+    plantZs:      [-11, 11],
+    screenEmissive:'#3b0a0a'
+  });
+
+  // Zone 3 — The Roundtable (south)
+  buildWestZone({
+    cx: -17.5, cz: 26,
+    rugColor:     '#14532d',
+    accentColor:  '#166534',
+    emissiveColor:'#166534',
+    tableZs:      [20, 32],
+    plantZs:      [14, 38],
+    screenEmissive:'#052e16'
+  });
+
+  buildExecutiveOffice();
+  buildRoom10Seminar();
 }
