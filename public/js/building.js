@@ -33,8 +33,6 @@ import {
   buildRoomInteriorSet,
   buildOutdoorVenues,
   buildWorldDetails,
-  registerStaticScenery,
-  refreshStaticSceneryVisibility
 } from './scenery.js';
 import {
   createGrassTexture, createBrickTexture,
@@ -46,6 +44,7 @@ import { createDoorFrame } from './building/doors.js';
 import { buildClassroomAssets } from './building/interiors.js';
 import { createWallTorch } from './building/torches.js';
 import { buildRoof } from './building/roof.js';
+import { buildUpperFloorFurnishings } from './building/upstairs.js';
 
 
 // Named building extents — aliased from COVERED_BOUNDS in config.js
@@ -501,14 +500,14 @@ export function buildBuilding() {
   // Shared wall slab builder — used by both addWallSegment and addUpperWallSegment.
   // baseY: Y position of the bottom of the slab.
   // stateArr: optional debug collection array to append the mesh into.
-  function _addWallSlabAt(xStart, zStart, xEnd, zEnd, baseY, height, thickness, material, baseboardMat, stateArr) {
+  function _addWallSlabAt(xStart, zStart, xEnd, zEnd, baseY, height, thickness, material, baseboardMat, stateArr, castShadow = true) {
     const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
     if (len < 0.01) return;
     const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(len, height, thickness), material);
     wallMesh.position.set((xStart + xEnd) / 2, baseY + height / 2, (zStart + zEnd) / 2);
     wallMesh.rotation.y = -angle;
-    wallMesh.castShadow = true;
-    wallMesh.receiveShadow = true;
+    wallMesh.castShadow = castShadow;
+    wallMesh.receiveShadow = castShadow;
     state.scene.add(wallMesh);
     if (stateArr) stateArr.push(wallMesh);
 
@@ -985,7 +984,8 @@ export function buildBuilding() {
   // Helper — add a wall slab that starts at mezzY (not ground).
   // Delegates to the shared _addWallSlabAt builder defined in the outer scope.
   function addUpperWallSegment(xStart, zStart, xEnd, zEnd, height = f2Height) {
-    const wall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, mezzY, height, f2Thickness, wallMat, f2BaseboardMat, state.upperFloor);
+    // castShadow=false: second-floor interior walls are enclosed and never shadow outdoor terrain
+    const wall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, mezzY, height, f2Thickness, wallMat, f2BaseboardMat, state.upperFloor, false);
     if (wall) pushUpperFloor(wall);
   }
 
@@ -1214,9 +1214,12 @@ export function buildBuilding() {
 
   buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY, registerRoofMesh: pushRoof });
 
+  buildUpperFloorFurnishings(pushUpperFloor);
+
   consumeGroundFloorItems();
 }
 
 export { createDoorFrame } from './building/doors.js';
 export { buildClassroomAssets } from './building/interiors.js';
 export { createWallTorch } from './building/torches.js';
+export { buildUpperFloorFurnishings } from './building/upstairs.js';
