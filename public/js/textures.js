@@ -13,10 +13,10 @@ export function createGrassTexture() {
   canvas.width = 256;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  
+
   ctx.fillStyle = '#2d5a27';
   ctx.fillRect(0, 0, 256, 256);
-  
+
   for (let i = 0; i < 4000; i++) {
     const x = Math.random() * 256;
     const y = Math.random() * 256;
@@ -29,7 +29,7 @@ export function createGrassTexture() {
     ctx.lineTo(x + (Math.random() - 0.5) * 2, y - len);
     ctx.stroke();
   }
-  
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
@@ -69,9 +69,10 @@ function createWoodTextureBase(opts) {
 
   // Wood grain — per-line sine-wave brightness with noise
   for (let y = 0; y < 512; y++) {
-    const grain = Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * opts.grainAmp
-                + Math.sin(y * 0.3) * opts.grainAmp2
-                + Math.sin(y * 0.7) * opts.grainAmp3;
+    const grain =
+      Math.sin(y * 0.12 + Math.sin(y * 0.03) * 2) * opts.grainAmp +
+      Math.sin(y * 0.3) * opts.grainAmp2 +
+      Math.sin(y * 0.7) * opts.grainAmp3;
     const noise = (Math.random() - 0.5) * opts.noiseAmp;
     const val = opts.baseVal + grain + noise;
     const [ro, go, bo] = opts.valOffset;
@@ -131,11 +132,13 @@ export function createWoodTexture() {
     seamColor: '#1a0f05',
     seamWidth: 2,
     crossWidth: 1.2,
-    grainAmp: 18, grainAmp2: 6, grainAmp3: 3,
+    grainAmp: 18,
+    grainAmp2: 6,
+    grainAmp3: 3,
     noiseAmp: 8,
     baseVal: 60,
     valOffset: [8, -5, -20],
-    highlight: 'rgba(160, 120, 80, 0.07)'
+    highlight: 'rgba(160, 120, 80, 0.07)',
   });
 }
 
@@ -146,15 +149,15 @@ export function createDarkWoodTexture() {
     seamColor: '#0a0401',
     seamWidth: 2.5,
     crossWidth: 1.5,
-    grainAmp: 10, grainAmp2: 3, grainAmp3: 1.5,
+    grainAmp: 10,
+    grainAmp2: 3,
+    grainAmp3: 1.5,
     noiseAmp: 4,
     baseVal: 28,
     valOffset: [6, 1, -6],
-    highlight: 'rgba(120, 90, 60, 0.05)'
+    highlight: 'rgba(120, 90, 60, 0.05)',
   });
 }
-
-
 
 export function createStoneTexture() {
   const cached = _texCache.get('stone');
@@ -163,19 +166,21 @@ export function createStoneTexture() {
   canvas.width = 256;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  
+
   ctx.fillStyle = '#4b5563';
   ctx.fillRect(0, 0, 256, 256);
-  
+
   ctx.strokeStyle = '#1f2937';
   ctx.lineWidth = 4;
   ctx.beginPath();
   for (let i = 0; i <= 256; i += 64) {
-    ctx.moveTo(i, 0); ctx.lineTo(i, 256);
-    ctx.moveTo(0, i); ctx.lineTo(256, i);
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 256);
+    ctx.moveTo(0, i);
+    ctx.lineTo(256, i);
   }
   ctx.stroke();
-  
+
   for (let i = 0; i < 2000; i++) {
     const x = Math.random() * 256;
     const y = Math.random() * 256;
@@ -183,7 +188,7 @@ export function createStoneTexture() {
     ctx.fillStyle = `rgba(${grey}, ${grey}, ${grey}, 0.15)`;
     ctx.fillRect(x, y, 2 + Math.random() * 4, 2 + Math.random() * 4);
   }
-  
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
@@ -199,19 +204,19 @@ export function createBrickTexture() {
   canvas.width = 256;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  
+
   ctx.fillStyle = '#5c504a';
   ctx.fillRect(0, 0, 256, 256);
-  
+
   ctx.strokeStyle = '#2d2724';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  
+
   for (let y = 0; y <= 256; y += 32) {
     ctx.moveTo(0, y);
     ctx.lineTo(256, y);
   }
-  
+
   for (let row = 0; row < 8; row++) {
     const y = row * 32;
     const offset = (row % 2) * 32;
@@ -221,7 +226,7 @@ export function createBrickTexture() {
     }
   }
   ctx.stroke();
-  
+
   for (let i = 0; i < 1500; i++) {
     const x = Math.random() * 256;
     const y = Math.random() * 256;
@@ -229,7 +234,7 @@ export function createBrickTexture() {
     ctx.fillStyle = `rgba(${92 + noise}, ${80 + noise}, ${74 + noise}, 0.12)`;
     ctx.fillRect(x, y, 3 + Math.random() * 6, 2 + Math.random() * 4);
   }
-  
+
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = THREE.RepeatWrapping;
   texture.wrapT = THREE.RepeatWrapping;
@@ -268,10 +273,10 @@ export function createCarpetTexture() {
     for (let col = -1; col <= size / step + 1; col++) {
       const cx = col * step;
       const cy = row * step;
-      ctx.moveTo(cx,              cy - step / 2);
-      ctx.lineTo(cx + step / 2,  cy);
-      ctx.lineTo(cx,              cy + step / 2);
-      ctx.lineTo(cx - step / 2,  cy);
+      ctx.moveTo(cx, cy - step / 2);
+      ctx.lineTo(cx + step / 2, cy);
+      ctx.lineTo(cx, cy + step / 2);
+      ctx.lineTo(cx - step / 2, cy);
       ctx.closePath();
     }
   }
@@ -325,7 +330,10 @@ export function createMarbleTileTexture() {
     for (let i = 0; i < 30; i++) {
       cx += (Math.random() - 0.5) * 80;
       cy += (Math.random() - 0.5) * 80;
-      ctx.lineTo(Math.max(0, Math.min(512, cx)), Math.max(0, Math.min(512, cy)));
+      ctx.lineTo(
+        Math.max(0, Math.min(512, cx)),
+        Math.max(0, Math.min(512, cy)),
+      );
     }
     const g = 130 + Math.floor(Math.random() * 60);
     ctx.strokeStyle = `rgba(${g},${g - 8},${g - 18},0.12)`;
@@ -338,8 +346,10 @@ export function createMarbleTileTexture() {
   ctx.lineWidth = 5;
   ctx.beginPath();
   for (let i = 0; i <= 512; i += 128) {
-    ctx.moveTo(i, 0); ctx.lineTo(i, 512);
-    ctx.moveTo(0, i); ctx.lineTo(512, i);
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 512);
+    ctx.moveTo(0, i);
+    ctx.lineTo(512, i);
   }
   ctx.stroke();
 
@@ -381,13 +391,23 @@ export function createCanadianFlagTexture() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(85, 0, 86, 128);
   // Red maple leaf — 11-point stylized leaf centered in the white square
-  const cx = 128, cy = 64;
+  const cx = 128,
+    cy = 64;
   ctx.fillStyle = '#ff0000';
   ctx.beginPath();
   // Maple leaf points (normalized to fit in roughly 40×40 box)
   const leafPts = [
-    [0, -20], [4, -8], [16, -8], [6, 0], [12, 12],
-    [0, 6], [-12, 12], [-6, 0], [-16, -8], [-4, -8], [0, -20]
+    [0, -20],
+    [4, -8],
+    [16, -8],
+    [6, 0],
+    [12, 12],
+    [0, 6],
+    [-12, 12],
+    [-6, 0],
+    [-16, -8],
+    [-4, -8],
+    [0, -20],
   ];
   ctx.moveTo(cx + leafPts[0][0], cy + leafPts[0][1]);
   for (let i = 1; i < leafPts.length; i++) {
@@ -411,18 +431,18 @@ export function createSignBoardTexture() {
   canvas.width = 1024;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  
+
   ctx.fillStyle = '#1e293b';
   ctx.fillRect(0, 0, 1024, 256);
-  
+
   ctx.strokeStyle = '#eab308';
   ctx.lineWidth = 12;
   ctx.strokeRect(6, 6, 1024 - 12, 256 - 12);
-  
+
   ctx.strokeStyle = 'rgba(234, 179, 8, 0.45)';
   ctx.lineWidth = 3;
   ctx.strokeRect(18, 18, 1024 - 36, 256 - 36);
-  
+
   ctx.font = 'bold 88px "Plus Jakarta Sans", sans-serif';
   ctx.fillStyle = '#f8fafc';
   ctx.shadowColor = '#0f172a';
@@ -432,16 +452,16 @@ export function createSignBoardTexture() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('METALYCEUM', 512, 100);
-  
+
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 0;
-  
+
   ctx.font = 'italic 30px "Plus Jakarta Sans", sans-serif';
   ctx.fillStyle = '#cbd5e1';
   ctx.fillText('Funded by Canada Council for the Arts', 512, 185);
-  
+
   const texture = new THREE.CanvasTexture(canvas);
   return texture;
 }

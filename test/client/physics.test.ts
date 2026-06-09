@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { state } from '../../public/js/state.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   MAIN_BUILDING_MEZZANINE_Y,
-  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
 } from '../../public/js/config.js';
 import {
-  getRoomIdForPosition,
   checkCollision,
+  getRoomIdForPosition,
+  getTerrainHeight,
   isPointInsideRoom,
-  getTerrainHeight
 } from '../../public/js/physics.js';
+import { state } from '../../public/js/state.js';
 
 describe('Client Physics & Room Queries', () => {
   beforeEach(() => {
@@ -20,7 +20,7 @@ describe('Client Physics & Room Queries', () => {
       y: 0,
       z: 44,
       currentRoom: -1,
-      velocity: new THREE.Vector3(0, 0, 0)
+      velocity: new THREE.Vector3(0, 0, 0),
     } as any;
     state.WALLS = [];
     state.PLACED_ASSET_COLLIDERS = [];
@@ -84,14 +84,14 @@ describe('Client Physics & Room Queries', () => {
       // Add a wall to the scene
       const wallBox = new THREE.Box3(
         new THREE.Vector3(5, -1, 5),
-        new THREE.Vector3(10, 1, 10)
+        new THREE.Vector3(10, 1, 10),
       );
       state.WALLS.push(wallBox);
 
       // Check collision within sphere radius (0.4)
       expect(checkCollision(7.5, 7.5)).toBe(true);
       expect(checkCollision(4.8, 7.5)).toBe(true); // Close enough to intersect sphere
-      expect(checkCollision(0, 0)).toBe(false);    // Far away
+      expect(checkCollision(0, 0)).toBe(false); // Far away
     });
 
     it('returns true when colliding with a placed asset collider', () => {
@@ -100,7 +100,7 @@ describe('Client Physics & Room Queries', () => {
         minX: 12,
         maxX: 14,
         minZ: 12,
-        maxZ: 14
+        maxZ: 14,
       } as any);
 
       expect(checkCollision(13, 13)).toBe(true);
@@ -114,10 +114,12 @@ describe('Client Physics & Room Queries', () => {
 
       // Add the railing collider as it is added in buildBuilding
       const f2Height = 3.3;
-      state.WALLS.push(new THREE.Box3(
-        new THREE.Vector3(-2.1, MAIN_BUILDING_MEZZANINE_Y, 39.5),
-        new THREE.Vector3(2.1, MAIN_BUILDING_MEZZANINE_Y + f2Height, 40.5)
-      ));
+      state.WALLS.push(
+        new THREE.Box3(
+          new THREE.Vector3(-2.1, MAIN_BUILDING_MEZZANINE_Y, 39.5),
+          new THREE.Vector3(2.1, MAIN_BUILDING_MEZZANINE_Y + f2Height, 40.5),
+        ),
+      );
 
       // At Z = 39.6 with player sphere of radius 0.4 (extends Z from 39.2 to 40.0),
       // it should intersect the box [39.5, 40.5] and return true (collision).
@@ -148,7 +150,7 @@ describe('Client Physics & Room Queries', () => {
 
     it('returns 0 on the road to the concert venue (specifically at the clipping coordinate -17.98, 68.60)', () => {
       // Road 2 path points include (-18, 68) which should be fully flattened (0)
-      expect(getTerrainHeight(-17.98, 68.60)).toBeCloseTo(0, 4);
+      expect(getTerrainHeight(-17.98, 68.6)).toBeCloseTo(0, 4);
     });
 
     it('uses the shared mezzanine height when sampling the upper floor', () => {

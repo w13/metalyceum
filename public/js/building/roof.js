@@ -1,10 +1,7 @@
 // Greek Museum Roof — gabled terracotta-tile roof with pediments
 import * as THREE from 'three';
 import { state } from '../state.js';
-
 export function buildRoof(batcher, materials, config) {
-  const { addMesh, addOrientedBox } = batcher;
-  const { limestoneMat, bronzeMat, limestoneShadowMat } = materials;
   const { entablatureY, registerRoofMesh = null } = config;
 
   const halfBldgW = 30;
@@ -54,9 +51,19 @@ export function buildRoof(batcher, materials, config) {
   }
 
   const roofTileTex = createRoofTileTexture();
-  const roofMat = new THREE.MeshStandardMaterial({ map: roofTileTex, roughness: 0.75, color: '#cc5533' });
-  const ridgeMat = new THREE.MeshStandardMaterial({ color: '#8a3a20', roughness: 0.7 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: '#e7dfd2', roughness: 0.65 });
+  const roofMat = new THREE.MeshStandardMaterial({
+    map: roofTileTex,
+    roughness: 0.75,
+    color: '#cc5533',
+  });
+  const ridgeMat = new THREE.MeshStandardMaterial({
+    color: '#8a3a20',
+    roughness: 0.7,
+  });
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: '#e7dfd2',
+    roughness: 0.65,
+  });
 
   // decorative=true skips shadow casting for trim/caps that don't contribute meaningful shadows
   function addRoofMesh(mesh, decorative = false) {
@@ -70,13 +77,15 @@ export function buildRoof(batcher, materials, config) {
   // ── Roof seat (base plate the roof sits on) ─────────────────────────────
   const roofSeat = new THREE.Mesh(
     new THREE.BoxGeometry(halfBldgW * 2 + 0.6, 0.18, halfBldgD * 2 + 0.6),
-    trimMat
+    trimMat,
   );
   roofSeat.position.set(0, roofBaseY - 0.12, 0);
   addRoofMesh(roofSeat);
 
   // ── Pitched roof slope (one side at a time) ─────────────────────────────
-  const roofHypotenuse = Math.sqrt(roofSlopeRun * roofSlopeRun + roofRise * roofRise);
+  const roofHypotenuse = Math.sqrt(
+    roofSlopeRun * roofSlopeRun + roofRise * roofRise,
+  );
 
   // Pre-allocate one dummy object for matrix computation
   const _capObj = new THREE.Object3D();
@@ -88,16 +97,24 @@ export function buildRoof(batcher, materials, config) {
   }
 
   function buildRoofSlope(xSign) {
-    const slopeGeo = new THREE.BoxGeometry(roofHypotenuse + 0.28, 0.3, roofHalfD * 2 + 0.85);
+    const slopeGeo = new THREE.BoxGeometry(
+      roofHypotenuse + 0.28,
+      0.3,
+      roofHalfD * 2 + 0.85,
+    );
     const slopeMesh = new THREE.Mesh(slopeGeo, roofMat);
-    slopeMesh.position.set(xSign * roofSlopeRun / 2, roofBaseY + roofRise / 2, 0);
+    slopeMesh.position.set(
+      (xSign * roofSlopeRun) / 2,
+      roofBaseY + roofRise / 2,
+      0,
+    );
     slopeMesh.rotation.z = -xSign * Math.atan2(roofRise, roofSlopeRun);
     addRoofMesh(slopeMesh);
 
     const eaveX = xSign * (roofHalfW + 0.08);
     const eaveTrim = new THREE.Mesh(
       new THREE.BoxGeometry(0.42, 0.22, roofHalfD * 2 + 0.95),
-      trimMat
+      trimMat,
     );
     eaveTrim.position.set(eaveX, roofBaseY + 0.03, 0);
     addRoofMesh(eaveTrim, true);
@@ -105,7 +122,9 @@ export function buildRoof(batcher, materials, config) {
     // Tile caps as a single InstancedMesh instead of individual meshes
     const capZs = buildCapPositions(-roofHalfD + 2.2, roofHalfD - 1.4, 3.15);
     const tileCapInst = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(0.22, 0.22, 1.05), ridgeMat, capZs.length
+      new THREE.BoxGeometry(0.22, 0.22, 1.05),
+      ridgeMat,
+      capZs.length,
     );
     capZs.forEach((iz, i) => {
       _capObj.position.set(eaveX, roofBaseY + 0.16, iz);
@@ -122,7 +141,7 @@ export function buildRoof(batcher, materials, config) {
   // ── Ridge beam with decorative tile caps ────────────────────────────────
   const ridgeBeam = new THREE.Mesh(
     new THREE.BoxGeometry(0.62, 0.36, roofHalfD * 2 - 0.35),
-    ridgeMat
+    ridgeMat,
   );
   ridgeBeam.position.set(0, roofRidgeY + 0.03, 0);
   addRoofMesh(ridgeBeam);
@@ -131,7 +150,8 @@ export function buildRoof(batcher, materials, config) {
   const ridgeCapZs = buildCapPositions(-roofHalfD + 2.2, roofHalfD - 1.4, 3.15);
   const ridgeCapInst = new THREE.InstancedMesh(
     new THREE.SphereGeometry(0.22, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2),
-    ridgeMat, ridgeCapZs.length
+    ridgeMat,
+    ridgeCapZs.length,
   );
   ridgeCapZs.forEach((iz, i) => {
     _capObj.position.set(0, roofRidgeY + 0.22, iz);
@@ -152,7 +172,10 @@ export function buildRoof(batcher, materials, config) {
     shape.closePath();
 
     const wallDepth = 0.2;
-    const pedGeo = new THREE.ExtrudeGeometry(shape, { depth: wallDepth, bevelEnabled: false });
+    const pedGeo = new THREE.ExtrudeGeometry(shape, {
+      depth: wallDepth,
+      bevelEnabled: false,
+    });
     const pedMesh = new THREE.Mesh(pedGeo, ridgeMat);
     pedMesh.position.set(0, roofBaseY, zSign === 1 ? zPos - wallDepth : zPos);
     addRoofMesh(pedMesh);
@@ -163,7 +186,7 @@ export function buildRoof(batcher, materials, config) {
 
     const leftRake = new THREE.Mesh(
       new THREE.BoxGeometry(rakeLen, 0.18, 0.22),
-      trimMat
+      trimMat,
     );
     leftRake.position.set(-roofHalfW / 2, roofBaseY + roofRise / 2, rakeZ);
     leftRake.rotation.z = rakeAngle;
@@ -171,7 +194,7 @@ export function buildRoof(batcher, materials, config) {
 
     const rightRake = new THREE.Mesh(
       new THREE.BoxGeometry(rakeLen, 0.18, 0.22),
-      trimMat
+      trimMat,
     );
     rightRake.position.set(roofHalfW / 2, roofBaseY + roofRise / 2, rakeZ);
     rightRake.rotation.z = -rakeAngle;
@@ -179,7 +202,7 @@ export function buildRoof(batcher, materials, config) {
 
     const baseCornice = new THREE.Mesh(
       new THREE.BoxGeometry(halfBldgW * 2 + 0.2, 0.18, 0.28),
-      trimMat
+      trimMat,
     );
     baseCornice.position.set(0, roofBaseY - 0.03, zSign * (roofHalfD + 0.14));
     addRoofMesh(baseCornice, true);
@@ -187,12 +210,12 @@ export function buildRoof(batcher, materials, config) {
     // Apex finial
     const apexFinial = new THREE.Mesh(
       new THREE.SphereGeometry(0.28, 8, 6),
-      ridgeMat
+      ridgeMat,
     );
     apexFinial.position.set(0, roofRidgeY + 0.28, zSign * (roofHalfD + 0.12));
     addRoofMesh(apexFinial, true);
   }
 
-  buildPediment(1);   // south facade
-  buildPediment(-1);  // north facade
+  buildPediment(1); // south facade
+  buildPediment(-1); // north facade
 }

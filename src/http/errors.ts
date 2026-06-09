@@ -7,7 +7,7 @@ export type ErrorEnvelope = {
 
 export function errorEnvelope(
   error: string,
-  options: { requestId?: string; details?: Record<string, unknown> } = {}
+  options: { requestId?: string; details?: Record<string, unknown> } = {},
 ): ErrorEnvelope {
   return {
     ok: false,
@@ -20,10 +20,10 @@ export function errorEnvelope(
 export function errorJson(
   error: string,
   status = 400,
-  options: { requestId?: string; details?: Record<string, unknown> } = {}
+  options: { requestId?: string; details?: Record<string, unknown> } = {},
 ): Response {
   return new Response(JSON.stringify(errorEnvelope(error, options)), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { 'Content-Type': 'application/json' },
   });
 }

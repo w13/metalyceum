@@ -1,12 +1,15 @@
 // Login form interface, custom avatar color syncing, and entry coordinator for Metalyceum
-import { state } from '../state.js';
+
+import { resumeAudioContext } from '../audio.js';
 import { createPlayerAvatar } from '../characters.js';
 import { connectMultiplayer } from '../multiplayer.js';
-import { resumeAudioContext } from '../audio.js';
+import { state } from '../state.js';
 
 function getLoginElements() {
   const loginOverlay = document.getElementById('login-overlay');
-  const loginCard = loginOverlay ? loginOverlay.querySelector('.login-card') : null;
+  const loginCard = loginOverlay
+    ? loginOverlay.querySelector('.login-card')
+    : null;
   return { loginOverlay, loginCard };
 }
 
@@ -52,7 +55,11 @@ export function initLoginForm() {
     // Face the building entrance (south / -z direction)
     state.localPlayer.ry = Math.PI;
     state.localPlayer.mesh.rotation.y = Math.PI;
-    state.localPlayer.mesh.position.set(state.localPlayer.x, state.localPlayer.y, state.localPlayer.z);
+    state.localPlayer.mesh.position.set(
+      state.localPlayer.x,
+      state.localPlayer.y,
+      state.localPlayer.z,
+    );
 
     // Camera behind the player, looking past them toward the building entrance & sign
     state.controls.target.set(0, 2.0, state.localPlayer.z - 10);

@@ -1,23 +1,28 @@
 // WebSocket Multiplayer and Network Synchronization for Metalyceum
-import { state } from './state.js';
-import { applyRoomData } from './utils.js';
-import {
-  scheduleEventBoardRender,
-  scheduleRoomPlayersListRefresh,
-  syncActiveRoomMediaState,
-  updateRoomPanelDetails,
-  setupRoomVideo,
-  scheduleRoomVisualRefresh
-} from './room-panel.js';
+
+import { resumeAudioContext } from './audio.js';
 import {
   addChatLog,
   displayChatBubble,
-  syncChatScopeWithLocation
+  syncChatScopeWithLocation,
 } from './chat.js';
-import { createPlayerAvatar } from './scenery.js';
-import { applyPublishedWorldAssets, setEditorEnabled, updateEditorStatus } from './editor.js';
+import {
+  applyPublishedWorldAssets,
+  setEditorEnabled,
+  updateEditorStatus,
+} from './editor.js';
 import { closeModal } from './modals.js';
-import { resumeAudioContext } from './audio.js';
+import {
+  scheduleEventBoardRender,
+  scheduleRoomPlayersListRefresh,
+  scheduleRoomVisualRefresh,
+  setupRoomVideo,
+  syncActiveRoomMediaState,
+  updateRoomPanelDetails,
+} from './room-panel.js';
+import { createPlayerAvatar } from './scenery.js';
+import { state } from './state.js';
+import { applyRoomData } from './utils.js';
 
 let reconnectAttempts = 0;
 let reconnectTimer = null;
@@ -47,23 +52,27 @@ const NETWORK_PROFILES = {
   'very-efficient': {
     label: 'Very Efficient',
     sendHz: 8,
-    description: 'Lowest bandwidth and server cost (~8 updates/sec). Leans hardest on interpolation — best for weak connections, mobile, or large crowds. Remote motion stays smooth but is the least "fresh".'
+    description:
+      'Lowest bandwidth and server cost (~8 updates/sec). Leans hardest on interpolation — best for weak connections, mobile, or large crowds. Remote motion stays smooth but is the least "fresh".',
   },
-  'efficient': {
+  efficient: {
     label: 'Efficient',
     sendHz: 12,
-    description: 'Low bandwidth with good smoothness (~12 updates/sec). A cost-conscious default that still feels responsive.'
+    description:
+      'Low bandwidth with good smoothness (~12 updates/sec). A cost-conscious default that still feels responsive.',
   },
-  'normal': {
+  normal: {
     label: 'Normal',
     sendHz: 20,
-    description: 'Balanced (~20 updates/sec). Smooth, responsive motion at roughly a third of per-frame traffic. Recommended for most deployments.'
+    description:
+      'Balanced (~20 updates/sec). Smooth, responsive motion at roughly a third of per-frame traffic. Recommended for most deployments.',
   },
   'high-throughput': {
     label: 'High Throughput',
     sendHz: 50,
-    description: 'Maximum freshness and responsiveness (~50 updates/sec, near per-frame). Highest bandwidth and server load — for fast networks or a competitive feel.'
-  }
+    description:
+      'Maximum freshness and responsiveness (~50 updates/sec, near per-frame). Highest bandwidth and server load — for fast networks or a competitive feel.',
+  },
 };
 
 const NETWORK_PROFILE = (() => {
@@ -74,7 +83,8 @@ const NETWORK_PROFILE = (() => {
   return 'normal';
 })();
 
-const ACTIVE_NETWORK_PROFILE = NETWORK_PROFILES[NETWORK_PROFILE] || NETWORK_PROFILES.normal;
+const ACTIVE_NETWORK_PROFILE =
+  NETWORK_PROFILES[NETWORK_PROFILE] || NETWORK_PROFILES.normal;
 const SEND_INTERVAL_MS = 1000 / ACTIVE_NETWORK_PROFILE.sendHz;
 let lastSentTime = 0;
 
@@ -95,7 +105,9 @@ function stopPositionSync() {
 }
 
 function setConnectionStatus(connected) {
-  document.getElementById('connection-status').classList.toggle('connected', connected);
+  document
+    .getElementById('connection-status')
+    .classList.toggle('connected', connected);
 }
 
 function sendSocketMessage(socket, payload) {
@@ -119,7 +131,10 @@ function startHeartbeat(socket) {
     }
     sendSocketMessage(socket, { type: 'heartbeat' });
     // If no ack within missed-heartbeat window, assume connection is dead
-    if (Date.now() - state.lastHeartbeatAck > HEARTBEAT_INTERVAL_MS * MISSED_HEARTBEAT_LIMIT) {
+    if (
+      Date.now() - state.lastHeartbeatAck >
+      HEARTBEAT_INTERVAL_MS * MISSED_HEARTBEAT_LIMIT
+    ) {
       socket.close(3001, 'Heartbeat timeout');
       return;
     }
@@ -158,7 +173,7 @@ function renderChatHistory(history) {
       '',
       entry.scope === 'room' ? 'room' : 'global',
       Number.isInteger(entry.roomId) ? entry.roomId : null,
-      entry.messageId
+      entry.messageId,
     );
   });
 }
@@ -179,7 +194,7 @@ function reconcileRemotePlayers(players) {
   const liveIds = new Set(
     (Array.isArray(players) ? players : [])
       .map((player) => player?.id)
-      .filter(Boolean)
+      .filter(Boolean),
   );
 
   for (const id of Array.from(state.remotePlayers.keys())) {
@@ -246,7 +261,10 @@ export function connectMultiplayer() {
 
   if (state.socket) {
     try {
-      if (state.socket.readyState === WebSocket.OPEN || state.socket.readyState === WebSocket.CONNECTING) {
+      if (
+        state.socket.readyState === WebSocket.OPEN ||
+        state.socket.readyState === WebSocket.CONNECTING
+      ) {
         state.socket.close();
       }
     } catch (e) {}
@@ -259,8 +277,7 @@ export function connectMultiplayer() {
   stopHeartbeat();
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl =
-    `${protocol}//${window.location.host}/ws?username=${encodeURIComponent(state.localPlayer.username)}&color=${encodeURIComponent(state.localPlayer.color)}`;
+  const wsUrl = `${protocol}//${window.location.host}/ws?username=${encodeURIComponent(state.localPlayer.username)}&color=${encodeURIComponent(state.localPlayer.color)}`;
 
   const ws = new WebSocket(wsUrl);
   state.socket = ws;
@@ -280,12 +297,12 @@ export function connectMultiplayer() {
     state.disconnectedPlayerIds.clear();
 
     sendSocketMessage(ws, {
-      type: "join",
+      type: 'join',
       x: state.localPlayer.x,
       y: state.localPlayer.y,
       z: state.localPlayer.z,
       ry: state.localPlayer.ry,
-      room: state.localPlayer.currentRoom
+      room: state.localPlayer.currentRoom,
     });
 
     syncChatScopeWithLocation();
@@ -310,116 +327,94 @@ export function connectMultiplayer() {
     console.error('Realtime connection error.');
   });
 
+  // ── Message handler registry ──────────────────────────────────────────
+  // Register a new handler here + add the message type on the server side.
+  // Each handler receives (data, ws) and should return early if conditions aren't met.
+  const MSG_HANDLERS = {
+    init: (data) => { handleInitMessage(data); },
+
+    join: (data) => {
+      if (data.player.id === state.localPlayer.id) return;
+      state.disconnectedPlayerIds.delete(data.player.id);
+      if (!state.remotePlayers.has(data.player.id)) {
+        const wasKnown = state._knownPlayers?.has(data.player.username);
+        spawnRemotePlayer(data.player);
+        (state._knownPlayers ??= new Set()).add(data.player.username);
+        if (!wasKnown) addChatLog('System', `${data.player.username} entered Metalyceum!`, 'system-msg');
+      }
+      if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
+    },
+
+    move: (data) => { applyRemoteState(data); },
+
+    state_batch: (data) => {
+      (data.players || []).forEach(applyRemoteState);
+    },
+
+    room_change: (data) => {
+      if (data.id === state.localPlayer.id) return;
+      const rPlayer = state.remotePlayers.get(data.id);
+      if (rPlayer) {
+        rPlayer.room = data.room;
+        if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
+      }
+    },
+
+    chat: (data) => {
+      displayChatBubble(data.id, data.message);
+      addChatLog(data.username, data.message, '',
+        data.scope === 'room' ? 'room' : 'global',
+        Number.isInteger(data.roomId) ? data.roomId : null,
+        data.messageId);
+    },
+
+    editor_auth: (data) => {
+      state.editor.authed = Boolean(data.ok);
+      const authStatus = document.getElementById('editor-auth-status');
+      if (authStatus) authStatus.textContent = state.editor.authed ? 'Editor unlocked.' : 'Invalid editor token.';
+      if (state.editor.authed) { closeModal('editor-auth-modal', { restoreFocus: false }); setEditorEnabled(true); }
+    },
+
+    world_assets_update: (data) => {
+      applyPublishedWorldAssets(data.assets || []);
+      if (state.editor.enabled && !state.editor.dirty) updateEditorStatus('World layout saved.');
+    },
+    world_assets: (data) => {
+      applyPublishedWorldAssets(data.assets || []);
+      if (state.editor.enabled && !state.editor.dirty) updateEditorStatus('World layout saved.');
+    },
+
+    error: (data) => { showSystemMessage(getSystemMessage(data)); },
+
+    rooms_state: (data) => { applyRoomCollection(data.rooms); refreshRoomsUi(); },
+
+    room_update: (data) => {
+      const rIdx = Number.isInteger(data.room?.roomId) ? data.room.roomId : data.roomId;
+      applySingleRoomUpdate(rIdx, data.room || data);
+    },
+
+    video_change: (data) => {
+      applySingleRoomUpdate(data.room, { sourceValue: data.videoId });
+    },
+
+    heartbeat_ack: () => { state.lastHeartbeatAck = Date.now(); },
+
+    leave: (data) => {
+      state.disconnectedPlayerIds.delete(data.id);
+      removeRemotePlayer(data.id);
+      if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
+    },
+  };
+
   ws.addEventListener('message', (event) => {
     if (ws !== state.socket) return;
     try {
       const data = JSON.parse(event.data);
-
-      switch (data.type) {
-        case "init":
-          handleInitMessage(data);
-          break;
-
-        case "join":
-          if (data.player.id === state.localPlayer.id) return;
-          // On reconnect, server sends join for all players — reconcile instead of respawn
-          state.disconnectedPlayerIds.delete(data.player.id);
-          if (!state.remotePlayers.has(data.player.id)) {
-            const wasKnown = state._knownPlayers?.has(data.player.username);
-            spawnRemotePlayer(data.player);
-            (state._knownPlayers ??= new Set()).add(data.player.username);
-            if (!wasKnown) {
-              addChatLog("System", `${data.player.username} entered Metalyceum!`, "system-msg");
-            }
-          }
-          if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
-          break;
-
-        case "move":
-          applyRemoteState(data);
-          break;
-
-        case "state_batch":
-          (data.players || []).forEach((playerState) => {
-            applyRemoteState(playerState);
-          });
-          break;
-
-        case "room_change":
-          if (data.id === state.localPlayer.id) return;
-          const rPlayer = state.remotePlayers.get(data.id);
-          if (rPlayer) {
-            rPlayer.room = data.room;
-            if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
-          }
-          break;
-
-        case "chat":
-          displayChatBubble(data.id, data.message);
-          addChatLog(
-            data.username,
-            data.message,
-            '',
-            data.scope === 'room' ? 'room' : 'global',
-            Number.isInteger(data.roomId) ? data.roomId : null,
-            data.messageId
-          );
-          break;
-
-        case "editor_auth": {
-          state.editor.authed = Boolean(data.ok);
-          const authStatus = document.getElementById('editor-auth-status');
-          if (authStatus) {
-            authStatus.textContent = state.editor.authed ? 'Editor unlocked.' : 'Invalid editor token.';
-          }
-          if (state.editor.authed) {
-            closeModal('editor-auth-modal', { restoreFocus: false });
-            setEditorEnabled(true);
-          }
-          break;
-        }
-
-        case "world_assets_update":
-        case "world_assets":
-          applyPublishedWorldAssets(data.assets || []);
-          if (state.editor.enabled && !state.editor.dirty) {
-            updateEditorStatus('World layout saved.');
-          }
-          break;
-
-        case "error":
-          showSystemMessage(getSystemMessage(data));
-          break;
-
-        case "rooms_state":
-          applyRoomCollection(data.rooms);
-          refreshRoomsUi();
-          break;
-
-        case "room_update": {
-          const rIdx = Number.isInteger(data.room?.roomId) ? data.room.roomId : data.roomId;
-          applySingleRoomUpdate(rIdx, data.room || data);
-          break;
-        }
-
-        case "video_change": {
-          const rIdx = data.room;
-          applySingleRoomUpdate(rIdx, { sourceValue: data.videoId });
-          break;
-        }
-
-        case "heartbeat_ack":
-          state.lastHeartbeatAck = Date.now();
-          break;
-
-        case "leave":
-          state.disconnectedPlayerIds.delete(data.id);
-          removeRemotePlayer(data.id);
-          if (state.localPlayer.currentRoom !== -1) scheduleRoomPlayersListRefresh();
-          break;
-      }
+      const handler = MSG_HANDLERS[data.type];
+      if (handler) handler(data, ws);
+      else console.warn('[Multiplayer] Unknown message type:', data.type);
     } catch (err) {
-      console.error("Error handling websocket payload", err);
+      console.error('Error handling websocket payload', err);
     }
   });
 }
@@ -436,10 +431,15 @@ export function scheduleReconnect() {
   }
 
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    setReconnectOverlay(true, 'Unable to reconnect. Refresh the page and add ?diag if this keeps happening.');
+    setReconnectOverlay(
+      true,
+      'Unable to reconnect. Refresh the page and add ?diag if this keeps happening.',
+    );
     if (!reconnectFailureShown) {
       reconnectFailureShown = true;
-      showSystemMessage('Unable to reconnect to the realtime server. Refresh the page and add ?diag if this keeps happening.');
+      showSystemMessage(
+        'Unable to reconnect to the realtime server. Refresh the page and add ?diag if this keeps happening.',
+      );
     }
     return;
   }
@@ -448,10 +448,13 @@ export function scheduleReconnect() {
 
   // Tab-return reconnects use the overlay; only log for genuine in-tab disconnects
   if (!_tabReturnPending && reconnectAttempts === 1) {
-    addChatLog("System", "❌ Connection lost. Reconnecting…", "system-msg");
+    addChatLog('System', '❌ Connection lost. Reconnecting…', 'system-msg');
   }
 
-  const base = Math.min(MAX_RECONNECT_DELAY, 1000 * Math.pow(2, reconnectAttempts - 1));
+  const base = Math.min(
+    MAX_RECONNECT_DELAY,
+    1000 * 2 ** (reconnectAttempts - 1),
+  );
   const delay = Math.round(base / 2 + Math.random() * (base / 2));
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -477,7 +480,12 @@ export function spawnRemotePlayer(pData) {
     removeRemotePlayer(pData.id);
   }
 
-  const avatar = createPlayerAvatar(pData.avatar || null, pData.color, pData.username, false);
+  const avatar = createPlayerAvatar(
+    pData.avatar || null,
+    pData.color,
+    pData.username,
+    false,
+  );
   avatar.group.position.set(pData.x, pData.y, pData.z);
   avatar.group.rotation.y = pData.ry;
 
@@ -487,9 +495,14 @@ export function spawnRemotePlayer(pData) {
     color: pData.color,
     avatar: pData.avatar,
     room: pData.room,
-    x: pData.x, y: pData.y, z: pData.z,
+    x: pData.x,
+    y: pData.y,
+    z: pData.z,
     ry: pData.ry,
-    targetX: pData.x, targetY: pData.y, targetZ: pData.z, targetRy: pData.ry,
+    targetX: pData.x,
+    targetY: pData.y,
+    targetZ: pData.z,
+    targetRy: pData.ry,
     isMoving: pData.isMoving,
     isGrounded: true,
     group: avatar.group,
@@ -500,7 +513,7 @@ export function spawnRemotePlayer(pData) {
     rightArm: avatar.rightArm,
     nameTag: avatar.nameTag,
     chatBubble: null,
-    chatTimeout: null
+    chatTimeout: null,
   };
 
   state.remotePlayers.set(pData.id, playerObj);
@@ -520,7 +533,7 @@ export function removeRemotePlayer(id) {
         }
       }
     });
-    
+
     if (p.nameTag && p.nameTag.material && p.nameTag.material.map) {
       p.nameTag.material.map.dispose();
       p.nameTag.material.dispose();
@@ -529,7 +542,7 @@ export function removeRemotePlayer(id) {
       p.chatBubble.material.map.dispose();
       p.chatBubble.material.dispose();
     }
-    
+
     state.remotePlayers.delete(id);
   }
 }
@@ -543,22 +556,23 @@ export function syncPosition() {
   const dy = Math.abs(state.localPlayer.y - state.lastSentPosition.y);
   const dz = Math.abs(state.localPlayer.z - state.lastSentPosition.z);
   const dry = Math.abs(state.localPlayer.ry - state.lastSentPosition.ry);
-  const dMoving = state.localPlayer.isMoving !== state.lastSentPosition.isMoving;
+  const dMoving =
+    state.localPlayer.isMoving !== state.lastSentPosition.isMoving;
 
   const changed = dx > 0.05 || dy > 0.05 || dz > 0.05 || dry > 0.02 || dMoving;
   if (!changed) return;
 
   const now = performance.now();
-  if (!dMoving && (now - lastSentTime) < SEND_INTERVAL_MS) return;
+  if (!dMoving && now - lastSentTime < SEND_INTERVAL_MS) return;
   lastSentTime = now;
 
   sendSocketMessage(state.socket, {
-    type: "move",
+    type: 'move',
     x: parseFloat(state.localPlayer.x.toFixed(2)),
     y: parseFloat(state.localPlayer.y.toFixed(2)),
     z: parseFloat(state.localPlayer.z.toFixed(2)),
     ry: parseFloat(state.localPlayer.ry.toFixed(3)),
-    isMoving: state.localPlayer.isMoving
+    isMoving: state.localPlayer.isMoving,
   });
 
   state.lastSentPosition = {
@@ -566,6 +580,6 @@ export function syncPosition() {
     y: state.localPlayer.y,
     z: state.localPlayer.z,
     ry: state.localPlayer.ry,
-    isMoving: state.localPlayer.isMoving
+    isMoving: state.localPlayer.isMoving,
   };
 }

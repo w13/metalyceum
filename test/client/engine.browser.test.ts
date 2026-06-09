@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { state } from '../../public/js/state.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initEngine } from '../../public/js/engine.js';
 import { resetHdriLoader } from '../../public/js/environment.js';
+import { state } from '../../public/js/state.js';
 
 describe('Client Engine & WebGL Renderer', () => {
   beforeEach(() => {
@@ -25,12 +25,38 @@ describe('Client Engine & WebGL Renderer', () => {
       y: 0,
       z: 44,
       currentRoom: -1,
-      velocity: new THREE.Vector3(0, 0, 0)
+      velocity: new THREE.Vector3(0, 0, 0),
     } as any;
     state.remotePlayers = new Map();
     state.ROOMS = [
-      { id: 0, name: "North Hall", x: -17, z: -30, width: 24, depth: 20, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-      { id: 1, name: "East Studio", x: -14, z: -10, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 }
+      {
+        id: 0,
+        name: 'North Hall',
+        x: -17,
+        z: -30,
+        width: 24,
+        depth: 20,
+        video: '',
+        sourceValue: '',
+        sourceType: 'none',
+        startTime: null,
+        durationMinutes: 0,
+        updatedAt: 0,
+      },
+      {
+        id: 1,
+        name: 'East Studio',
+        x: -14,
+        z: -10,
+        width: 18,
+        depth: 16,
+        video: '',
+        sourceValue: '',
+        sourceType: 'none',
+        startTime: null,
+        durationMinutes: 0,
+        updatedAt: 0,
+      },
     ] as any;
   });
 
@@ -100,7 +126,7 @@ describe('Client Engine & WebGL Renderer', () => {
       calls: info.render.calls,
       triangles: info.render.triangles,
       textures: info.memory.textures,
-      geometries: info.memory.geometries
+      geometries: info.memory.geometries,
     });
 
     // Enforce budgets based on Metalyceum's procedural footprint (plus ~20% buffer)

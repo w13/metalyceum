@@ -1,14 +1,19 @@
 // Chat Log, Chat Bubbles, and Scope Filtering for Metalyceum
 import * as THREE from 'three';
-import { state } from './state.js';
 import { ROOM_LAYOUTS } from './config.js';
+import { state } from './state.js';
 
 const MAX_RENDERED_CHAT_MESSAGES = 100;
 
 function getChatScopeLabel(scope, roomId = null) {
   if (scope === 'global') return 'Global';
-  if (typeof roomId === 'number' && state.ROOMS[roomId]?.name) return state.ROOMS[roomId].name;
-  if (state.localPlayer.currentRoom >= 0 && state.ROOMS[state.localPlayer.currentRoom]?.name) return state.ROOMS[state.localPlayer.currentRoom].name;
+  if (typeof roomId === 'number' && state.ROOMS[roomId]?.name)
+    return state.ROOMS[roomId].name;
+  if (
+    state.localPlayer.currentRoom >= 0 &&
+    state.ROOMS[state.localPlayer.currentRoom]?.name
+  )
+    return state.ROOMS[state.localPlayer.currentRoom].name;
   return 'Room';
 }
 
@@ -20,14 +25,18 @@ function getFilterableChatScope(messageEl) {
 export function syncChatToolbarState() {
   // Note: Send scope buttons removed — chat always sends as global (tagged to room)
   document.querySelectorAll('[data-chat-filter]').forEach((button) => {
-    button.classList.toggle('active', button.dataset.chatFilter === state.chat.filter);
+    button.classList.toggle(
+      'active',
+      button.dataset.chatFilter === state.chat.filter,
+    );
   });
 
   const input = document.getElementById('chat-input');
   if (input) {
-    input.placeholder = state.localPlayer.currentRoom >= 0
-      ? `Message everyone in ${state.ROOMS[state.localPlayer.currentRoom].name}...`
-      : 'Message everyone in Metalyceum...';
+    input.placeholder =
+      state.localPlayer.currentRoom >= 0
+        ? `Message everyone in ${state.ROOMS[state.localPlayer.currentRoom].name}...`
+        : 'Message everyone in Metalyceum...';
   }
 }
 
@@ -37,7 +46,10 @@ export function applyChatFilter() {
 
   for (const child of log.children) {
     const scope = getFilterableChatScope(child);
-    child.hidden = state.chat.filter !== 'all' && scope !== 'system' && scope !== state.chat.filter;
+    child.hidden =
+      state.chat.filter !== 'all' &&
+      scope !== 'system' &&
+      scope !== state.chat.filter;
   }
 
   log.scrollTop = log.scrollHeight;
@@ -58,7 +70,8 @@ export function syncChatScopeWithLocation() {
 }
 
 export function getActiveChatScope() {
-  if (state.chat.sendScope === 'room' && state.localPlayer.currentRoom >= 0) return 'room';
+  if (state.chat.sendScope === 'room' && state.localPlayer.currentRoom >= 0)
+    return 'room';
   return 'global';
 }
 
@@ -73,17 +86,27 @@ function trackRenderedChatMessage(log, messageId) {
   }
 }
 
-export function addChatLog(author, message, className = "", scope = "system", roomId = null, messageId = null) {
+export function addChatLog(
+  author,
+  message,
+  className = '',
+  scope = 'system',
+  roomId = null,
+  messageId = null,
+) {
   const log = document.getElementById('chat-log');
   if (!log) return;
 
   const normalizedMessageId = Number.isInteger(messageId) ? messageId : null;
-  if (normalizedMessageId !== null && state.chat.renderedMessageIds.has(normalizedMessageId)) {
+  if (
+    normalizedMessageId !== null &&
+    state.chat.renderedMessageIds.has(normalizedMessageId)
+  ) {
     return;
   }
 
   const msgDiv = document.createElement('div');
-  
+
   if (className) {
     msgDiv.className = className;
     msgDiv.dataset.scope = 'system';
@@ -99,7 +122,8 @@ export function addChatLog(author, message, className = "", scope = "system", ro
     badge.textContent = getChatScopeLabel(scope, roomId);
     const authorSpan = document.createElement('span');
     authorSpan.className = 'chat-author';
-    authorSpan.style.color = author === state.localPlayer.username ? '#818cf8' : '#38bdf8';
+    authorSpan.style.color =
+      author === state.localPlayer.username ? '#818cf8' : '#38bdf8';
     authorSpan.textContent = `${author}:`;
     const msgSpan = document.createElement('span');
     msgSpan.textContent = message;
@@ -107,7 +131,7 @@ export function addChatLog(author, message, className = "", scope = "system", ro
     msgDiv.appendChild(authorSpan);
     msgDiv.appendChild(msgSpan);
   }
-  
+
   log.appendChild(msgDiv);
   if (normalizedMessageId !== null) {
     trackRenderedChatMessage(log, normalizedMessageId);
@@ -207,7 +231,11 @@ export function displayChatBubble(playerId, text) {
   const texture = new THREE.CanvasTexture(canvas);
   // depthTest:false ensures the bubble renders above the name tag sprite and
   // is never occluded by it regardless of draw order.
-  const bubbleMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const bubbleMat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
   const bubbleSprite = new THREE.Sprite(bubbleMat);
   bubbleSprite.scale.set(worldW, worldH, 1);
   // y=3.9 clears the name tag (top edge y≈3.1) for all message lengths.

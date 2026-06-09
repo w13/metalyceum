@@ -1,83 +1,23 @@
 // AI & Developer Helpers / Tools for Metalyceum
 import * as THREE from 'three';
-import { state } from './state.js';
-import { MAP_SIZE, WORLD_ASSET_CATALOG, LANDMARK_REGISTRY, COVERED_BOUNDS } from './config.js';
-import { getTerrainHeight, getRoomBounds, getRoomIdForPosition, getRiverDistance } from './physics.js';
+import {
+  COVERED_BOUNDS,
+  LANDMARK_REGISTRY,
+  MAP_SIZE,
+  RIVER_PTS,
+  WORLD_ASSET_CATALOG,
+} from './config.js';
+import {
+  getRiverDistance,
+  getRoomBounds,
+  getRoomIdForPosition,
+  getTerrainHeight,
+} from './physics.js';
 import { teleportPlayer } from './physics-engine.js';
+import { state } from './state.js';
+import { devState, devTeleport } from './ui/dev-state.js';
 
-if (typeof window !== 'undefined') {
-  window.__state = state;
-}
-
-// Local developer tools state
-export const devState = {
-  showMap: false,
-  showAssetBoxes: false,
-  showWallBoxes: false,
-  showRiverPath: false,
-  showFlatZones: false,
-  showLandmarkBoxes: false,
-
-  // 2D Map Pan/Zoom state
-  zoom: 1.0,
-  panX: 0,
-  panY: 0,
-
-  // Canvas drag state
-  isDragging: false,
-  startX: 0,
-  startY: 0,
-
-  // Tooltip details
-  hoveredAsset: null,
-  hoveredRoom: null,
-  hoveredCoords: { x: 0, z: 0 },
-
-  // 3D Helpers
-  helpersGroup: null,
-  helpersDirty: false,
-  lastAssetCount: 0,
-
-  // Auditor results
-  auditIssues: [],
-  staticAuditIssues: [],    // from auditStaticScenery()
-  zfightIssues: [],         // from auditZFighting()
-  lastInspected: null,      // from alt+click inspector
-  showStaticAuditMarkers: false,
-  showZFightMarkers: false,
-};
-// River coordinates (matching physics.js)
-import { RIVER_PTS } from './config.js';
-
-
-// Teleport developer helper
-export function devTeleport(x, z) {
-  const y = getTerrainHeight(x, z);
-
-  const dx = x - state.localPlayer.x;
-  const dz = z - state.localPlayer.z;
-
-  state.localPlayer.x = x;
-  state.localPlayer.y = y;
-  state.localPlayer.z = z;
-
-  if (state.localPlayer.mesh) {
-    state.localPlayer.mesh.position.set(x, y, z);
-  }
-
-  teleportPlayer(x, z);
-
-  if (state.camera) {
-    state.camera.position.x += dx;
-    state.camera.position.z += dz;
-  }
-
-  if (state.controls) {
-    state.controls.target.set(x, y + 1.45, z);
-  }
-
-  console.log(`[Dev Teleport] Warped player to: (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`);
-}
+export { devState, devTeleport };
 
 // --- World Auditor ---
 export function runWorldAudit() {
@@ -87,12 +27,18 @@ export function runWorldAudit() {
   // 1. Check Asset vs Asset clipping & Z-fighting
   for (let i = 0; i < assets.length; i++) {
     const a = assets[i].asset;
-    const catA = WORLD_ASSET_CATALOG[a.type] || { footprint: 1.0, label: a.type };
+    const catA = WORLD_ASSET_CATALOG[a.type] || {
+      footprint: 1.0,
+      label: a.type,
+    };
     const rA = (catA.footprint * a.scale) / 2;
 
     for (let j = i + 1; j < assets.length; j++) {
       const b = assets[j].asset;
-      const catB = WORLD_ASSET_CATALOG[b.type] || { footprint: 1.0, label: b.type };
+      const catB = WORLD_ASSET_CATALOG[b.type] || {
+        footprint: 1.0,
+        label: b.type,
+      };
       const rB = (catB.footprint * b.scale) / 2;
 
       const dx = a.x - b.x;
@@ -110,13 +56,13 @@ export function runWorldAudit() {
           assetTypeB: b.type,
           x: (a.x + b.x) / 2,
           z: (a.z + b.z) / 2,
-          message: `Clipping: "${catA.label}" and "${catB.label}" overlap (dist ${dist.toFixed(2)}u < ${minDist.toFixed(2)}u)`
+          message: `Clipping: "${catA.label}" and "${catB.label}" overlap (dist ${dist.toFixed(2)}u < ${minDist.toFixed(2)}u)`,
         });
       }
 
       // Z-fighting check (extremely close position)
       const dy = a.y - b.y;
-      const dist3d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      const dist3d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (dist3d < 0.08) {
         devState.auditIssues.push({
           type: 'z-fighting',
@@ -127,7 +73,7 @@ export function runWorldAudit() {
           assetTypeB: b.type,
           x: a.x,
           z: a.z,
-          message: `Z-Fighting: "${catA.label}" and "${catB.label}" overlap exactly (dist ${dist3d.toFixed(3)}u)`
+          message: `Z-Fighting: "${catA.label}" and "${catB.label}" overlap exactly (dist ${dist3d.toFixed(3)}u)`,
         });
       }
     }
@@ -142,13 +88,15 @@ export function runWorldAudit() {
         assetTypeA: a.type,
         x: a.x,
         z: a.z,
-        message: `River Encroachment: "${catA.label}" sits in river channel (dist ${rivDist.toFixed(2)}u < 5u)`
+        message: `River Encroachment: "${catA.label}" sits in river channel (dist ${rivDist.toFixed(2)}u < 5u)`,
       });
     }
 
     // 3. Check Wall Collisions
-    const minAx = a.x - rA, maxAx = a.x + rA;
-    const minAz = a.z - rA, maxAz = a.z + rA;
+    const minAx = a.x - rA,
+      maxAx = a.x + rA;
+    const minAz = a.z - rA,
+      maxAz = a.z + rA;
     for (const wall of state.WALLS) {
       const overlapX = minAx < wall.max.x && maxAx > wall.min.x;
       const overlapZ = minAz < wall.max.z && maxAz > wall.min.z;
@@ -160,7 +108,7 @@ export function runWorldAudit() {
           assetTypeA: a.type,
           x: a.x,
           z: a.z,
-          message: `Wall Clip: "${catA.label}" overlaps building wall collider`
+          message: `Wall Clip: "${catA.label}" overlaps building wall collider`,
         });
       }
     }
@@ -177,7 +125,7 @@ export function runWorldAudit() {
           assetTypeA: a.type,
           x: a.x,
           z: a.z,
-          message: `Floating: "${catA.label}" sits +${diff.toFixed(2)}u above terrain`
+          message: `Floating: "${catA.label}" sits +${diff.toFixed(2)}u above terrain`,
         });
       } else if (diff < -0.15) {
         devState.auditIssues.push({
@@ -187,7 +135,7 @@ export function runWorldAudit() {
           assetTypeA: a.type,
           x: a.x,
           z: a.z,
-          message: `Buried: "${catA.label}" sits ${diff.toFixed(2)}u under terrain`
+          message: `Buried: "${catA.label}" sits ${diff.toFixed(2)}u under terrain`,
         });
       }
     }
@@ -198,7 +146,8 @@ export function runWorldAudit() {
       const [lcx, lcz] = lmDef.approxCenter;
       const groupOffX = lmGroup ? lmGroup.position.x : 0;
       const groupOffZ = lmGroup ? lmGroup.position.z : 0;
-      const lx = lcx + groupOffX, lz = lcz + groupOffZ;
+      const lx = lcx + groupOffX,
+        lz = lcz + groupOffZ;
       const dist = Math.sqrt((a.x - lx) ** 2 + (a.z - lz) ** 2);
       if (dist < lmDef.approxRadius + rA) {
         devState.auditIssues.push({
@@ -209,21 +158,21 @@ export function runWorldAudit() {
           landmarkKey: lmKey,
           x: a.x,
           z: a.z,
-          message: `Landmark Overlap: "${catA.label}" is inside ${lmDef.label} footprint`
+          message: `Landmark Overlap: "${catA.label}" is inside ${lmDef.label} footprint`,
         });
       }
     }
   }
 
   // 6. Check Room & River overlaps
-  state.ROOMS.forEach(room => {
+  state.ROOMS.forEach((room) => {
     const bounds = getRoomBounds(room);
     const corners = [
       [bounds.minX, bounds.minZ],
       [bounds.maxX, bounds.minZ],
       [bounds.minX, bounds.maxZ],
       [bounds.maxX, bounds.maxZ],
-      [room.x, room.z]
+      [room.x, room.z],
     ];
     for (const [cx, cz] of corners) {
       const d = getRiverDistance(cx, cz);
@@ -234,7 +183,7 @@ export function runWorldAudit() {
           roomId: room.id,
           x: cx,
           z: cz,
-          message: `Critical Encroachment: Room "${room.name}" overlaps river at (${cx.toFixed(1)}, ${cz.toFixed(1)})`
+          message: `Critical Encroachment: Room "${room.name}" overlaps river at (${cx.toFixed(1)}, ${cz.toFixed(1)})`,
         });
         break;
       }
@@ -247,7 +196,8 @@ export function runWorldAudit() {
     const [lcx, lcz] = lmDef.approxCenter;
     const groupOffX = lmGroup ? lmGroup.position.x : 0;
     const groupOffZ = lmGroup ? lmGroup.position.z : 0;
-    const lx = lcx + groupOffX, lz = lcz + groupOffZ;
+    const lx = lcx + groupOffX,
+      lz = lcz + groupOffZ;
     const d = getRiverDistance(lx, lz);
     if (d < lmDef.approxRadius + 5) {
       devState.auditIssues.push({
@@ -256,7 +206,7 @@ export function runWorldAudit() {
         landmarkKey: lmKey,
         x: lx,
         z: lz,
-        message: `Landmark River: ${lmDef.label} center is within ${(d).toFixed(1)}u of river channel`
+        message: `Landmark River: ${lmDef.label} center is within ${(d).toFixed(1)}u of river channel`,
       });
     }
   }
@@ -268,13 +218,15 @@ export function runWorldAudit() {
     const grpA = state.landmarkGroups.get(keyA);
     const offAx = grpA ? grpA.position.x : 0;
     const offAz = grpA ? grpA.position.z : 0;
-    const axC = defA.approxCenter[0] + offAx, azC = defA.approxCenter[1] + offAz;
+    const axC = defA.approxCenter[0] + offAx,
+      azC = defA.approxCenter[1] + offAz;
     for (let j = i + 1; j < lmEntries.length; j++) {
       const [keyB, defB] = lmEntries[j];
       const grpB = state.landmarkGroups.get(keyB);
       const offBx = grpB ? grpB.position.x : 0;
       const offBz = grpB ? grpB.position.z : 0;
-      const bxC = defB.approxCenter[0] + offBx, bzC = defB.approxCenter[1] + offBz;
+      const bxC = defB.approxCenter[0] + offBx,
+        bzC = defB.approxCenter[1] + offBz;
       const dist = Math.sqrt((axC - bxC) ** 2 + (azC - bzC) ** 2);
       if (dist < defA.approxRadius + defB.approxRadius) {
         devState.auditIssues.push({
@@ -283,7 +235,7 @@ export function runWorldAudit() {
           landmarkKey: keyA,
           x: (axC + bxC) / 2,
           z: (azC + bzC) / 2,
-          message: `Landmark Overlap: ${defA.label} and ${defB.label} footprints overlap (dist ${dist.toFixed(1)}u)`
+          message: `Landmark Overlap: ${defA.label} and ${defB.label} footprints overlap (dist ${dist.toFixed(1)}u)`,
         });
       }
     }
@@ -303,15 +255,17 @@ function updateAuditorUI() {
   list.innerHTML = '';
   if (countBadge) {
     countBadge.textContent = `${devState.auditIssues.length} issues`;
-    countBadge.className = devState.auditIssues.length > 0 ? 'badge badge-warn' : 'badge badge-ok';
+    countBadge.className =
+      devState.auditIssues.length > 0 ? 'badge badge-warn' : 'badge badge-ok';
   }
 
   if (devState.auditIssues.length === 0) {
-    list.innerHTML = '<div class="auditor-empty-state">No issues found. World is perfectly clean!</div>';
+    list.innerHTML =
+      '<div class="auditor-empty-state">No issues found. World is perfectly clean!</div>';
     return;
   }
 
-  devState.auditIssues.forEach(issue => {
+  devState.auditIssues.forEach((issue) => {
     const div = document.createElement('div');
     div.className = `auditor-item severity-${issue.severity}`;
 
@@ -341,12 +295,13 @@ export function rebuild3DHelpers() {
   }
 
   // Clear old helpers
-  while(devState.helpersGroup.children.length > 0) {
+  while (devState.helpersGroup.children.length > 0) {
     const child = devState.helpersGroup.children[0];
     devState.helpersGroup.remove(child);
     if (child.geometry) child.geometry.dispose();
     if (child.material) {
-      if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+      if (Array.isArray(child.material))
+        child.material.forEach((m) => m.dispose());
       else child.material.dispose();
     }
   }
@@ -358,13 +313,19 @@ export function rebuild3DHelpers() {
       const catalog = WORLD_ASSET_CATALOG[asset.type];
       if (!catalog) continue;
 
-      const hasIssue = devState.auditIssues.some(iss => iss.assetIdA === asset.id || iss.assetIdB === asset.id);
+      const hasIssue = devState.auditIssues.some(
+        (iss) => iss.assetIdA === asset.id || iss.assetIdB === asset.id,
+      );
       const color = hasIssue ? '#ef4444' : '#38bdf8';
 
       const half = (catalog.footprint * asset.scale) / 2;
       const box = new THREE.Box3(
         new THREE.Vector3(asset.x - half, asset.y, asset.z - half),
-        new THREE.Vector3(asset.x + half, asset.y + 3.0 * asset.scale, asset.z + half)
+        new THREE.Vector3(
+          asset.x + half,
+          asset.y + 3.0 * asset.scale,
+          asset.z + half,
+        ),
       );
       const helper = new THREE.Box3Helper(box, new THREE.Color(color));
       devState.helpersGroup.add(helper);
@@ -373,7 +334,7 @@ export function rebuild3DHelpers() {
 
   // 2. Wall Box helpers
   if (devState.showWallBoxes && state.WALLS) {
-    state.WALLS.forEach(wall => {
+    state.WALLS.forEach((wall) => {
       const helper = new THREE.Box3Helper(wall, new THREE.Color('#f87171'));
       devState.helpersGroup.add(helper);
     });
@@ -381,9 +342,19 @@ export function rebuild3DHelpers() {
 
   // 3. River path line strip + boundaries
   if (devState.showRiverPath) {
-    const points = RIVER_PTS.map(pt => new THREE.Vector3(pt[0], getTerrainHeight(pt[0], pt[1], true) + 0.15, pt[1]));
+    const points = RIVER_PTS.map(
+      (pt) =>
+        new THREE.Vector3(
+          pt[0],
+          getTerrainHeight(pt[0], pt[1], true) + 0.15,
+          pt[1],
+        ),
+    );
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color: '#0ea5e9', linewidth: 3 });
+    const material = new THREE.LineBasicMaterial({
+      color: '#0ea5e9',
+      linewidth: 3,
+    });
     const line = new THREE.Line(geometry, material);
     devState.helpersGroup.add(line);
 
@@ -391,15 +362,16 @@ export function rebuild3DHelpers() {
     const rightPoints = [];
     for (let i = 0; i < RIVER_PTS.length; i++) {
       const pt = RIVER_PTS[i];
-      let dx = 0, dz = 0;
+      let dx = 0,
+        dz = 0;
       if (i < RIVER_PTS.length - 1) {
-        dx = RIVER_PTS[i+1][0] - pt[0];
-        dz = RIVER_PTS[i+1][1] - pt[1];
+        dx = RIVER_PTS[i + 1][0] - pt[0];
+        dz = RIVER_PTS[i + 1][1] - pt[1];
       } else {
-        dx = pt[0] - RIVER_PTS[i-1][0];
-        dz = pt[1] - RIVER_PTS[i-1][1];
+        dx = pt[0] - RIVER_PTS[i - 1][0];
+        dz = pt[1] - RIVER_PTS[i - 1][1];
       }
-      const len = Math.sqrt(dx*dx + dz*dz) || 1;
+      const len = Math.sqrt(dx * dx + dz * dz) || 1;
       const nx = -dz / len;
       const nz = dx / len;
 
@@ -408,13 +380,20 @@ export function rebuild3DHelpers() {
       const rx = pt[0] - nx * 5.0;
       const rz = pt[1] - nz * 5.0;
 
-      leftPoints.push(new THREE.Vector3(lx, getTerrainHeight(lx, lz, true) + 0.15, lz));
-      rightPoints.push(new THREE.Vector3(rx, getTerrainHeight(rx, rz, true) + 0.15, rz));
+      leftPoints.push(
+        new THREE.Vector3(lx, getTerrainHeight(lx, lz, true) + 0.15, lz),
+      );
+      rightPoints.push(
+        new THREE.Vector3(rx, getTerrainHeight(rx, rz, true) + 0.15, rz),
+      );
     }
 
     const leftGeom = new THREE.BufferGeometry().setFromPoints(leftPoints);
     const rightGeom = new THREE.BufferGeometry().setFromPoints(rightPoints);
-    const boundaryMat = new THREE.LineBasicMaterial({ color: 'rgba(56, 189, 248, 0.45)', linewidth: 1.5 });
+    const boundaryMat = new THREE.LineBasicMaterial({
+      color: 'rgba(56, 189, 248, 0.45)',
+      linewidth: 1.5,
+    });
 
     devState.helpersGroup.add(new THREE.Line(leftGeom, boundaryMat));
     devState.helpersGroup.add(new THREE.Line(rightGeom, boundaryMat));
@@ -425,7 +404,9 @@ export function rebuild3DHelpers() {
     const zoneColors = ['#10b981', '#3b82f6', '#a855f7', '#eab308', '#64748b'];
     Object.values(LANDMARK_REGISTRY).forEach((def, idx) => {
       const [cx, cz] = def.approxCenter;
-      const lmGroup = state.landmarkGroups.get(Object.keys(LANDMARK_REGISTRY)[idx]);
+      const lmGroup = state.landmarkGroups.get(
+        Object.keys(LANDMARK_REGISTRY)[idx],
+      );
       const offX = lmGroup ? lmGroup.position.x : 0;
       const offZ = lmGroup ? lmGroup.position.z : 0;
       const circlePoints = [];
@@ -434,10 +415,15 @@ export function rebuild3DHelpers() {
         const theta = (i / segments) * Math.PI * 2;
         const px = cx + offX + Math.cos(theta) * def.approxRadius;
         const pz = cz + offZ + Math.sin(theta) * def.approxRadius;
-        circlePoints.push(new THREE.Vector3(px, getTerrainHeight(px, pz) + 0.1, pz));
+        circlePoints.push(
+          new THREE.Vector3(px, getTerrainHeight(px, pz) + 0.1, pz),
+        );
       }
       const circleGeom = new THREE.BufferGeometry().setFromPoints(circlePoints);
-      const circleMat = new THREE.LineBasicMaterial({ color: zoneColors[idx % zoneColors.length], linewidth: 2 });
+      const circleMat = new THREE.LineBasicMaterial({
+        color: zoneColors[idx % zoneColors.length],
+        linewidth: 2,
+      });
       devState.helpersGroup.add(new THREE.Line(circleGeom, circleMat));
     });
   }
@@ -449,31 +435,44 @@ export function rebuild3DHelpers() {
       const offX = lmGroup ? lmGroup.position.x : 0;
       const offZ = lmGroup ? lmGroup.position.z : 0;
       const [cx, cz] = def.approxCenter;
-      const lx = cx + offX, lz = cz + offZ;
+      const lx = cx + offX,
+        lz = cz + offZ;
       const r = def.approxRadius;
       const terrainH = getTerrainHeight(lx, lz);
-      const hasIssue = devState.auditIssues.some(iss => iss.landmarkKey === key);
+      const hasIssue = devState.auditIssues.some(
+        (iss) => iss.landmarkKey === key,
+      );
       const color = hasIssue ? '#ef4444' : '#f59e0b';
       const box = new THREE.Box3(
         new THREE.Vector3(lx - r, terrainH - 0.5, lz - r),
-        new THREE.Vector3(lx + r, terrainH + 20, lz + r)
+        new THREE.Vector3(lx + r, terrainH + 20, lz + r),
       );
-      devState.helpersGroup.add(new THREE.Box3Helper(box, new THREE.Color(color)));
+      devState.helpersGroup.add(
+        new THREE.Box3Helper(box, new THREE.Color(color)),
+      );
     });
   }
 
   // 6. Static scenery misalignment markers
-  if (devState.showStaticAuditMarkers && devState.staticAuditIssues.length > 0) {
+  if (
+    devState.showStaticAuditMarkers &&
+    devState.staticAuditIssues.length > 0
+  ) {
     const _tmpV = new THREE.Vector3();
-    devState.staticAuditIssues.forEach(issue => {
+    devState.staticAuditIssues.forEach((issue) => {
       const { x, y, z } = issue.worldPos;
       const terrainY = issue.terrainY;
-      const color = issue.severity === 'high' ? '#ef4444' : issue.type === 'tilted' ? '#a855f7' : '#f59e0b';
+      const color =
+        issue.severity === 'high'
+          ? '#ef4444'
+          : issue.type === 'tilted'
+            ? '#a855f7'
+            : '#f59e0b';
 
       // Sphere at object position
       const sphere = new THREE.Mesh(
         new THREE.SphereGeometry(0.3, 6, 6),
-        new THREE.MeshBasicMaterial({ color, depthTest: false })
+        new THREE.MeshBasicMaterial({ color, depthTest: false }),
       );
       sphere.position.set(x, y + 0.3, z);
       devState.helpersGroup.add(sphere);
@@ -484,11 +483,16 @@ export function rebuild3DHelpers() {
           new THREE.Vector3(x, terrainY, z),
           new THREE.Vector3(x, y, z),
         ]);
-        devState.helpersGroup.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color })));
+        devState.helpersGroup.add(
+          new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color })),
+        );
       }
 
       // Tilt indicator: axes helper
-      if (issue.type === 'tilted' && issue.index < state.STATIC_SCENERY.length) {
+      if (
+        issue.type === 'tilted' &&
+        issue.index < state.STATIC_SCENERY.length
+      ) {
         const obj = state.STATIC_SCENERY[issue.index]?.object3d;
         if (obj) {
           const axes = new THREE.AxesHelper(1.5);
@@ -502,16 +506,26 @@ export function rebuild3DHelpers() {
 
   // 7. Z-fighting / shimmering markers
   if (devState.showZFightMarkers && devState.zfightIssues?.length > 0) {
-    devState.zfightIssues.forEach(issue => {
+    devState.zfightIssues.forEach((issue) => {
       const { x, y, z } = issue.worldPos;
-      const color = issue.severity === 'critical' ? '#ef4444'
-                  : issue.severity === 'high'     ? '#f97316'
-                  : issue.severity === 'medium'   ? '#eab308'
-                  : '#60a5fa'; // info
+      const color =
+        issue.severity === 'critical'
+          ? '#ef4444'
+          : issue.severity === 'high'
+            ? '#f97316'
+            : issue.severity === 'medium'
+              ? '#eab308'
+              : '#60a5fa'; // info
 
       // Flat hexagon ring floating just above the problem surface — visible from above
       const ringGeo = new THREE.RingGeometry(0.3, 0.65, 6);
-      const ringMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.85 });
+      const ringMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.85,
+      });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(x, y + 0.04, z);
@@ -523,7 +537,16 @@ export function rebuild3DHelpers() {
           new THREE.Vector3(x, issue.terrainY, z),
           new THREE.Vector3(x, y, z),
         ]);
-        devState.helpersGroup.add(new THREE.Line(gapGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 })));
+        devState.helpersGroup.add(
+          new THREE.Line(
+            gapGeo,
+            new THREE.LineBasicMaterial({
+              color,
+              transparent: true,
+              opacity: 0.7,
+            }),
+          ),
+        );
       }
 
       // Small upward spike to make it visible from any angle
@@ -531,7 +554,16 @@ export function rebuild3DHelpers() {
         new THREE.Vector3(x, y + 0.04, z),
         new THREE.Vector3(x, y + 1.2, z),
       ]);
-      devState.helpersGroup.add(new THREE.Line(spikeGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 })));
+      devState.helpersGroup.add(
+        new THREE.Line(
+          spikeGeo,
+          new THREE.LineBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.6,
+          }),
+        ),
+      );
     });
   }
 
@@ -540,7 +572,7 @@ export function rebuild3DHelpers() {
     const { worldPos } = devState.lastInspected;
     const markerSphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.25, 8, 8),
-      new THREE.MeshBasicMaterial({ color: '#38bdf8', depthTest: false })
+      new THREE.MeshBasicMaterial({ color: '#38bdf8', depthTest: false }),
     );
     markerSphere.position.set(worldPos.x, worldPos.y + 0.25, worldPos.z);
     devState.helpersGroup.add(markerSphere);
@@ -559,12 +591,14 @@ export function updateDevTools(now) {
       const pos = entry.group.position;
       const rot = entry.group.rotation.y;
       const scl = entry.group.scale.x;
-      if (!devState.lastSelectedPos ||
-          devState.lastSelectedPos.x !== pos.x ||
-          devState.lastSelectedPos.y !== pos.y ||
-          devState.lastSelectedPos.z !== pos.z ||
-          devState.lastSelectedRot !== rot ||
-          devState.lastSelectedScale !== scl) {
+      if (
+        !devState.lastSelectedPos ||
+        devState.lastSelectedPos.x !== pos.x ||
+        devState.lastSelectedPos.y !== pos.y ||
+        devState.lastSelectedPos.z !== pos.z ||
+        devState.lastSelectedRot !== rot ||
+        devState.lastSelectedScale !== scl
+      ) {
         devState.lastSelectedPos = { x: pos.x, y: pos.y, z: pos.z };
         devState.lastSelectedRot = rot;
         devState.lastSelectedScale = scl;
@@ -601,9 +635,12 @@ function initMapDOM() {
   panel.style.display = 'none';
 
   // Build landmark warp buttons HTML
-  const lmButtons = Object.entries(LANDMARK_REGISTRY).map(([key, def]) =>
-    `<button class="btn-primary btn-xs dev-landmark-warp-btn" data-lm="${key}">${def.label}</button>`
-  ).join('');
+  const lmButtons = Object.entries(LANDMARK_REGISTRY)
+    .map(
+      ([key, def]) =>
+        `<button class="btn-primary btn-xs dev-landmark-warp-btn" data-lm="${key}">${def.label}</button>`,
+    )
+    .join('');
 
   panel.innerHTML = `
     <div class="dev-map-header">
@@ -653,7 +690,7 @@ function initMapDOM() {
   });
 
   // Landmark warp buttons
-  panel.querySelectorAll('.dev-landmark-warp-btn').forEach(btn => {
+  panel.querySelectorAll('.dev-landmark-warp-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const def = LANDMARK_REGISTRY[btn.dataset.lm];
       if (!def) return;
@@ -693,12 +730,16 @@ function initMapDOM() {
     devState.isDragging = false;
   });
 
-  mapCanvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-    devState.zoom = Math.max(0.8, Math.min(10.0, devState.zoom * zoomFactor));
-    renderDevMapCanvas();
-  }, { passive: false });
+  mapCanvas.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      devState.zoom = Math.max(0.8, Math.min(10.0, devState.zoom * zoomFactor));
+      renderDevMapCanvas();
+    },
+    { passive: false },
+  );
 
   mapCanvas.addEventListener('dblclick', (e) => {
     const rect = mapCanvas.getBoundingClientRect();
@@ -730,7 +771,7 @@ function initMapDOM() {
         const radius = (catalog.footprint * asset.scale) / 2;
         const dx = asset.x - worldPos.wx;
         const dz = asset.z - worldPos.wz;
-        if (Math.sqrt(dx*dx + dz*dz) < radius) {
+        if (Math.sqrt(dx * dx + dz * dz) < radius) {
           hovered = entry;
           break;
         }
@@ -741,8 +782,12 @@ function initMapDOM() {
     let hoverRoom = null;
     for (const room of state.ROOMS) {
       const bounds = getRoomBounds(room);
-      if (worldPos.wx >= bounds.minX && worldPos.wx <= bounds.maxX &&
-          worldPos.wz >= bounds.minZ && worldPos.wz <= bounds.maxZ) {
+      if (
+        worldPos.wx >= bounds.minX &&
+        worldPos.wx <= bounds.maxX &&
+        worldPos.wz >= bounds.minZ &&
+        worldPos.wz <= bounds.maxZ
+      ) {
         hoverRoom = room;
         break;
       }
@@ -784,10 +829,12 @@ function updateTooltipUI(x, y) {
     html += `<strong>Scale:</strong> ${asset.scale.toFixed(2)}<br/>`;
     html += `<strong>Pos:</strong> (${asset.x.toFixed(1)}, ${asset.y.toFixed(1)}, ${asset.z.toFixed(1)})<br/>`;
 
-    const issues = devState.auditIssues.filter(iss => iss.assetIdA === asset.id || iss.assetIdB === asset.id);
+    const issues = devState.auditIssues.filter(
+      (iss) => iss.assetIdA === asset.id || iss.assetIdB === asset.id,
+    );
     if (issues.length > 0) {
       html += `<span style="color:#f87171;font-weight:bold;">⚠ Warnings (${issues.length}):</span><br/>`;
-      issues.forEach(iss => {
+      issues.forEach((iss) => {
         html += `<span style="color:#fca5a5;font-size:0.75rem;">• ${iss.type}</span><br/>`;
       });
     }
@@ -827,7 +874,7 @@ function renderDevMapCanvas() {
   ctx.lineWidth = 1;
   const gridSpacing = 50;
 
-  for (let gx = -MAP_SIZE/2; gx <= MAP_SIZE/2; gx += gridSpacing) {
+  for (let gx = -MAP_SIZE / 2; gx <= MAP_SIZE / 2; gx += gridSpacing) {
     const pt = worldToScreen(gx, 0, w, h);
     if (pt.sx >= 0 && pt.sx <= w) {
       ctx.beginPath();
@@ -836,7 +883,7 @@ function renderDevMapCanvas() {
       ctx.stroke();
     }
   }
-  for (let gz = -MAP_SIZE/2; gz <= MAP_SIZE/2; gz += gridSpacing) {
+  for (let gz = -MAP_SIZE / 2; gz <= MAP_SIZE / 2; gz += gridSpacing) {
     const pt = worldToScreen(0, gz, w, h);
     if (pt.sy >= 0 && pt.sy <= h) {
       ctx.beginPath();
@@ -850,8 +897,10 @@ function renderDevMapCanvas() {
   ctx.lineWidth = 1.5;
   const centerPt = worldToScreen(0, 0, w, h);
   ctx.beginPath();
-  ctx.moveTo(centerPt.sx, 0); ctx.lineTo(centerPt.sx, h);
-  ctx.moveTo(0, centerPt.sy); ctx.lineTo(w, centerPt.sy);
+  ctx.moveTo(centerPt.sx, 0);
+  ctx.lineTo(centerPt.sx, h);
+  ctx.moveTo(0, centerPt.sy);
+  ctx.lineTo(w, centerPt.sy);
   ctx.stroke();
 
   // 2. Draw Landmark zones (from LANDMARK_REGISTRY)
@@ -917,7 +966,7 @@ function renderDevMapCanvas() {
   ctx.stroke();
 
   // 4. Draw Rooms
-  state.ROOMS.forEach(room => {
+  state.ROOMS.forEach((room) => {
     const bounds = getRoomBounds(room);
     const tl = worldToScreen(bounds.minX, bounds.minZ, w, h);
     const br = worldToScreen(bounds.maxX, bounds.maxZ, w, h);
@@ -944,7 +993,7 @@ function renderDevMapCanvas() {
     ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
     ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
     ctx.lineWidth = 1;
-    state.WALLS.forEach(wall => {
+    state.WALLS.forEach((wall) => {
       const tl = worldToScreen(wall.min.x, wall.min.z, w, h);
       const br = worldToScreen(wall.max.x, wall.max.z, w, h);
       ctx.fillRect(tl.sx, tl.sy, br.sx - tl.sx, br.sy - tl.sy);
@@ -960,7 +1009,9 @@ function renderDevMapCanvas() {
       const radius = (catalog.footprint * asset.scale * scale) / 2;
       const pt = worldToScreen(asset.x, asset.z, w, h);
 
-      const hasIssue = devState.auditIssues.some(iss => iss.assetIdA === asset.id || iss.assetIdB === asset.id);
+      const hasIssue = devState.auditIssues.some(
+        (iss) => iss.assetIdA === asset.id || iss.assetIdB === asset.id,
+      );
 
       let color = '#94a3b8';
       if (asset.type === 'tree') color = '#10b981';
@@ -994,7 +1045,7 @@ function renderDevMapCanvas() {
   // 7. Draw NPCs & Remote Players
   if (state.npcs) {
     ctx.fillStyle = '#a3e635';
-    state.npcs.forEach(npc => {
+    state.npcs.forEach((npc) => {
       const pt = worldToScreen(npc.x, npc.z, w, h);
       ctx.beginPath();
       ctx.arc(pt.sx, pt.sy, 2.5, 0, Math.PI * 2);
@@ -1004,7 +1055,7 @@ function renderDevMapCanvas() {
 
   if (state.remotePlayers) {
     ctx.fillStyle = '#f59e0b';
-    state.remotePlayers.forEach(p => {
+    state.remotePlayers.forEach((p) => {
       const pt = worldToScreen(p.x, p.z, w, h);
       ctx.beginPath();
       ctx.arc(pt.sx, pt.sy, 3.0, 0, Math.PI * 2);
@@ -1040,7 +1091,12 @@ function renderDevMapCanvas() {
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
   ctx.lineWidth = 1;
   ctx.setLineDash([6, 6]);
-  ctx.strokeRect(tlBound.sx, tlBound.sy, brBound.sx - tlBound.sx, brBound.sy - tlBound.sy);
+  ctx.strokeRect(
+    tlBound.sx,
+    tlBound.sy,
+    brBound.sx - tlBound.sx,
+    brBound.sy - tlBound.sy,
+  );
   ctx.setLineDash([]);
 }
 
@@ -1080,19 +1136,30 @@ export function initDevTools() {
   // Shift+M: toggle 2D world map
   window.addEventListener('keydown', (e) => {
     if (e.key === 'M' && e.shiftKey) {
-      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      if (
+        document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' ||
+          document.activeElement.tagName === 'TEXTAREA')
+      )
+        return;
       toggleDevMap();
     }
   });
 
   // Alt+click: inspect any mesh and log its world transform
   window.addEventListener('click', (e) => {
-    if (!e.altKey || !state.DEBUG_STATE?.enabled || !state.camera || !state.renderer) return;
+    if (
+      !e.altKey ||
+      !state.DEBUG_STATE?.enabled ||
+      !state.camera ||
+      !state.renderer
+    )
+      return;
     const canvas = state.renderer.domElement;
     const rect = canvas.getBoundingClientRect();
     _inspMouse.set(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
     );
     _inspRaycaster.setFromCamera(_inspMouse, state.camera);
     const hits = _inspRaycaster.intersectObjects(state.scene.children, true);
@@ -1109,7 +1176,10 @@ export function initDevTools() {
     let cur = obj.parent;
     while (cur && cur !== state.scene) {
       for (const [key, grp] of state.landmarkGroups.entries()) {
-        if (grp === cur) { parentInfo = `landmark:${key}`; break; }
+        if (grp === cur) {
+          parentInfo = `landmark:${key}`;
+          break;
+        }
       }
       if (parentInfo !== 'scene-root') break;
       cur = cur.parent;
@@ -1119,9 +1189,21 @@ export function initDevTools() {
     const result = {
       type: obj.type,
       geometry: obj.geometry?.type || '—',
-      worldPos: { x: +_inspWp.x.toFixed(3), y: +_inspWp.y.toFixed(3), z: +_inspWp.z.toFixed(3) },
-      worldRotDeg: { x: +(wr.x * 180 / Math.PI).toFixed(1), y: +(wr.y * 180 / Math.PI).toFixed(1), z: +(wr.z * 180 / Math.PI).toFixed(1) },
-      worldScale: { x: +_inspWs.x.toFixed(3), y: +_inspWs.y.toFixed(3), z: +_inspWs.z.toFixed(3) },
+      worldPos: {
+        x: +_inspWp.x.toFixed(3),
+        y: +_inspWp.y.toFixed(3),
+        z: +_inspWp.z.toFixed(3),
+      },
+      worldRotDeg: {
+        x: +((wr.x * 180) / Math.PI).toFixed(1),
+        y: +((wr.y * 180) / Math.PI).toFixed(1),
+        z: +((wr.z * 180) / Math.PI).toFixed(1),
+      },
+      worldScale: {
+        x: +_inspWs.x.toFixed(3),
+        y: +_inspWs.y.toFixed(3),
+        z: +_inspWs.z.toFixed(3),
+      },
       terrainY: +terrainY.toFixed(3),
       yAboveTerrain: +(_inspWp.y - terrainY).toFixed(3),
       parentChain: parentInfo,
@@ -1138,22 +1220,38 @@ export function initDevTools() {
 // --- Calculation helpers (used by both API and internals) ---
 
 function _nearestLandmark(x, z) {
-  let best = null, bestDist = Infinity;
+  let best = null,
+    bestDist = Infinity;
   for (const [key, def] of Object.entries(LANDMARK_REGISTRY)) {
     const lmGroup = state.landmarkGroups.get(key);
     const offX = lmGroup ? lmGroup.position.x : 0;
     const offZ = lmGroup ? lmGroup.position.z : 0;
-    const dist = Math.sqrt((x - (def.approxCenter[0] + offX)) ** 2 + (z - (def.approxCenter[1] + offZ)) ** 2);
-    if (dist < bestDist) { bestDist = dist; best = { key, label: def.label, dist: +dist.toFixed(2), radius: def.approxRadius }; }
+    const dist = Math.sqrt(
+      (x - (def.approxCenter[0] + offX)) ** 2 +
+        (z - (def.approxCenter[1] + offZ)) ** 2,
+    );
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = {
+        key,
+        label: def.label,
+        dist: +dist.toFixed(2),
+        radius: def.approxRadius,
+      };
+    }
   }
   return best;
 }
 
 function _nearestRoom(x, z) {
-  let best = null, bestDist = Infinity;
+  let best = null,
+    bestDist = Infinity;
   for (const room of state.ROOMS) {
     const dist = Math.sqrt((x - room.x) ** 2 + (z - room.z) ** 2);
-    if (dist < bestDist) { bestDist = dist; best = { id: room.id, name: room.name, dist: +dist.toFixed(2) }; }
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = { id: room.id, name: room.name, dist: +dist.toFixed(2) };
+    }
   }
   return best;
 }
@@ -1161,22 +1259,34 @@ function _nearestRoom(x, z) {
 function _worldQuery(x, z) {
   const terrainHeight = +getTerrainHeight(x, z).toFixed(3);
   const roomId = getRoomIdForPosition(x, z);
-  const room = roomId !== -1 ? state.ROOMS.find(r => r.id === roomId) : null;
+  const room = roomId !== -1 ? state.ROOMS.find((r) => r.id === roomId) : null;
   const riverDist = +getRiverDistance(x, z).toFixed(2);
   const isInRiver = riverDist < 5.0;
 
   let wallCollision = false;
   for (const wall of state.WALLS) {
-    if (x >= wall.min.x && x <= wall.max.x && z >= wall.min.z && z <= wall.max.z) { wallCollision = true; break; }
+    if (
+      x >= wall.min.x &&
+      x <= wall.max.x &&
+      z >= wall.min.z &&
+      z <= wall.max.z
+    ) {
+      wallCollision = true;
+      break;
+    }
   }
 
   let assetCollision = false;
   for (const col of state.PLACED_ASSET_COLLIDERS) {
-    if (x >= col.minX && x <= col.maxX && z >= col.minZ && z <= col.maxZ) { assetCollision = true; break; }
+    if (x >= col.minX && x <= col.maxX && z >= col.minZ && z <= col.maxZ) {
+      assetCollision = true;
+      break;
+    }
   }
 
   return {
-    x: +x.toFixed(2), z: +z.toFixed(2),
+    x: +x.toFixed(2),
+    z: +z.toFixed(2),
     terrainHeight,
     roomId,
     roomName: room ? room.name : 'outdoors',
@@ -1191,11 +1301,13 @@ function _worldQuery(x, z) {
 
 function _sampleTerrain(cx, cz, radius, steps = 5) {
   const points = [];
-  let min = Infinity, max = -Infinity, sum = 0;
+  let min = Infinity,
+    max = -Infinity,
+    sum = 0;
   for (let i = 0; i < steps; i++) {
     for (let j = 0; j < steps; j++) {
-      const px = cx - radius + (2 * radius * i / (steps - 1));
-      const pz = cz - radius + (2 * radius * j / (steps - 1));
+      const px = cx - radius + (2 * radius * i) / (steps - 1);
+      const pz = cz - radius + (2 * radius * j) / (steps - 1);
       const y = getTerrainHeight(px, pz);
       points.push({ x: +px.toFixed(1), z: +pz.toFixed(1), y: +y.toFixed(3) });
       if (y < min) min = y;
@@ -1205,7 +1317,14 @@ function _sampleTerrain(cx, cz, radius, steps = 5) {
   }
   const avg = sum / points.length;
   const maxSlope = max - min;
-  return { points, min: +min.toFixed(3), max: +max.toFixed(3), avg: +avg.toFixed(3), maxSlope: +maxSlope.toFixed(3), isFlat: maxSlope < 1.0 };
+  return {
+    points,
+    min: +min.toFixed(3),
+    max: +max.toFixed(3),
+    avg: +avg.toFixed(3),
+    maxSlope: +maxSlope.toFixed(3),
+    isFlat: maxSlope < 1.0,
+  };
 }
 
 // --- Static Scenery Auditor ---
@@ -1224,7 +1343,9 @@ function _auditStaticScenery(threshold = 0.4) {
 
     // Use world position (handles objects nested inside landmark groups)
     obj.getWorldPosition(_tmpVec);
-    const wx = _tmpVec.x, wy = _tmpVec.y, wz = _tmpVec.z;
+    const wx = _tmpVec.x,
+      wy = _tmpVec.y,
+      wz = _tmpVec.z;
 
     // Outdoor objects should sit on the terrain; room objects are on flat floors
     if (entry.kind !== 'room') {
@@ -1239,9 +1360,10 @@ function _auditStaticScenery(threshold = 0.4) {
           diff: +diff.toFixed(3),
           severity: Math.abs(diff) > 2 ? 'high' : 'medium',
           type: diff > 0 ? 'floating' : 'buried',
-          message: diff > 0
-            ? `Floating: scenery[${i}] sits +${diff.toFixed(2)}u above terrain at (${wx.toFixed(1)}, ${wz.toFixed(1)})`
-            : `Buried: scenery[${i}] sits ${diff.toFixed(2)}u under terrain at (${wx.toFixed(1)}, ${wz.toFixed(1)})`,
+          message:
+            diff > 0
+              ? `Floating: scenery[${i}] sits +${diff.toFixed(2)}u above terrain at (${wx.toFixed(1)}, ${wz.toFixed(1)})`
+              : `Buried: scenery[${i}] sits ${diff.toFixed(2)}u under terrain at (${wx.toFixed(1)}, ${wz.toFixed(1)})`,
         });
       }
     }
@@ -1250,21 +1372,23 @@ function _auditStaticScenery(threshold = 0.4) {
     // Flat planes are excluded (they deliberately have rotation.x = -PI/2)
     obj.getWorldQuaternion(_tmpQuat);
     _tmpEuler.setFromQuaternion(_tmpQuat);
-    const rx = _tmpEuler.x, rz = _tmpEuler.z;
-    const isLikelyFlatPlane = obj.children?.length === 0 && obj.geometry?.type?.includes('Plane');
+    const rx = _tmpEuler.x,
+      rz = _tmpEuler.z;
+    const isLikelyFlatPlane =
+      obj.children?.length === 0 && obj.geometry?.type?.includes('Plane');
     if (!isLikelyFlatPlane && (Math.abs(rx) > 0.18 || Math.abs(rz) > 0.18)) {
       issues.push({
         index: i,
         kind: entry.kind,
         worldPos: { x: +wx.toFixed(2), y: +wy.toFixed(2), z: +wz.toFixed(2) },
         worldRotDeg: {
-          x: +(rx * 180 / Math.PI).toFixed(1),
-          y: +(_tmpEuler.y * 180 / Math.PI).toFixed(1),
-          z: +(rz * 180 / Math.PI).toFixed(1),
+          x: +((rx * 180) / Math.PI).toFixed(1),
+          y: +((_tmpEuler.y * 180) / Math.PI).toFixed(1),
+          z: +((rz * 180) / Math.PI).toFixed(1),
         },
         severity: 'medium',
         type: 'tilted',
-        message: `Tilted: scenery[${i}] at (${wx.toFixed(1)}, ${wz.toFixed(1)}) — rotX=${(rx * 180 / Math.PI).toFixed(1)}°, rotZ=${(rz * 180 / Math.PI).toFixed(1)}°`,
+        message: `Tilted: scenery[${i}] at (${wx.toFixed(1)}, ${wz.toFixed(1)}) — rotX=${((rx * 180) / Math.PI).toFixed(1)}°, rotZ=${((rz * 180) / Math.PI).toFixed(1)}°`,
       });
     }
   }
@@ -1272,11 +1396,15 @@ function _auditStaticScenery(threshold = 0.4) {
   devState.staticAuditIssues = issues;
   devState.helpersDirty = true;
 
-  const floating = issues.filter(i => i.type === 'floating').length;
-  const buried = issues.filter(i => i.type === 'buried').length;
-  const tilted = issues.filter(i => i.type === 'tilted').length;
-  console.log(`[auditStaticScenery] ${state.STATIC_SCENERY.length} objects scanned → ${issues.length} issues (${floating} floating, ${buried} buried, ${tilted} tilted)`);
-  issues.forEach(iss => console.log(`  [${iss.severity.toUpperCase()}] ${iss.message}`));
+  const floating = issues.filter((i) => i.type === 'floating').length;
+  const buried = issues.filter((i) => i.type === 'buried').length;
+  const tilted = issues.filter((i) => i.type === 'tilted').length;
+  console.log(
+    `[auditStaticScenery] ${state.STATIC_SCENERY.length} objects scanned → ${issues.length} issues (${floating} floating, ${buried} buried, ${tilted} tilted)`,
+  );
+  issues.forEach((iss) =>
+    console.log(`  [${iss.severity.toUpperCase()}] ${iss.message}`),
+  );
 
   return issues;
 }
@@ -1299,17 +1427,17 @@ function _auditStaticScenery(threshold = 0.4) {
 function _auditZFighting(radius = 200) {
   if (!state.scene) return [];
 
-  const FLAT_Y_EXTENT  = 0.25;   // meshes with world Y extent < this are "flat"
-  const LARGE_XZ_SKIP  = 200;    // skip the terrain ground plane (huge footprint)
-  const GAP_CRITICAL   = 0.005;  // essentially coplanar — guaranteed shimmer
-  const GAP_HIGH       = 0.02;   // will shimmer at most view angles
-  const GAP_MEDIUM     = 0.06;   // may shimmer on slopes or at grazing angles
+  const FLAT_Y_EXTENT = 0.25; // meshes with world Y extent < this are "flat"
+  const LARGE_XZ_SKIP = 200; // skip the terrain ground plane (huge footprint)
+  const GAP_CRITICAL = 0.005; // essentially coplanar — guaranteed shimmer
+  const GAP_HIGH = 0.02; // will shimmer at most view angles
+  const GAP_MEDIUM = 0.06; // may shimmer on slopes or at grazing angles
 
   const issues = [];
-  const flat = [];   // candidate flat meshes
+  const flat = []; // candidate flat meshes
 
-  const _box  = new THREE.Box3();
-  const _tmp  = new THREE.Vector3();
+  const _box = new THREE.Box3();
+  const _tmp = new THREE.Vector3();
   const px = state.localPlayer?.x ?? 0;
   const pz = state.localPlayer?.z ?? 0;
 
@@ -1341,7 +1469,10 @@ function _auditZFighting(radius = 200) {
     while (cur && cur !== state.scene) {
       if (state.landmarkGroups) {
         for (const [key, grp] of state.landmarkGroups.entries()) {
-          if (cur === grp) { parentChain = `landmark:${key}`; break; }
+          if (cur === grp) {
+            parentChain = `landmark:${key}`;
+            break;
+          }
         }
       }
       if (parentChain) break;
@@ -1351,16 +1482,21 @@ function _auditZFighting(radius = 200) {
     const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
     flat.push({
       obj,
-      cx, cz,
-      minY:    _box.min.y,
+      cx,
+      cz,
+      minY: _box.min.y,
       centerY: (_box.min.y + _box.max.y) * 0.5,
-      extX, extZ,
-      hasOffset:    mat?.polygonOffset === true,
-      offsetFactor: mat?.polygonOffset === true ? (mat.polygonOffsetFactor ?? null) : null,
+      extX,
+      extZ,
+      hasOffset: mat?.polygonOffset === true,
+      offsetFactor:
+        mat?.polygonOffset === true ? (mat.polygonOffsetFactor ?? null) : null,
       parentChain,
       geo: obj.geometry.type,
-      bMinX: _box.min.x, bMaxX: _box.max.x,
-      bMinZ: _box.min.z, bMaxZ: _box.max.z,
+      bMinX: _box.min.x,
+      bMaxX: _box.max.x,
+      bMinZ: _box.min.z,
+      bMaxZ: _box.max.z,
     });
   });
 
@@ -1376,12 +1512,12 @@ function _auditZFighting(radius = 200) {
 
     let severity = null;
     if (!m.hasOffset) {
-      if (gap < GAP_CRITICAL)      severity = 'critical';
-      else if (gap < GAP_HIGH)     severity = 'high';
-      else if (gap < GAP_MEDIUM)   severity = 'medium';
+      if (gap < GAP_CRITICAL) severity = 'critical';
+      else if (gap < GAP_HIGH) severity = 'high';
+      else if (gap < GAP_MEDIUM) severity = 'medium';
     } else {
       // Has polygonOffset — still flag if essentially zero gap so we know it's relying on offset
-      if (gap < GAP_CRITICAL)      severity = 'info';
+      if (gap < GAP_CRITICAL) severity = 'info';
     }
     if (!severity) continue;
 
@@ -1393,7 +1529,11 @@ function _auditZFighting(radius = 200) {
       type: 'terrain-zfight',
       severity,
       geometry: m.geo,
-      worldPos: { x: +m.cx.toFixed(2), y: +m.minY.toFixed(4), z: +m.cz.toFixed(2) },
+      worldPos: {
+        x: +m.cx.toFixed(2),
+        y: +m.minY.toFixed(4),
+        z: +m.cz.toFixed(2),
+      },
       terrainY: +terrainY.toFixed(4),
       gap: +gap.toFixed(4),
       hasPolygonOffset: m.hasOffset,
@@ -1403,7 +1543,8 @@ function _auditZFighting(radius = 200) {
       fix: m.hasOffset
         ? `raise Y by ${(GAP_HIGH - gap).toFixed(3)}u, or increase polygonOffsetFactor`
         : `add polygonOffset:true, polygonOffsetFactor:-2 to material`,
-      x: m.cx, z: m.cz,
+      x: m.cx,
+      z: m.cz,
       message: `terrain-zfight [${severity}]: ${m.geo}${ctx} @ (${m.cx.toFixed(1)}, ${m.cz.toFixed(1)}) — gap=${gap.toFixed(4)}u${offsetNote}`,
     });
   }
@@ -1411,7 +1552,8 @@ function _auditZFighting(radius = 200) {
   // ── Check 2: surface-on-surface (two flat meshes at same Y, XZ overlap) ──
   for (let i = 0; i < flat.length; i++) {
     for (let j = i + 1; j < flat.length; j++) {
-      const a = flat[i], b = flat[j];
+      const a = flat[i],
+        b = flat[j];
 
       const deltaY = Math.abs(a.minY - b.minY);
       if (deltaY > GAP_HIGH) continue;
@@ -1420,23 +1562,29 @@ function _auditZFighting(radius = 200) {
       if (a.bMaxX < b.bMinX || a.bMinX > b.bMaxX) continue;
       if (a.bMaxZ < b.bMinZ || a.bMinZ > b.bMaxZ) continue;
 
-      const severity = (!a.hasOffset || !b.hasOffset) ? 'high' : 'info';
+      const severity = !a.hasOffset || !b.hasOffset ? 'high' : 'info';
       const cx = (a.cx + b.cx) * 0.5;
       const cz = (a.cz + b.cz) * 0.5;
       const labelA = a.parentChain || 'scene-root';
       const labelB = b.parentChain || 'scene-root';
-      const offsetNote = (!a.hasOffset || !b.hasOffset) ? ' ⚠ missing polygonOffset' : '';
+      const offsetNote =
+        !a.hasOffset || !b.hasOffset ? ' ⚠ missing polygonOffset' : '';
 
       issues.push({
         type: 'surface-zfight',
         severity,
         geometry: `${a.geo} ↔ ${b.geo}`,
-        worldPos: { x: +cx.toFixed(2), y: +a.minY.toFixed(4), z: +cz.toFixed(2) },
+        worldPos: {
+          x: +cx.toFixed(2),
+          y: +a.minY.toFixed(4),
+          z: +cz.toFixed(2),
+        },
         deltaY: +deltaY.toFixed(4),
         hasPolygonOffset: a.hasOffset && b.hasOffset,
         parentChain: `${labelA}  +  ${labelB}`,
         fix: `add polygonOffset:true, polygonOffsetFactor:-2 to the upper mesh's material`,
-        x: cx, z: cz,
+        x: cx,
+        z: cz,
         message: `surface-zfight [${severity}]: ${a.geo} [${labelA}] ↔ ${b.geo} [${labelB}] @ (${cx.toFixed(1)}, ${cz.toFixed(1)}) — ΔY=${deltaY.toFixed(4)}u${offsetNote}`,
       });
     }
@@ -1450,11 +1598,23 @@ function _auditZFighting(radius = 200) {
   devState.helpersDirty = true;
 
   const bySev = {};
-  issues.forEach(i => { bySev[i.severity] = (bySev[i.severity] ?? 0) + 1; });
-  const sevSummary = Object.entries(bySev).map(([k, v]) => `${v} ${k}`).join(', ');
-  console.log(`[auditZFighting] ${flat.length} flat meshes scanned (r=${radius}u) → ${issues.length} issues${issues.length ? ` (${sevSummary})` : ' — clean!'}`);
-  issues.forEach(i => console.log(`  [${i.severity.toUpperCase()}] ${i.message}`));
-  if (issues.length) console.log(`%c Toggle devState.showZFightMarkers = true to see 3D overlays`, 'color:#60a5fa');
+  issues.forEach((i) => {
+    bySev[i.severity] = (bySev[i.severity] ?? 0) + 1;
+  });
+  const sevSummary = Object.entries(bySev)
+    .map(([k, v]) => `${v} ${k}`)
+    .join(', ');
+  console.log(
+    `[auditZFighting] ${flat.length} flat meshes scanned (r=${radius}u) → ${issues.length} issues${issues.length ? ` (${sevSummary})` : ' — clean!'}`,
+  );
+  issues.forEach((i) =>
+    console.log(`  [${i.severity.toUpperCase()}] ${i.message}`),
+  );
+  if (issues.length)
+    console.log(
+      `%c Toggle devState.showZFightMarkers = true to see 3D overlays`,
+      'color:#60a5fa',
+    );
 
   return issues;
 }
@@ -1464,14 +1624,18 @@ function exposeLLMApi() {
   if (typeof window === 'undefined') return;
 
   window.metalyceumDev = {
-
     // ── Navigation ─────────────────────────────────────────────────────────
 
     teleport: (x, z) => devTeleport(x, z),
 
     teleportTo: (name) => {
       const def = LANDMARK_REGISTRY[name];
-      if (!def) { console.warn(`[metalyceumDev] Unknown landmark: "${name}". Try: ${Object.keys(LANDMARK_REGISTRY).join(', ')}`); return; }
+      if (!def) {
+        console.warn(
+          `[metalyceumDev] Unknown landmark: "${name}". Try: ${Object.keys(LANDMARK_REGISTRY).join(', ')}`,
+        );
+        return;
+      }
       const lmGroup = state.landmarkGroups.get(name);
       const offX = lmGroup ? lmGroup.position.x : 0;
       const offZ = lmGroup ? lmGroup.position.z : 0;
@@ -1484,17 +1648,29 @@ function exposeLLMApi() {
 
     setLandmark: (name, { x = 0, y = 0, z = 0, rotY = 0 } = {}) => {
       const lmGroup = state.landmarkGroups.get(name);
-      if (!lmGroup) { console.warn(`[metalyceumDev] Landmark "${name}" not found. Build the map first.`); return; }
+      if (!lmGroup) {
+        console.warn(
+          `[metalyceumDev] Landmark "${name}" not found. Build the map first.`,
+        );
+        return;
+      }
       lmGroup.position.set(x, y, z);
       lmGroup.rotation.y = rotY;
       devState.helpersDirty = true;
-      console.log(`[metalyceumDev] Moved ${name}: ${JSON.stringify({ x, y, z, rotY })}`);
+      console.log(
+        `[metalyceumDev] Moved ${name}: ${JSON.stringify({ x, y, z, rotY })}`,
+      );
     },
 
     getLandmark: (name) => {
       const lmGroup = state.landmarkGroups.get(name);
       if (!lmGroup) return null;
-      return { x: lmGroup.position.x, y: lmGroup.position.y, z: lmGroup.position.z, rotY: lmGroup.rotation.y };
+      return {
+        x: lmGroup.position.x,
+        y: lmGroup.position.y,
+        z: lmGroup.position.z,
+        rotY: lmGroup.rotation.y,
+      };
     },
 
     listLandmarks: () => Object.keys(LANDMARK_REGISTRY),
@@ -1515,28 +1691,35 @@ function exposeLLMApi() {
      */
     suggestFix: (index) => {
       const issue = devState.auditIssues[index];
-      if (!issue) return { error: `No issue at index ${index}. Run audit() first.` };
+      if (!issue)
+        return { error: `No issue at index ${index}. Run audit() first.` };
 
       if (issue.type === 'clipping' || issue.type === 'z-fighting') {
         const entA = state.placedAssets.get(issue.assetIdA);
         const entB = state.placedAssets.get(issue.assetIdB);
         if (!entA || !entB) return { error: 'Asset not found in placedAssets' };
-        const a = entA.asset, b = entB.asset;
+        const a = entA.asset,
+          b = entB.asset;
         const catA = WORLD_ASSET_CATALOG[a.type] || { footprint: 1.0 };
         const catB = WORLD_ASSET_CATALOG[b.type] || { footprint: 1.0 };
         const rA = (catA.footprint * a.scale) / 2;
         const rB = (catB.footprint * b.scale) / 2;
-        const dx = b.x - a.x, dz = b.z - a.z;
+        const dx = b.x - a.x,
+          dz = b.z - a.z;
         const dist = Math.sqrt(dx * dx + dz * dz) || 0.01;
         const need = rA + rB + 0.1;
         const push = need - dist;
-        const nx = dx / dist, nz = dz / dist;
+        const nx = dx / dist,
+          nz = dz / dist;
         return {
           action: 'move asset B away from asset A',
           assetIdToMove: b.id,
           assetTypeToMove: b.type,
           delta: { x: +(nx * push).toFixed(3), z: +(nz * push).toFixed(3) },
-          newPos: { x: +(b.x + nx * push).toFixed(3), z: +(b.z + nz * push).toFixed(3) },
+          newPos: {
+            x: +(b.x + nx * push).toFixed(3),
+            z: +(b.z + nz * push).toFixed(3),
+          },
         };
       }
 
@@ -1562,20 +1745,30 @@ function exposeLLMApi() {
         let closestPt = [0, 0];
         let closestDist = Infinity;
         for (let i = 0; i < RIVER_PTS.length - 1; i++) {
-          const mx = (RIVER_PTS[i][0] + RIVER_PTS[i+1][0]) / 2;
-          const mz = (RIVER_PTS[i][1] + RIVER_PTS[i+1][1]) / 2;
+          const mx = (RIVER_PTS[i][0] + RIVER_PTS[i + 1][0]) / 2;
+          const mz = (RIVER_PTS[i][1] + RIVER_PTS[i + 1][1]) / 2;
           const d = Math.sqrt((a.x - mx) ** 2 + (a.z - mz) ** 2);
-          if (d < closestDist) { closestDist = d; closestPt = [mx, mz]; }
+          if (d < closestDist) {
+            closestDist = d;
+            closestPt = [mx, mz];
+          }
         }
-        const dx = a.x - closestPt[0], dz = a.z - closestPt[1];
+        const dx = a.x - closestPt[0],
+          dz = a.z - closestPt[1];
         const dist = Math.sqrt(dx * dx + dz * dz) || 0.01;
         const need = 5.5;
         const push = need - dist;
         return {
           action: 'move asset away from river',
           assetId: a.id,
-          delta: { x: +(dx / dist * push).toFixed(3), z: +(dz / dist * push).toFixed(3) },
-          newPos: { x: +(a.x + dx / dist * push).toFixed(3), z: +(a.z + dz / dist * push).toFixed(3) },
+          delta: {
+            x: +((dx / dist) * push).toFixed(3),
+            z: +((dz / dist) * push).toFixed(3),
+          },
+          newPos: {
+            x: +(a.x + (dx / dist) * push).toFixed(3),
+            z: +(a.z + (dz / dist) * push).toFixed(3),
+          },
         };
       }
 
@@ -1598,23 +1791,32 @@ function exposeLLMApi() {
      *   steps=5  → 25 points (quick overview)
      *   steps=10 → 100 points (detail for large builds)
      */
-    sampleTerrain: (cx, cz, radius, steps = 5) => _sampleTerrain(cx, cz, radius, steps),
+    sampleTerrain: (cx, cz, radius, steps = 5) =>
+      _sampleTerrain(cx, cz, radius, steps),
 
     /**
      * Horizontal + vertical measurement between two points.
      * Returns distance, terrain heights, slope — useful for roads and ramps.
      */
     measure: (x1, z1, x2, z2) => {
-      const dx = x2 - x1, dz = z2 - z1;
+      const dx = x2 - x1,
+        dz = z2 - z1;
       const xzDist = +Math.sqrt(dx * dx + dz * dz).toFixed(3);
       const y1 = +getTerrainHeight(x1, z1).toFixed(3);
       const y2 = +getTerrainHeight(x2, z2).toFixed(3);
       const yMid = +getTerrainHeight((x1 + x2) / 2, (z1 + z2) / 2).toFixed(3);
       return {
-        xzDist, y1, y2, yMid,
+        xzDist,
+        y1,
+        y2,
+        yMid,
         heightDiff: +(y2 - y1).toFixed(3),
-        slopePct: xzDist > 0 ? +(Math.abs(y2 - y1) / xzDist * 100).toFixed(1) : 0,
-        direction: xzDist > 0 ? { x: +(dx / xzDist).toFixed(4), z: +(dz / xzDist).toFixed(4) } : { x: 0, z: 0 },
+        slopePct:
+          xzDist > 0 ? +((Math.abs(y2 - y1) / xzDist) * 100).toFixed(1) : 0,
+        direction:
+          xzDist > 0
+            ? { x: +(dx / xzDist).toFixed(4), z: +(dz / xzDist).toFixed(4) }
+            : { x: 0, z: 0 },
       };
     },
 
@@ -1631,8 +1833,13 @@ function exposeLLMApi() {
       for (let x = -half; x <= half; x += step) {
         for (let z = -half; z <= half; z += step) {
           // Skip main building zone
-          if (x >= COVERED_BOUNDS.minX - radius && x <= COVERED_BOUNDS.maxX + radius &&
-              z >= COVERED_BOUNDS.minZ - radius && z <= COVERED_BOUNDS.maxZ + radius) continue;
+          if (
+            x >= COVERED_BOUNDS.minX - radius &&
+            x <= COVERED_BOUNDS.maxX + radius &&
+            z >= COVERED_BOUNDS.minZ - radius &&
+            z <= COVERED_BOUNDS.maxZ + radius
+          )
+            continue;
 
           // Skip river
           if (getRiverDistance(x, z) < radius + 8) continue;
@@ -1641,7 +1848,10 @@ function exposeLLMApi() {
           let inRoom = false;
           for (const room of state.ROOMS) {
             const b = getRoomBounds(room, radius + 5);
-            if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) { inRoom = true; break; }
+            if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) {
+              inRoom = true;
+              break;
+            }
           }
           if (inRoom) continue;
 
@@ -1652,14 +1862,25 @@ function exposeLLMApi() {
               const lmGroup = state.landmarkGroups.get(key);
               const offX = lmGroup ? lmGroup.position.x : 0;
               const offZ = lmGroup ? lmGroup.position.z : 0;
-              const dist = Math.sqrt((x - (def.approxCenter[0] + offX)) ** 2 + (z - (def.approxCenter[1] + offZ)) ** 2);
-              if (dist < def.approxRadius + radius + 15) { tooClose = true; break; }
+              const dist = Math.sqrt(
+                (x - (def.approxCenter[0] + offX)) ** 2 +
+                  (z - (def.approxCenter[1] + offZ)) ** 2,
+              );
+              if (dist < def.approxRadius + radius + 15) {
+                tooClose = true;
+                break;
+              }
             }
             if (tooClose) continue;
           }
 
           const distFromCentre = Math.sqrt(x * x + z * z);
-          candidates.push({ x: Math.round(x), z: Math.round(z), distFromCentre: +distFromCentre.toFixed(1), terrainHeight: +getTerrainHeight(x, z).toFixed(2) });
+          candidates.push({
+            x: Math.round(x),
+            z: Math.round(z),
+            distFromCentre: +distFromCentre.toFixed(1),
+            terrainHeight: +getTerrainHeight(x, z).toFixed(2),
+          });
         }
       }
 
@@ -1677,34 +1898,71 @@ function exposeLLMApi() {
       const landmarks = Object.entries(LANDMARK_REGISTRY).map(([key, def]) => {
         const lmGroup = state.landmarkGroups.get(key);
         return {
-          key, label: def.label,
-          center: def.approxCenter, radius: def.approxRadius,
+          key,
+          label: def.label,
+          center: def.approxCenter,
+          radius: def.approxRadius,
           groupOffset: lmGroup
-            ? { x: +lmGroup.position.x.toFixed(3), y: +lmGroup.position.y.toFixed(3), z: +lmGroup.position.z.toFixed(3), rotY: +lmGroup.rotation.y.toFixed(5) }
+            ? {
+                x: +lmGroup.position.x.toFixed(3),
+                y: +lmGroup.position.y.toFixed(3),
+                z: +lmGroup.position.z.toFixed(3),
+                rotY: +lmGroup.rotation.y.toFixed(5),
+              }
             : { x: 0, y: 0, z: 0, rotY: 0 },
-          terrainHeight: +getTerrainHeight(def.approxCenter[0], def.approxCenter[1]).toFixed(3),
+          terrainHeight: +getTerrainHeight(
+            def.approxCenter[0],
+            def.approxCenter[1],
+          ).toFixed(3),
         };
       });
 
-      const rooms = state.ROOMS.map(r => {
+      const rooms = state.ROOMS.map((r) => {
         const b = getRoomBounds(r);
-        return { id: r.id, name: r.name, x: r.x, z: r.z, width: r.width, depth: r.depth, bounds: b };
+        return {
+          id: r.id,
+          name: r.name,
+          x: r.x,
+          z: r.z,
+          width: r.width,
+          depth: r.depth,
+          bounds: b,
+        };
       });
 
-      const walls = state.WALLS.map(w => ({
-        min: { x: +w.min.x.toFixed(2), y: +w.min.y.toFixed(2), z: +w.min.z.toFixed(2) },
-        max: { x: +w.max.x.toFixed(2), y: +w.max.y.toFixed(2), z: +w.max.z.toFixed(2) },
+      const walls = state.WALLS.map((w) => ({
+        min: {
+          x: +w.min.x.toFixed(2),
+          y: +w.min.y.toFixed(2),
+          z: +w.min.z.toFixed(2),
+        },
+        max: {
+          x: +w.max.x.toFixed(2),
+          y: +w.max.y.toFixed(2),
+          z: +w.max.z.toFixed(2),
+        },
       }));
 
-      const assets = Array.from(state.placedAssets.values()).slice(0, 200).map(({ asset }) => ({
-        id: asset.id, type: asset.type,
-        x: asset.x, y: asset.y, z: asset.z,
-        rotY: asset.rotationY, scale: asset.scale, roomId: asset.roomId,
-      }));
+      const assets = Array.from(state.placedAssets.values())
+        .slice(0, 200)
+        .map(({ asset }) => ({
+          id: asset.id,
+          type: asset.type,
+          x: asset.x,
+          y: asset.y,
+          z: asset.z,
+          rotY: asset.rotationY,
+          scale: asset.scale,
+          roomId: asset.roomId,
+        }));
 
       return {
         player: state.localPlayer
-          ? { x: +state.localPlayer.x.toFixed(2), y: +state.localPlayer.y.toFixed(2), z: +state.localPlayer.z.toFixed(2) }
+          ? {
+              x: +state.localPlayer.x.toFixed(2),
+              y: +state.localPlayer.y.toFixed(2),
+              z: +state.localPlayer.z.toFixed(2),
+            }
           : null,
         landmarks,
         rooms,
@@ -1722,8 +1980,10 @@ function exposeLLMApi() {
      *   metalyceumDev.colliderBox(130, -80, 60, 60)
      */
     colliderBox: (cx, cz, w, d, id = 'custom') => ({
-      minX: +(cx - w / 2).toFixed(3), maxX: +(cx + w / 2).toFixed(3),
-      minZ: +(cz - d / 2).toFixed(3), maxZ: +(cz + d / 2).toFixed(3),
+      minX: +(cx - w / 2).toFixed(3),
+      maxX: +(cx + w / 2).toFixed(3),
+      minZ: +(cz - d / 2).toFixed(3),
+      maxZ: +(cz + d / 2).toFixed(3),
       assetId: id,
     }),
 
@@ -1733,9 +1993,17 @@ function exposeLLMApi() {
      *   metalyceumDev.wallBox(-85, 140, 46, 34, 10, baseY)
      */
     wallBox: (cx, cz, w, d, h, baseY = 0) => ({
-      min: { x: +(cx - w / 2).toFixed(3), y: +(baseY - 0.5).toFixed(3), z: +(cz - d / 2).toFixed(3) },
-      max: { x: +(cx + w / 2).toFixed(3), y: +(baseY + h).toFixed(3), z: +(cz + d / 2).toFixed(3) },
-      jsCode: `new THREE.Box3(new THREE.Vector3(${+(cx - w/2).toFixed(2)}, ${+(baseY-0.5).toFixed(2)}, ${+(cz - d/2).toFixed(2)}), new THREE.Vector3(${+(cx + w/2).toFixed(2)}, ${+(baseY+h).toFixed(2)}, ${+(cz + d/2).toFixed(2)}))`,
+      min: {
+        x: +(cx - w / 2).toFixed(3),
+        y: +(baseY - 0.5).toFixed(3),
+        z: +(cz - d / 2).toFixed(3),
+      },
+      max: {
+        x: +(cx + w / 2).toFixed(3),
+        y: +(baseY + h).toFixed(3),
+        z: +(cz + d / 2).toFixed(3),
+      },
+      jsCode: `new THREE.Box3(new THREE.Vector3(${+(cx - w / 2).toFixed(2)}, ${+(baseY - 0.5).toFixed(2)}, ${+(cz - d / 2).toFixed(2)}), new THREE.Vector3(${+(cx + w / 2).toFixed(2)}, ${+(baseY + h).toFixed(2)}, ${+(cz + d / 2).toFixed(2)}))`,
     }),
 
     /**
@@ -1750,7 +2018,12 @@ function exposeLLMApi() {
       const byType = {};
       for (const { asset } of state.placedAssets.values()) {
         if (!byType[asset.type]) byType[asset.type] = [];
-        byType[asset.type].push({ id: asset.id, x: asset.x, z: asset.z, scale: asset.scale });
+        byType[asset.type].push({
+          id: asset.id,
+          x: asset.x,
+          z: asset.z,
+          scale: asset.scale,
+        });
       }
       return byType;
     },
@@ -1787,7 +2060,9 @@ function exposeLLMApi() {
     toggleZFightMarkers: (on) => {
       devState.showZFightMarkers = on ?? !devState.showZFightMarkers;
       devState.helpersDirty = true;
-      console.log(`[metalyceumDev] Z-fight markers: ${devState.showZFightMarkers ? 'ON' : 'OFF'}`);
+      console.log(
+        `[metalyceumDev] Z-fight markers: ${devState.showZFightMarkers ? 'ON' : 'OFF'}`,
+      );
     },
 
     /**
@@ -1817,11 +2092,15 @@ function exposeLLMApi() {
         results.push({
           source: 'static-scenery',
           kind: entry.kind,
-          worldPos: { x: +_tmp.x.toFixed(2), y: +_tmp.y.toFixed(2), z: +_tmp.z.toFixed(2) },
+          worldPos: {
+            x: +_tmp.x.toFixed(2),
+            y: +_tmp.y.toFixed(2),
+            z: +_tmp.z.toFixed(2),
+          },
           worldRotDeg: {
-            x: +(_te.x * 180 / Math.PI).toFixed(1),
-            y: +(_te.y * 180 / Math.PI).toFixed(1),
-            z: +(_te.z * 180 / Math.PI).toFixed(1),
+            x: +((_te.x * 180) / Math.PI).toFixed(1),
+            y: +((_te.y * 180) / Math.PI).toFixed(1),
+            z: +((_te.z * 180) / Math.PI).toFixed(1),
           },
           scale: +obj.scale.x.toFixed(3),
           terrainY: +terrainY.toFixed(3),
@@ -1839,7 +2118,7 @@ function exposeLLMApi() {
           type: asset.type,
           id: asset.id.slice(0, 8),
           worldPos: { x: asset.x, y: asset.y, z: asset.z },
-          worldRotDeg: { y: +(asset.rotationY * 180 / Math.PI).toFixed(1) },
+          worldRotDeg: { y: +((asset.rotationY * 180) / Math.PI).toFixed(1) },
           scale: asset.scale,
           terrainY: +terrainY.toFixed(3),
           yAboveTerrain: +(asset.y - terrainY).toFixed(3),
@@ -1858,7 +2137,10 @@ function exposeLLMApi() {
     getLastInspected: () => devState.lastInspected,
 
     /** Clear the alt+click inspector result and its 3D marker. */
-    clearInspected: () => { devState.lastInspected = null; devState.helpersDirty = true; },
+    clearInspected: () => {
+      devState.lastInspected = null;
+      devState.helpersDirty = true;
+    },
 
     // ── Proximity / intersection ───────────────────────────────────────────
 
@@ -1888,7 +2170,14 @@ function exposeLLMApi() {
         if (d > radius) continue;
         const cat = WORLD_ASSET_CATALOG[asset.type];
         const r = cat ? (cat.footprint * asset.scale) / 2 : 0.5;
-        objs.push({ kind: 'asset', id: asset.id.slice(0, 8), label: `${asset.type}`, x: asset.x, z: asset.z, r });
+        objs.push({
+          kind: 'asset',
+          id: asset.id.slice(0, 8),
+          label: `${asset.type}`,
+          x: asset.x,
+          z: asset.z,
+          r,
+        });
       }
 
       // Landmark groups (approxRadius from registry)
@@ -1898,7 +2187,14 @@ function exposeLLMApi() {
         const lz = def.approxCenter[1] + (grp ? grp.position.z : 0);
         const d = Math.sqrt((lx - cx) ** 2 + (lz - cz) ** 2);
         if (d > radius + def.approxRadius) continue;
-        objs.push({ kind: 'landmark', id: key, label: def.label, x: lx, z: lz, r: def.approxRadius });
+        objs.push({
+          kind: 'landmark',
+          id: key,
+          label: def.label,
+          x: lx,
+          z: lz,
+          r: def.approxRadius,
+        });
       }
 
       // Static scenery groups (world position, estimated radius 1.5u)
@@ -1909,35 +2205,71 @@ function exposeLLMApi() {
         entry.object3d.getWorldPosition(_tmp2);
         const d = Math.sqrt((_tmp2.x - cx) ** 2 + (_tmp2.z - cz) ** 2);
         if (d > radius) continue;
-        objs.push({ kind: 'static', id: `scenery[${i}]`, label: `static(${entry.kind})`, x: +_tmp2.x.toFixed(2), z: +_tmp2.z.toFixed(2), r: 1.5 });
+        objs.push({
+          kind: 'static',
+          id: `scenery[${i}]`,
+          label: `static(${entry.kind})`,
+          x: +_tmp2.x.toFixed(2),
+          z: +_tmp2.z.toFixed(2),
+          r: 1.5,
+        });
       }
 
       // Compute all pairwise distances
       const pairs = [];
       for (let i = 0; i < objs.length; i++) {
         for (let j = i + 1; j < objs.length; j++) {
-          const a = objs[i], b = objs[j];
-          const dx = a.x - b.x, dz = a.z - b.z;
+          const a = objs[i],
+            b = objs[j];
+          const dx = a.x - b.x,
+            dz = a.z - b.z;
           const centreDist = Math.sqrt(dx * dx + dz * dz);
           const edgeDist = centreDist - a.r - b.r; // negative = intersecting
           pairs.push({
-            a: { kind: a.kind, id: a.id, label: a.label, pos: { x: a.x, z: a.z }, r: a.r },
-            b: { kind: b.kind, id: b.id, label: b.label, pos: { x: b.x, z: b.z }, r: b.r },
+            a: {
+              kind: a.kind,
+              id: a.id,
+              label: a.label,
+              pos: { x: a.x, z: a.z },
+              r: a.r,
+            },
+            b: {
+              kind: b.kind,
+              id: b.id,
+              label: b.label,
+              pos: { x: b.x, z: b.z },
+              r: b.r,
+            },
             centreDist: +centreDist.toFixed(3),
             edgeDist: +edgeDist.toFixed(3),
-            status: edgeDist < 0 ? 'INTERSECTING' : edgeDist < 0.3 ? 'touching' : edgeDist < 2 ? 'close' : 'clear',
+            status:
+              edgeDist < 0
+                ? 'INTERSECTING'
+                : edgeDist < 0.3
+                  ? 'touching'
+                  : edgeDist < 2
+                    ? 'close'
+                    : 'clear',
           });
         }
       }
 
       pairs.sort((a, b) => a.edgeDist - b.edgeDist);
 
-      const intersecting = pairs.filter(p => p.status === 'INTERSECTING').length;
-      const touching = pairs.filter(p => p.status === 'touching').length;
-      console.log(`[proximity] ${objs.length} objects, ${pairs.length} pairs — ${intersecting} intersecting, ${touching} touching`);
-      pairs.filter(p => p.status === 'INTERSECTING' || p.status === 'touching').forEach(p =>
-        console.log(`  [${p.status}] ${p.a.label}(${p.a.id}) ↔ ${p.b.label}(${p.b.id})  edge dist: ${p.edgeDist}u`)
+      const intersecting = pairs.filter(
+        (p) => p.status === 'INTERSECTING',
+      ).length;
+      const touching = pairs.filter((p) => p.status === 'touching').length;
+      console.log(
+        `[proximity] ${objs.length} objects, ${pairs.length} pairs — ${intersecting} intersecting, ${touching} touching`,
       );
+      pairs
+        .filter((p) => p.status === 'INTERSECTING' || p.status === 'touching')
+        .forEach((p) =>
+          console.log(
+            `  [${p.status}] ${p.a.label}(${p.a.id}) ↔ ${p.b.label}(${p.b.id})  edge dist: ${p.edgeDist}u`,
+          ),
+        );
 
       return pairs;
     },
@@ -1949,7 +2281,10 @@ function exposeLLMApi() {
      *   metalyceumDev.nearestObjects(130,-80,15) // top 15 nearest to (130,-80)
      */
     nearestObjects: (cx, cz, topN = 10) => {
-      if (cx === undefined) { cx = state.localPlayer?.x ?? 0; cz = state.localPlayer?.z ?? 0; }
+      if (cx === undefined) {
+        cx = state.localPlayer?.x ?? 0;
+        cz = state.localPlayer?.z ?? 0;
+      }
       const _tmp3 = new THREE.Vector3();
       const items = [];
 
@@ -1957,21 +2292,45 @@ function exposeLLMApi() {
         const d = Math.sqrt((asset.x - cx) ** 2 + (asset.z - cz) ** 2);
         const cat = WORLD_ASSET_CATALOG[asset.type];
         const r = cat ? (cat.footprint * asset.scale) / 2 : 0.5;
-        items.push({ label: `asset:${asset.type}`, id: asset.id.slice(0, 8), x: asset.x, z: asset.z, r, centreDist: +d.toFixed(2), edgeDist: +(d - r).toFixed(2) });
+        items.push({
+          label: `asset:${asset.type}`,
+          id: asset.id.slice(0, 8),
+          x: asset.x,
+          z: asset.z,
+          r,
+          centreDist: +d.toFixed(2),
+          edgeDist: +(d - r).toFixed(2),
+        });
       }
       for (const [key, def] of Object.entries(LANDMARK_REGISTRY)) {
         const grp = state.landmarkGroups.get(key);
         const lx = def.approxCenter[0] + (grp ? grp.position.x : 0);
         const lz = def.approxCenter[1] + (grp ? grp.position.z : 0);
         const d = Math.sqrt((lx - cx) ** 2 + (lz - cz) ** 2);
-        items.push({ label: `landmark:${def.label}`, id: key, x: lx, z: lz, r: def.approxRadius, centreDist: +d.toFixed(2), edgeDist: +(d - def.approxRadius).toFixed(2) });
+        items.push({
+          label: `landmark:${def.label}`,
+          id: key,
+          x: lx,
+          z: lz,
+          r: def.approxRadius,
+          centreDist: +d.toFixed(2),
+          edgeDist: +(d - def.approxRadius).toFixed(2),
+        });
       }
       for (let i = 0; i < state.STATIC_SCENERY.length; i++) {
         const entry = state.STATIC_SCENERY[i];
         if (!entry.object3d) continue;
         entry.object3d.getWorldPosition(_tmp3);
         const d = Math.sqrt((_tmp3.x - cx) ** 2 + (_tmp3.z - cz) ** 2);
-        items.push({ label: `static:${entry.kind}`, id: `scenery[${i}]`, x: +_tmp3.x.toFixed(2), z: +_tmp3.z.toFixed(2), r: 1.5, centreDist: +d.toFixed(2), edgeDist: +(d - 1.5).toFixed(2) });
+        items.push({
+          label: `static:${entry.kind}`,
+          id: `scenery[${i}]`,
+          x: +_tmp3.x.toFixed(2),
+          z: +_tmp3.z.toFixed(2),
+          r: 1.5,
+          centreDist: +d.toFixed(2),
+          edgeDist: +(d - 1.5).toFixed(2),
+        });
       }
 
       items.sort((a, b) => a.edgeDist - b.edgeDist);
@@ -1996,9 +2355,15 @@ function exposeLLMApi() {
      * A clean report logs "✓ All clear" for each category.
      */
     buildAudit: (cx, cz, radius = 60) => {
-      if (cx === undefined) { cx = state.localPlayer?.x ?? 0; cz = state.localPlayer?.z ?? 0; }
+      if (cx === undefined) {
+        cx = state.localPlayer?.x ?? 0;
+        cz = state.localPlayer?.z ?? 0;
+      }
 
-      console.group(`%c[buildAudit] Area (${cx.toFixed(1)}, ${cz.toFixed(1)}) r=${radius}u`, 'font-weight:bold;color:#38bdf8');
+      console.group(
+        `%c[buildAudit] Area (${cx.toFixed(1)}, ${cz.toFixed(1)}) r=${radius}u`,
+        'font-weight:bold;color:#38bdf8',
+      );
 
       // ── Site context ───────────────────────────────────────────────────
       const site = _worldQuery(cx, cz);
@@ -2006,57 +2371,96 @@ function exposeLLMApi() {
 
       // ── Terrain profile ────────────────────────────────────────────────
       const terrain = _sampleTerrain(cx, cz, radius, 6);
-      console.log(`Terrain: min=${terrain.min}  max=${terrain.max}  slope=${terrain.maxSlope.toFixed(2)}u  flat=${terrain.isFlat}`);
+      console.log(
+        `Terrain: min=${terrain.min}  max=${terrain.max}  slope=${terrain.maxSlope.toFixed(2)}u  flat=${terrain.isFlat}`,
+      );
 
       // ── Z-fighting / shimmering ────────────────────────────────────────
       const zf = _auditZFighting(radius);
-      const zfCrit    = zf.filter(i => i.severity === 'critical').length;
-      const zfHigh    = zf.filter(i => i.severity === 'high').length;
-      const zfMedium  = zf.filter(i => i.severity === 'medium').length;
+      const zfCrit = zf.filter((i) => i.severity === 'critical').length;
+      const zfHigh = zf.filter((i) => i.severity === 'high').length;
+      const zfMedium = zf.filter((i) => i.severity === 'medium').length;
       if (zfCrit + zfHigh + zfMedium > 0) {
-        console.warn(`Z-fighting: ${zfCrit} critical, ${zfHigh} high, ${zfMedium} medium  — call auditZFighting() for details`);
+        console.warn(
+          `Z-fighting: ${zfCrit} critical, ${zfHigh} high, ${zfMedium} medium  — call auditZFighting() for details`,
+        );
       } else {
         console.log('%c✓ Z-fighting: clean', 'color:#22c55e');
       }
 
       // ── Placed-asset issues ────────────────────────────────────────────
       runWorldAudit();
-      const placedIssues = devState.auditIssues.filter(i => {
-        const dx = (i.x ?? cx) - cx, dz = (i.z ?? cz) - cz;
+      const placedIssues = devState.auditIssues.filter((i) => {
+        const dx = (i.x ?? cx) - cx,
+          dz = (i.z ?? cz) - cz;
         return dx * dx + dz * dz <= radius * radius;
       });
       if (placedIssues.length > 0) {
         const bySev = {};
-        placedIssues.forEach(i => { bySev[i.severity] = (bySev[i.severity] ?? 0) + 1; });
-        console.warn(`Placed assets: ${placedIssues.length} issues — ${Object.entries(bySev).map(([k,v])=>`${v} ${k}`).join(', ')}`);
-        placedIssues.forEach(i => console.warn(`  [${i.severity.toUpperCase()}] ${i.message}`));
+        placedIssues.forEach((i) => {
+          bySev[i.severity] = (bySev[i.severity] ?? 0) + 1;
+        });
+        console.warn(
+          `Placed assets: ${placedIssues.length} issues — ${Object.entries(
+            bySev,
+          )
+            .map(([k, v]) => `${v} ${k}`)
+            .join(', ')}`,
+        );
+        placedIssues.forEach((i) =>
+          console.warn(`  [${i.severity.toUpperCase()}] ${i.message}`),
+        );
       } else {
         console.log('%c✓ Placed assets: clean', 'color:#22c55e');
       }
 
       // ── Static scenery misalignment ────────────────────────────────────
       _auditStaticScenery(0.4);
-      const sceneryIssues = devState.staticAuditIssues.filter(i => {
-        const dx = i.worldPos.x - cx, dz = i.worldPos.z - cz;
+      const sceneryIssues = devState.staticAuditIssues.filter((i) => {
+        const dx = i.worldPos.x - cx,
+          dz = i.worldPos.z - cz;
         return dx * dx + dz * dz <= radius * radius;
       });
       if (sceneryIssues.length > 0) {
         const bySev = {};
-        sceneryIssues.forEach(i => { bySev[i.severity] = (bySev[i.severity] ?? 0) + 1; });
-        console.warn(`Static scenery: ${sceneryIssues.length} issues — ${Object.entries(bySev).map(([k,v])=>`${v} ${k}`).join(', ')}`);
-        sceneryIssues.forEach(i => console.warn(`  [${i.severity.toUpperCase()}] ${i.message}`));
+        sceneryIssues.forEach((i) => {
+          bySev[i.severity] = (bySev[i.severity] ?? 0) + 1;
+        });
+        console.warn(
+          `Static scenery: ${sceneryIssues.length} issues — ${Object.entries(
+            bySev,
+          )
+            .map(([k, v]) => `${v} ${k}`)
+            .join(', ')}`,
+        );
+        sceneryIssues.forEach((i) =>
+          console.warn(`  [${i.severity.toUpperCase()}] ${i.message}`),
+        );
       } else {
         console.log('%c✓ Static scenery: clean', 'color:#22c55e');
       }
 
-      const totalIssues = (zfCrit + zfHigh + zfMedium) + placedIssues.length + sceneryIssues.length;
-      console.log(`─── ${totalIssues === 0 ? '✓ Area is clean.' : `${totalIssues} total issues. Fix before committing.`}`);
+      const totalIssues =
+        zfCrit + zfHigh + zfMedium + placedIssues.length + sceneryIssues.length;
+      console.log(
+        `─── ${totalIssues === 0 ? '✓ Area is clean.' : `${totalIssues} total issues. Fix before committing.`}`,
+      );
       console.groupEnd();
 
       return {
         site,
-        terrain: { min: terrain.min, max: terrain.max, maxSlope: terrain.maxSlope, isFlat: terrain.isFlat },
-        zfighting: { critical: zfCrit, high: zfHigh, medium: zfMedium, issues: zf.filter(i => i.severity !== 'info') },
+        terrain: {
+          min: terrain.min,
+          max: terrain.max,
+          maxSlope: terrain.maxSlope,
+          isFlat: terrain.isFlat,
+        },
+        zfighting: {
+          critical: zfCrit,
+          high: zfHigh,
+          medium: zfMedium,
+          issues: zf.filter((i) => i.severity !== 'info'),
+        },
         placedAssets: { count: placedIssues.length, issues: placedIssues },
         scenery: { count: sceneryIssues.length, issues: sceneryIssues },
         summary: totalIssues === 0 ? 'CLEAN' : `${totalIssues} issues`,

@@ -1,13 +1,21 @@
 // Soundtrack playlist rendering and HUD music playback controllers for Metalyceum
-import { state } from '../state.js';
-import { resumeAudioContext, pauseSoundtrackPlayback, updateSoundtrackUi, jumpToTrack } from '../audio.js';
+
+import {
+  jumpToTrack,
+  pauseSoundtrackPlayback,
+  resumeAudioContext,
+  updateSoundtrackUi,
+} from '../audio.js';
 import { SOUNDTRACK_LIBRARY } from '../config.js';
+import { state } from '../state.js';
 
 export function initSoundtrackUi() {
   state.soundtrackCard = document.getElementById('soundtrack-card');
   state.soundtrackTitleEl = document.getElementById('soundtrack-title');
   state.soundtrackStatusEl = document.getElementById('soundtrack-status');
-  state.soundtrackPlayPauseBtn = document.getElementById('soundtrack-playpause-btn');
+  state.soundtrackPlayPauseBtn = document.getElementById(
+    'soundtrack-playpause-btn',
+  );
   state.soundtrackPrevBtn = document.getElementById('soundtrack-prev-btn');
   state.soundtrackNextBtn = document.getElementById('soundtrack-next-btn');
   state.soundtrackTracklistEl = document.getElementById('soundtrack-tracklist');

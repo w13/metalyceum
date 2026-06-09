@@ -1,18 +1,23 @@
 // Visibility and Culling Manager for Scenery
-import { state } from '../state.js';
+
 import {
+  OUTDOOR_SCENERY_VISIBILITY_DISTANCE,
   ROOM_SCENERY_VISIBILITY_DISTANCE,
-  OUTDOOR_SCENERY_VISIBILITY_DISTANCE
 } from '../config.js';
+import { state } from '../state.js';
 
 export function registerStaticScenery(object3d, options = {}) {
-  const dist = options.distance || (options.kind === 'room' ? ROOM_SCENERY_VISIBILITY_DISTANCE : OUTDOOR_SCENERY_VISIBILITY_DISTANCE);
+  const dist =
+    options.distance ||
+    (options.kind === 'room'
+      ? ROOM_SCENERY_VISIBILITY_DISTANCE
+      : OUTDOOR_SCENERY_VISIBILITY_DISTANCE);
   state.STATIC_SCENERY.push({
     object3d,
     kind: options.kind || 'outdoor',
     roomId: options.roomId ?? null,
     distance: dist,
-    distanceSquared: dist * dist
+    distanceSquared: dist * dist,
   });
   return object3d;
 }
@@ -33,7 +38,9 @@ export function refreshStaticSceneryVisibility() {
     }
 
     if (!state.camera) return;
-    const distanceSq = state.camera.position.distanceToSquared(entry.object3d.position);
+    const distanceSq = state.camera.position.distanceToSquared(
+      entry.object3d.position,
+    );
     entry.object3d.visible = distanceSq <= entry.distanceSquared;
   });
 }

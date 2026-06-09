@@ -1,8 +1,14 @@
 // Event Board, Room Panel, and Video Setup for Metalyceum
+
+import { addChatLog } from './chat.js';
+import {
+  closeModal,
+  isModalRegistered,
+  openModal,
+  registerModal,
+} from './modals.js';
 import { state } from './state.js';
 import { getRoomEventStatus, parseVideoInput } from './utils.js';
-import { addChatLog } from './chat.js';
-import { closeModal, isModalRegistered, openModal, registerModal } from './modals.js';
 
 export function initRoomPanelCache() {
   state.roomPanelEl = document.getElementById('room-panel');
@@ -58,9 +64,13 @@ export function initRoomEventModal() {
 
       if (nameInput) nameInput.value = room.name || '';
       if (sourceInput) sourceInput.value = room.sourceValue || '';
-      if (startInput) startInput.value = room.startTime ? room.startTime.slice(0, 16) : '';
-      if (durationInput) durationInput.value = room.durationMinutes ? String(room.durationMinutes) : '';
-    }
+      if (startInput)
+        startInput.value = room.startTime ? room.startTime.slice(0, 16) : '';
+      if (durationInput)
+        durationInput.value = room.durationMinutes
+          ? String(room.durationMinutes)
+          : '';
+    },
   });
 
   const changeVideoBtn = document.getElementById('change-video-btn');
@@ -77,7 +87,11 @@ export function initRoomEventModal() {
       const room = roomId >= 0 ? state.ROOMS[roomId] : null;
       if (!room) return;
       if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
-        addChatLog('System', 'Reconnect before editing room events.', 'system-msg');
+        addChatLog(
+          'System',
+          'Reconnect before editing room events.',
+          'system-msg',
+        );
         return;
       }
 
@@ -87,23 +101,47 @@ export function initRoomEventModal() {
       const durationInput = document.getElementById('room-duration-input');
 
       const rawSource = sourceInput?.value.trim() || '';
-      const parsedSource = rawSource ? (parseVideoInput(rawSource) ?? rawSource) : (room.sourceValue || '');
-      state.socket.send(JSON.stringify({
-        type: 'set_room_event',
-        roomId,
-        name: nameInput?.value.trim() || room.name,
-        videoId: parsedSource,
-        startTime: startInput?.value ? new Date(startInput.value).toISOString() : room.startTime,
-        durationMinutes: durationInput?.value.trim()
-          ? Math.max(0, Math.min(1440, Number.parseInt(durationInput.value, 10) || 0))
-          : room.durationMinutes
-      }));
+      const parsedSource = rawSource
+        ? (parseVideoInput(rawSource) ?? rawSource)
+        : room.sourceValue || '';
+      state.socket.send(
+        JSON.stringify({
+          type: 'set_room_event',
+          roomId,
+          name: nameInput?.value.trim() || room.name,
+          videoId: parsedSource,
+          startTime: startInput?.value
+            ? new Date(startInput.value).toISOString()
+            : room.startTime,
+          durationMinutes: durationInput?.value.trim()
+            ? Math.max(
+                0,
+                Math.min(1440, Number.parseInt(durationInput.value, 10) || 0),
+              )
+            : room.durationMinutes,
+        }),
+      );
 
       closeRoomEventModal();
     });
   }
 }
 
-export { renderEventBoard, scheduleEventBoardRender } from './room-panel/event-board.js';
-export { refreshRoomPlayersList, scheduleRoomPlayersListRefresh, scheduleRoomVisualRefresh, syncRoomVisuals } from './room-panel/player-list.js';
-export { setupRoomVideo, syncActiveRoomMediaState, scheduleActiveRoomMediaState, pauseActiveEmbeddedYoutube, resumeActiveEmbeddedYoutube, syncRoomScreenMedia } from './room-panel/media.js';
+export {
+  renderEventBoard,
+  scheduleEventBoardRender,
+} from './room-panel/event-board.js';
+export {
+  pauseActiveEmbeddedYoutube,
+  resumeActiveEmbeddedYoutube,
+  scheduleActiveRoomMediaState,
+  setupRoomVideo,
+  syncActiveRoomMediaState,
+  syncRoomScreenMedia,
+} from './room-panel/media.js';
+export {
+  refreshRoomPlayersList,
+  scheduleRoomPlayersListRefresh,
+  scheduleRoomVisualRefresh,
+  syncRoomVisuals,
+} from './room-panel/player-list.js';

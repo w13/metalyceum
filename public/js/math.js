@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 
 export function frameIndependentLerp(current, target, dt, decay = 0.001) {
-  const factor = 1 - Math.pow(decay, dt);
+  const factor = 1 - decay ** dt;
   return THREE.MathUtils.lerp(current, target, factor);
 }
 
@@ -13,7 +13,7 @@ export function normalizeAngle(angle) {
 }
 
 export function frameIndependentAngleLerp(current, target, dt, decay = 0.001) {
-  const factor = 1 - Math.pow(decay, dt);
+  const factor = 1 - decay ** dt;
   return current + normalizeAngle(target - current) * factor;
 }
 

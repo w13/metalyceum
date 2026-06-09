@@ -1,28 +1,40 @@
 // HUD UI coordinator, Keyboard handlers, and general event wiring for Metalyceum
-import { state } from './state.js';
+
 import { resumeAudioContext, updateSoundtrackUi } from './audio.js';
-import { isAnyModalOpen, isNodeInsideOpenModal } from './modals.js';
 import {
-  getActiveChatScope, addChatLog,
-  setChatFilter, syncChatScopeWithLocation
+  addChatLog,
+  getActiveChatScope,
+  setChatFilter,
+  syncChatScopeWithLocation,
 } from './chat.js';
 import {
-  closeRoomEventModal, initRoomEventModal, initRoomPanelCache
-} from './room-panel.js';
-import {
-  initTheaterUi, closeTheaterMode, onCanvasClick,
-  focusRoomFromLobbyMarker
-} from './theater.js';
-import {
-  updateEditorPalette, updateEditorStatus,
-  selectEditorAsset, initEditorUiHandlers
+  initEditorUiHandlers,
+  selectEditorAsset,
+  updateEditorPalette,
+  updateEditorStatus,
 } from './editor.js';
 import { toggleMinimap } from './minimap.js';
+import { isAnyModalOpen, isNodeInsideOpenModal } from './modals.js';
+import {
+  closeRoomEventModal,
+  initRoomEventModal,
+  initRoomPanelCache,
+} from './room-panel.js';
+import { state } from './state.js';
+import {
+  closeTheaterMode,
+  focusRoomFromLobbyMarker,
+  initTheaterUi,
+  onCanvasClick,
+} from './theater.js';
 
 import { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
 import { initElevatorUI } from './ui/elevator.js';
-import { initSoundtrackUi, initSoundtrackControls } from './ui/soundtrack-panel.js';
-import { initLoginForm, initColorPickerSync } from './ui/login.js';
+import { initColorPickerSync, initLoginForm } from './ui/login.js';
+import {
+  initSoundtrackControls,
+  initSoundtrackUi,
+} from './ui/soundtrack-panel.js';
 
 function setPanelOpen(panel, button, isOpen) {
   if (!panel || !button) return;
@@ -33,7 +45,9 @@ function setPanelOpen(panel, button, isOpen) {
 
 function initHudPanels() {
   const panels = [
-    { btn: 'music-icon-btn', panel: 'soundtrack-card',
+    {
+      btn: 'music-icon-btn',
+      panel: 'soundtrack-card',
       onOpen: async () => {
         state.DEBUG_STATE.enabled = false;
         if (state.isJoined) {
@@ -42,25 +56,51 @@ function initHudPanels() {
           updateSoundtrackUi();
         }
       },
-      onClose: () => { state.DEBUG_STATE.enabled = false; } },
-    { btn: 'events-icon-btn', panel: 'events-panel',
-      onOpen: () => { state.DEBUG_STATE.enabled = false; },
-      onClose: () => { state.DEBUG_STATE.enabled = false; } },
-    { btn: 'debug-icon-btn', panel: 'debug-panel',
-      onOpen: () => { state.DEBUG_STATE.enabled = true; },
-      onClose: () => { state.DEBUG_STATE.enabled = false; } },
-    { btn: 'controls-icon-btn', panel: 'controls-panel',
-      onOpen: () => { state.DEBUG_STATE.enabled = false; },
-      onClose: () => { state.DEBUG_STATE.enabled = false; },
-      closeBtn: 'close-controls-btn' },
-  ].map(cfg => ({
-    ...cfg,
-    btnEl: document.getElementById(cfg.btn),
-    panelEl: document.getElementById(cfg.panel),
-  })).filter(cfg => cfg.btnEl && cfg.panelEl);
+      onClose: () => {
+        state.DEBUG_STATE.enabled = false;
+      },
+    },
+    {
+      btn: 'events-icon-btn',
+      panel: 'events-panel',
+      onOpen: () => {
+        state.DEBUG_STATE.enabled = false;
+      },
+      onClose: () => {
+        state.DEBUG_STATE.enabled = false;
+      },
+    },
+    {
+      btn: 'debug-icon-btn',
+      panel: 'debug-panel',
+      onOpen: () => {
+        state.DEBUG_STATE.enabled = true;
+      },
+      onClose: () => {
+        state.DEBUG_STATE.enabled = false;
+      },
+    },
+    {
+      btn: 'controls-icon-btn',
+      panel: 'controls-panel',
+      onOpen: () => {
+        state.DEBUG_STATE.enabled = false;
+      },
+      onClose: () => {
+        state.DEBUG_STATE.enabled = false;
+      },
+      closeBtn: 'close-controls-btn',
+    },
+  ]
+    .map((cfg) => ({
+      ...cfg,
+      btnEl: document.getElementById(cfg.btn),
+      panelEl: document.getElementById(cfg.panel),
+    }))
+    .filter((cfg) => cfg.btnEl && cfg.panelEl);
 
   // Collect all (btnEl, panelEl) pairs for the close-others loop
-  const allPairs = panels.map(p => ({ btn: p.btnEl, panel: p.panelEl }));
+  const allPairs = panels.map((p) => ({ btn: p.btnEl, panel: p.panelEl }));
 
   for (const p of panels) {
     p.btnEl.addEventListener('click', async () => {
@@ -68,13 +108,17 @@ function initHudPanels() {
       setPanelOpen(p.panelEl, p.btnEl, isOpen);
       // Close every other panel
       for (const other of allPairs) {
-        if (other.panel !== p.panelEl) setPanelOpen(other.panel, other.btn, false);
+        if (other.panel !== p.panelEl)
+          setPanelOpen(other.panel, other.btn, false);
       }
       (isOpen ? p.onOpen : p.onClose)();
     });
     if (p.closeBtn) {
       const closeEl = document.getElementById(p.closeBtn);
-      if (closeEl) closeEl.addEventListener('click', () => setPanelOpen(p.panelEl, p.btnEl, false));
+      if (closeEl)
+        closeEl.addEventListener('click', () =>
+          setPanelOpen(p.panelEl, p.btnEl, false),
+        );
     }
   }
 }
@@ -86,7 +130,11 @@ function handleChatSubmit(event) {
   if (!msg) return;
 
   if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
-    addChatLog('System', 'Chat is unavailable while disconnected.', 'system-msg');
+    addChatLog(
+      'System',
+      'Chat is unavailable while disconnected.',
+      'system-msg',
+    );
     return;
   }
 
@@ -110,7 +158,9 @@ function initChatAndEventBoard() {
   if (chatForm) chatForm.addEventListener('submit', handleChatSubmit);
 
   document.querySelectorAll('[data-chat-filter]').forEach((button) => {
-    button.addEventListener('click', () => { setChatFilter(button.dataset.chatFilter); });
+    button.addEventListener('click', () => {
+      setChatFilter(button.dataset.chatFilter);
+    });
   });
 
   syncChatScopeWithLocation();
@@ -134,7 +184,8 @@ function initRoomPanelClose() {
 
   closePanelBtn.addEventListener('click', () => {
     closeRoomEventModal({ restoreFocus: false });
-    const roomPanel = state.roomPanelEl || document.getElementById('room-panel');
+    const roomPanel =
+      state.roomPanelEl || document.getElementById('room-panel');
     if (roomPanel) {
       roomPanel.classList.remove('room-panel-visible');
       roomPanel.setAttribute('aria-hidden', 'true');
@@ -202,7 +253,8 @@ function initKeyboardHandlers() {
 
     if (e.key === '`' || e.key === 'Backquote') {
       const debugIconBtn = document.getElementById('debug-icon-btn');
-      const debugPanel = state.debugPanel || document.getElementById('debug-panel');
+      const debugPanel =
+        state.debugPanel || document.getElementById('debug-panel');
       const musicIconBtn = document.getElementById('music-icon-btn');
       const soundtrackCard = document.getElementById('soundtrack-card');
       const eventsIconBtn = document.getElementById('events-icon-btn');

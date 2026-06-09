@@ -1,22 +1,29 @@
 // Physics and Collision Handling for Metalyceum
 import * as THREE from 'three';
-import { state } from './state.js';
 import {
-  MAP_SIZE,
   COVERED_BOUNDS,
   LOBBY_BOUNDS,
   MAIN_BUILDING_MEZZANINE_Y,
   MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
-  RIVER_PTS
+  MAP_SIZE,
+  RIVER_PTS,
 } from './config.js';
-import { AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from './utils.js';
 import { pointToSegmentDistSq } from './math.js';
+import { state } from './state.js';
+import { AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from './utils.js';
 
 // Get closest distance to the meandering river polyline
 export function getRiverDistance(x, z) {
   let minDistanceSq = Infinity;
   for (let i = 0; i < RIVER_PTS.length - 1; i++) {
-    const dSq = pointToSegmentDistSq(x, z, RIVER_PTS[i][0], RIVER_PTS[i][1], RIVER_PTS[i + 1][0], RIVER_PTS[i + 1][1]);
+    const dSq = pointToSegmentDistSq(
+      x,
+      z,
+      RIVER_PTS[i][0],
+      RIVER_PTS[i][1],
+      RIVER_PTS[i + 1][0],
+      RIVER_PTS[i + 1][1],
+    );
     if (dSq < minDistanceSq) {
       minDistanceSq = dSq;
     }
@@ -33,7 +40,8 @@ const _cBox = new THREE.Box3();
 // getTerrainHeight call. Previously defined inside the function which allocated new
 // Function objects each invocation.
 function _flatCircularH(x, z, cx, cz, rInner, rOuter) {
-  const dx = x - cx, dz = z - cz;
+  const dx = x - cx,
+    dz = z - cz;
   return 1 - _ss(rInner, rOuter, Math.sqrt(dx * dx + dz * dz));
 }
 
@@ -89,8 +97,11 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
     // Only active when the player is already elevated (above ROOM_HEIGHT / 2),
     // so ground-floor players are not affected.
     if (
-      Math.abs(x) <= 29.5 && z >= -40 && z <= 40 &&
-      state.localPlayer && state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
+      Math.abs(x) <= 29.5 &&
+      z >= -40 &&
+      z <= 40 &&
+      state.localPlayer &&
+      state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
     ) {
       return MAIN_BUILDING_MEZZANINE_Y; // Mezzanine deck surface
     }
@@ -101,26 +112,26 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
   // Flat zones return 0..1 (1=fully flat). Depth/height modifiers return signed offsets.
   // _flatCircularH / _flatPolylineH are module-level — no closure re-creation per call.
 
-  const f1 = _flatCircularH(x, z, 0, 0, 50, 76);                       // main building
+  const f1 = _flatCircularH(x, z, 0, 0, 50, 76); // main building
 
   // Fountain approach corridor
   const corrX = Math.max(0, Math.abs(x) - 11);
   const corrZ = Math.max(0, z - 74) + Math.max(0, 44 - z);
   const f2 = 1 - _ss(0, 14, Math.sqrt(corrX * corrX + corrZ * corrZ));
 
-  const f3 = _flatPolylineH(x, z, AMP_ROAD_SEGMENTS, 4, 11);            // road → amphitheater
-  const f4 = _flatPolylineH(x, z, CV_ROAD_SEGMENTS, 4, 11);             // road → concert venue
+  const f3 = _flatPolylineH(x, z, AMP_ROAD_SEGMENTS, 4, 11); // road → amphitheater
+  const f4 = _flatPolylineH(x, z, CV_ROAD_SEGMENTS, 4, 11); // road → concert venue
 
   const d5 = Math.sqrt((x - 65) ** 2 + (z - 150) ** 2);
-  const hillRise = _ss(6, 36, d5) * 9 * (1 - _ss(36, 52, d5));         // amphitheater bowl
+  const hillRise = _ss(6, 36, d5) * 9 * (1 - _ss(36, 52, d5)); // amphitheater bowl
   const f5 = _flatCircularH(x, z, 65, 150, 0, 46);
 
-  const d6 = Math.sqrt(((x + 85) / 28) ** 2 + ((z - 140) / 22) ** 2);  // concert venue (elliptical)
+  const d6 = Math.sqrt(((x + 85) / 28) ** 2 + ((z - 140) / 22) ** 2); // concert venue (elliptical)
   const f6 = 1 - _ss(1.0, 1.8, d6);
 
-  const f7 = _flatCircularH(x, z, 160, 220, 30, 70);                    // airport
-  const f8 = _flatCircularH(x, z, 75, 25, 5, 22);                       // cave entrance
-  const f10 = _flatCircularH(x, z, 130, -80, 0, 80);                    // castle
+  const f7 = _flatCircularH(x, z, 160, 220, 30, 70); // airport
+  const f8 = _flatCircularH(x, z, 75, 25, 5, 22); // cave entrance
+  const f10 = _flatCircularH(x, z, 130, -80, 0, 80); // castle
 
   // Underground city cavity
   const d9 = Math.sqrt((x - 120) ** 2 + (z - 95) ** 2);
@@ -129,23 +140,34 @@ export function getTerrainHeight(x, z, ignoreBridges = false) {
   // River channel — polyline distance with canyon + berm
   const riverDist = getRiverDistance(x, z);
   // Wider, deeper channel: inner 9u half-width, 7u deep; berm 9–13u, 1.5u deep
-  const riverChannel = _ss(9.0, 0.0, riverDist) * 7.0
-    + _ss(13.0, 9.0, riverDist) * 1.5;
+  const riverChannel =
+    _ss(9.0, 0.0, riverDist) * 7.0 + _ss(13.0, 9.0, riverDist) * 1.5;
 
   // Waterfall step at (30, 90)
-  const wfDist = Math.abs((x - 30) * Math.cos(-0.6) + (z - 90) * Math.sin(-0.6));
+  const wfDist = Math.abs(
+    (x - 30) * Math.cos(-0.6) + (z - 90) * Math.sin(-0.6),
+  );
   const wfHeight = _ss(3, 0, wfDist) * 3.5 * (1 - _ss(1, 8, Math.abs(z - 90)));
 
   // Large lakes (depth modifiers)
-  const lake1 = 5 * (1 - _ss(5, 55, Math.sqrt((x - 250) ** 2 + (z + 250) ** 2)));
-  const lake2 = 4.5 * (1 - _ss(5, 45, Math.sqrt((x + 200) ** 2 + (z - 280) ** 2)));
+  const lake1 =
+    5 * (1 - _ss(5, 55, Math.sqrt((x - 250) ** 2 + (z + 250) ** 2)));
+  const lake2 =
+    4.5 * (1 - _ss(5, 45, Math.sqrt((x + 200) ** 2 + (z - 280) ** 2)));
 
   // Base rolling hills — two overlapping sine octaves, amplitude ≈ ±3.7 u
-  const hills = Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.2
-              + Math.cos(x * 0.05) * Math.sin(z * 0.05) * 1.5;
+  const hills =
+    Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2.2 +
+    Math.cos(x * 0.05) * Math.sin(z * 0.05) * 1.5;
 
   const flatFactor = 1 - Math.max(f1, f2, f3, f4, f5, f6, f7, f8, f10);
-  return (hills - cavity + Math.max(wfHeight - riverChannel, 0)) * flatFactor + hillRise - riverChannel - lake1 - lake2;
+  return (
+    (hills - cavity + Math.max(wfHeight - riverChannel, 0)) * flatFactor +
+    hillRise -
+    riverChannel -
+    lake1 -
+    lake2
+  );
 }
 
 export function checkCollision(targetX, targetZ) {
@@ -178,7 +200,9 @@ function _checkCollisionWith(sphere, targetX, targetZ) {
 }
 
 export function isPointWithinBounds(x, z, bounds) {
-  return x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ;
+  return (
+    x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ
+  );
 }
 
 export function getRoomBounds(room, padding = 0) {
@@ -187,7 +211,7 @@ export function getRoomBounds(room, padding = 0) {
       minX: room.bounds.minX - padding,
       maxX: room.bounds.maxX + padding,
       minZ: room.bounds.minZ - padding,
-      maxZ: room.bounds.maxZ + padding
+      maxZ: room.bounds.maxZ + padding,
     };
   }
 
@@ -195,7 +219,7 @@ export function getRoomBounds(room, padding = 0) {
     minX: room.x - room.width / 2 - padding,
     maxX: room.x + room.width / 2 + padding,
     minZ: room.z - room.depth / 2 - padding,
-    maxZ: room.z + room.depth / 2 + padding
+    maxZ: room.z + room.depth / 2 + padding,
   };
 }
 
@@ -214,9 +238,17 @@ export function getRoomIdForPosition(x, z, padding = 0) {
 
 export function isLocalPlayerUnderRoof() {
   if (state.localPlayer.currentRoom !== -1) return true;
-  if (isPointWithinBounds(state.localPlayer.x, state.localPlayer.z, COVERED_BOUNDS)) return true;
+  if (
+    isPointWithinBounds(
+      state.localPlayer.x,
+      state.localPlayer.z,
+      COVERED_BOUNDS,
+    )
+  )
+    return true;
   // Direct distance check for venues that may not trigger room detection
-  const px = state.localPlayer.x, pz = state.localPlayer.z;
+  const px = state.localPlayer.x,
+    pz = state.localPlayer.z;
   if ((px + 85) * (px + 85) + (pz - 140) * (pz - 140) < 400) return true; // concert venue r=20
   if ((px - 65) * (px - 65) + (pz - 150) * (pz - 150) < 400) return true; // amphitheater r=20
   return false;
@@ -237,12 +269,18 @@ export function getWaterSurfaceHeight(x, z) {
   // Water fills the inner 4.5u of the 9u half-width channel (some bank visible on each side)
   if (riverDist > 4.5) return null;
   // Find the closest river control point to sample terrain at the channel centre
-  let closestX = RIVER_PTS[0][0], closestZ = RIVER_PTS[0][1];
+  let closestX = RIVER_PTS[0][0],
+    closestZ = RIVER_PTS[0][1];
   let minDist2 = Infinity;
   for (let i = 0; i < RIVER_PTS.length; i++) {
-    const dx = x - RIVER_PTS[i][0], dz = z - RIVER_PTS[i][1];
+    const dx = x - RIVER_PTS[i][0],
+      dz = z - RIVER_PTS[i][1];
     const d2 = dx * dx + dz * dz;
-    if (d2 < minDist2) { minDist2 = d2; closestX = RIVER_PTS[i][0]; closestZ = RIVER_PTS[i][1]; }
+    if (d2 < minDist2) {
+      minDist2 = d2;
+      closestX = RIVER_PTS[i][0];
+      closestZ = RIVER_PTS[i][1];
+    }
   }
   // Water surface = terrain at channel centre (already depressed) + 1.0, matching buildRiverRibbon
   const ref = getTerrainHeight(closestX, closestZ, true);

@@ -13,7 +13,8 @@ function flattenObjects(objects) {
 
 function usesSharedMaterial(object3d, sharedMaterial) {
   if (!object3d?.material || !sharedMaterial) return false;
-  if (Array.isArray(object3d.material)) return object3d.material.includes(sharedMaterial);
+  if (Array.isArray(object3d.material))
+    return object3d.material.includes(sharedMaterial);
   return object3d.material === sharedMaterial;
 }
 
@@ -22,7 +23,9 @@ function fadeObject3D(node, target, dt) {
 
   let converging = false;
   const materials = node.material
-    ? (Array.isArray(node.material) ? node.material : [node.material])
+    ? Array.isArray(node.material)
+      ? node.material
+      : [node.material]
     : [];
 
   if (materials.length > 0) {
@@ -72,7 +75,10 @@ function fadeLayer(layer, target, dt) {
   for (let i = 0; i < layer.objects.length; i++) {
     const object3d = layer.objects[i];
     if (!object3d?.isObject3D) continue;
-    if (layer.sharedMaterial && usesSharedMaterial(object3d, layer.sharedMaterial)) {
+    if (
+      layer.sharedMaterial &&
+      usesSharedMaterial(object3d, layer.sharedMaterial)
+    ) {
       object3d.visible = sharedVisible;
       continue;
     }
@@ -86,18 +92,28 @@ export function resetFadeZones() {
   state.fadeZones = [];
 }
 
-export function createFadeLayer({ id, getTargetOpacity, sharedMaterial = null, objects = [] }) {
+export function createFadeLayer({
+  id,
+  getTargetOpacity,
+  sharedMaterial = null,
+  objects = [],
+}) {
   return {
     id,
     getTargetOpacity,
     sharedMaterial,
     objects: flattenObjects(objects),
     _target: NaN,
-    _active: false
+    _active: false,
   };
 }
 
-export function registerFadeZone({ id, proximity, containsPlayer, layers = [] }) {
+export function registerFadeZone({
+  id,
+  proximity,
+  containsPlayer,
+  layers = [],
+}) {
   const zone = { id, proximity, containsPlayer, layers };
   const existingIndex = state.fadeZones.findIndex((entry) => entry.id === id);
   if (existingIndex === -1) state.fadeZones.push(zone);
@@ -111,44 +127,76 @@ export function addFadeObjects(layer, ...objects) {
   return flat.length === 1 ? flat[0] : flat;
 }
 
-export function makeFadeMaterial(material, { clone = false, opacity = 1 } = {}) {
+export function makeFadeMaterial(
+  material,
+  { clone = false, opacity = 1 } = {},
+) {
   const fadeMaterial = clone ? material.clone() : material;
   fadeMaterial.transparent = true;
   fadeMaterial.opacity = opacity;
   return fadeMaterial;
 }
 
-export function makeObjectFadeable(object3d, { cloneMaterials = true, opacity = 1 } = {}) {
+export function makeObjectFadeable(
+  object3d,
+  { cloneMaterials = true, opacity = 1 } = {},
+) {
   if (!object3d?.isObject3D) return object3d;
   object3d.traverse((child) => {
     if (!child.isMesh || !child.material) return;
     if (Array.isArray(child.material)) {
-      child.material = child.material.map((material) => makeFadeMaterial(material, { clone: cloneMaterials, opacity }));
+      child.material = child.material.map((material) =>
+        makeFadeMaterial(material, { clone: cloneMaterials, opacity }),
+      );
       return;
     }
-    child.material = makeFadeMaterial(child.material, { clone: cloneMaterials, opacity });
+    child.material = makeFadeMaterial(child.material, {
+      clone: cloneMaterials,
+      opacity,
+    });
   });
   return object3d;
 }
 
-export function createBoundsFadePredicate({ minX, maxX, minZ, maxZ, minY = -Infinity, maxY = Infinity }) {
-  return (player) => (
-    player.x >= minX && player.x <= maxX &&
-    player.z >= minZ && player.z <= maxZ &&
-    player.y >= minY && player.y <= maxY
-  );
+export function createBoundsFadePredicate({
+  minX,
+  maxX,
+  minZ,
+  maxZ,
+  minY = -Infinity,
+  maxY = Infinity,
+}) {
+  return (player) =>
+    player.x >= minX &&
+    player.x <= maxX &&
+    player.z >= minZ &&
+    player.z <= maxZ &&
+    player.y >= minY &&
+    player.y <= maxY;
 }
 
-export function createCircleFadePredicate({ x, z, radius, minY = -Infinity, maxY = Infinity }) {
+export function createCircleFadePredicate({
+  x,
+  z,
+  radius,
+  minY = -Infinity,
+  maxY = Infinity,
+}) {
   const radiusSq = radius * radius;
   return (player) => {
     const dx = player.x - x;
     const dz = player.z - z;
-    return dx * dx + dz * dz <= radiusSq && player.y >= minY && player.y <= maxY;
+    return (
+      dx * dx + dz * dz <= radiusSq && player.y >= minY && player.y <= maxY
+    );
   };
 }
 
-export function createInsideOutsideTarget({ getProgress = null, insideOpacity = 0, outsideOpacity = 1 }) {
+export function createInsideOutsideTarget({
+  getProgress = null,
+  insideOpacity = 0,
+  outsideOpacity = 1,
+}) {
   return ({ inside }) => {
     const progress = typeof getProgress === 'function' ? getProgress() : 0;
     if (progress > 0) return progress;
@@ -156,7 +204,13 @@ export function createInsideOutsideTarget({ getProgress = null, insideOpacity = 
   };
 }
 
-export function createPlayerYTarget({ minY = -Infinity, maxY = Infinity, insideOpacity = 1, outsideOpacity = 0, getProgress = null }) {
+export function createPlayerYTarget({
+  minY = -Infinity,
+  maxY = Infinity,
+  insideOpacity = 1,
+  outsideOpacity = 0,
+  getProgress = null,
+}) {
   return ({ player }) => {
     const progress = typeof getProgress === 'function' ? getProgress() : 0;
     if (progress > 0) return progress;
@@ -170,13 +224,15 @@ export function createInsidePlayerYTarget({
   insideOpacity = 1,
   belowInsideOpacity = 0,
   outsideOpacity = 1,
-  getProgress = null
+  getProgress = null,
 }) {
   return ({ inside, player }) => {
     const progress = typeof getProgress === 'function' ? getProgress() : 0;
     if (progress > 0) return progress;
     if (!inside) return outsideOpacity;
-    return player.y >= minY && player.y < maxY ? insideOpacity : belowInsideOpacity;
+    return player.y >= minY && player.y < maxY
+      ? insideOpacity
+      : belowInsideOpacity;
   };
 }
 
@@ -208,54 +264,71 @@ export function createBuildingFadeZone({
   upperFloorOutsideOpacity = 0,
   getRideProgress = null,
   isRideActive = null,
-  rideOpacity = 0
+  rideOpacity = 0,
 }) {
   const withRideOverride = (getTargetOpacity) => (context) => {
-    if (typeof isRideActive === 'function' && isRideActive()) return rideOpacity;
+    if (typeof isRideActive === 'function' && isRideActive())
+      return rideOpacity;
     return getTargetOpacity(context);
   };
 
   const roofLayer = createFadeLayer({
     id: `${id}:roof`,
     getTargetOpacity: withRideOverride(
-      createInsideOutsideTarget({ insideOpacity: 0, outsideOpacity: 1, getProgress: getRideProgress })
-    )
+      createInsideOutsideTarget({
+        insideOpacity: 0,
+        outsideOpacity: 1,
+        getProgress: getRideProgress,
+      }),
+    ),
   });
   const upperWallsLayer = createFadeLayer({
     id: `${id}:upper-walls`,
     sharedMaterial: upperWallMat,
-    getTargetOpacity: withRideOverride(createInsidePlayerYTarget({
-      minY: upperLevelThresholdY,
-      insideOpacity: 1, belowInsideOpacity: 0, outsideOpacity: upperWallsOutsideOpacity,
-      getProgress: getRideProgress
-    }))
+    getTargetOpacity: withRideOverride(
+      createInsidePlayerYTarget({
+        minY: upperLevelThresholdY,
+        insideOpacity: 1,
+        belowInsideOpacity: 0,
+        outsideOpacity: upperWallsOutsideOpacity,
+        getProgress: getRideProgress,
+      }),
+    ),
   });
   const upperFloorLayer = createFadeLayer({
     id: `${id}:upper-floor`,
-    getTargetOpacity: withRideOverride(createInsidePlayerYTarget({
-      minY: upperLevelThresholdY,
-      insideOpacity: 1, belowInsideOpacity: 0, outsideOpacity: upperFloorOutsideOpacity,
-      getProgress: getRideProgress
-    }))
+    getTargetOpacity: withRideOverride(
+      createInsidePlayerYTarget({
+        minY: upperLevelThresholdY,
+        insideOpacity: 1,
+        belowInsideOpacity: 0,
+        outsideOpacity: upperFloorOutsideOpacity,
+        getProgress: getRideProgress,
+      }),
+    ),
   });
   const groundFloorLayer = createFadeLayer({
     id: `${id}:ground-floor`,
-    getTargetOpacity: withRideOverride(createInsidePlayerYTarget({
-      minY: upperLevelThresholdY,
-      insideOpacity: 0, belowInsideOpacity: 1, outsideOpacity: 1
-    }))
+    getTargetOpacity: withRideOverride(
+      createInsidePlayerYTarget({
+        minY: upperLevelThresholdY,
+        insideOpacity: 0,
+        belowInsideOpacity: 1,
+        outsideOpacity: 1,
+      }),
+    ),
   });
 
   registerFadeZone({
     id,
     proximity,
     containsPlayer: createBoundsFadePredicate(bounds),
-    layers: [roofLayer, upperWallsLayer, upperFloorLayer, groundFloorLayer]
+    layers: [roofLayer, upperWallsLayer, upperFloorLayer, groundFloorLayer],
   });
 
   return {
     pushRoof(...objects) {
-      const flat = flattenObjects(objects).map(o => makeObjectFadeable(o));
+      const flat = flattenObjects(objects).map((o) => makeObjectFadeable(o));
       state.roofMeshes.push(...flat);
       addFadeObjects(roofLayer, ...flat);
       return flat.length === 1 ? flat[0] : flat;
@@ -275,7 +348,7 @@ export function createBuildingFadeZone({
       const flat = flattenObjects(objects);
       addFadeObjects(groundFloorLayer, ...flat);
       return flat.length === 1 ? flat[0] : flat;
-    }
+    },
   };
 }
 
@@ -283,13 +356,18 @@ export function createBuildingFadeZone({
  * Creates a simplified fade zone for scenery landmarks (single-floor/subterranean/hangar)
  * and returns push helpers. Standardizes them under createBuildingFadeZone.
  */
-export function createLandmarkFadeZone({ id, proximity, bounds, upperWallMat = null }) {
+export function createLandmarkFadeZone({
+  id,
+  proximity,
+  bounds,
+  upperWallMat = null,
+}) {
   return createBuildingFadeZone({
     id,
     proximity,
     bounds,
     upperLevelThresholdY: Infinity,
-    upperWallMat
+    upperWallMat,
   });
 }
 
@@ -304,10 +382,16 @@ export function updateFadeZones(dt) {
       if (dx * dx + dz * dz > zone.proximity.r * zone.proximity.r) continue;
     }
 
-    const inside = zone.containsPlayer ? zone.containsPlayer(player, state) : false;
+    const inside = zone.containsPlayer
+      ? zone.containsPlayer(player, state)
+      : false;
     for (let j = 0; j < zone.layers.length; j++) {
       const layer = zone.layers[j];
-      const nextTarget = THREE.MathUtils.clamp(layer.getTargetOpacity({ inside, player, state, zone }), 0, 1);
+      const nextTarget = THREE.MathUtils.clamp(
+        layer.getTargetOpacity({ inside, player, state, zone }),
+        0,
+        1,
+      );
       if (nextTarget !== layer._target) {
         layer._target = nextTarget;
         layer._active = true;

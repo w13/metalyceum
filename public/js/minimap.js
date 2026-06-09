@@ -1,15 +1,15 @@
 // Top-down Mini-Map for Metalyceum
 // Renders a camera-oriented circular overview showing the terrain, building layout,
 import * as THREE from 'three';
+import { ROOM_LAYOUTS } from './config.js';
 // walls, rooms, the local player (as an arrow), and other players/NPCs nearby.
 import { state } from './state.js';
-import { ROOM_LAYOUTS } from './config.js';
 
-const MAP_RADIUS_PX = 95;       // visible radius in canvas pixels
-const WORLD_RADIUS = 180;       // world units visible from center
+const MAP_RADIUS_PX = 95; // visible radius in canvas pixels
+const WORLD_RADIUS = 180; // world units visible from center
 const SCALE = MAP_RADIUS_PX / WORLD_RADIUS;
 const MAP_SIZE = MAP_RADIUS_PX * 2;
-const Z_INDEX = 50;             // below overlays (z:100) so minimap stays behind modals
+const Z_INDEX = 50; // below overlays (z:100) so minimap stays behind modals
 
 let canvas = null;
 let ctx = null;
@@ -33,7 +33,7 @@ export function initMinimap() {
   if (!canvas) {
     canvas = document.createElement('canvas');
     canvas.id = 'minimap-canvas';
-    canvas.style.cssText = `position:absolute;bottom:16px;right:16px;width:${MAP_SIZE+10}px;height:${MAP_SIZE+10}px;border-radius:50%;border:2px solid rgba(51,65,85,0.6);box-shadow:0 4px 20px rgba(0,0,0,0.5);pointer-events:none;z-index:${Z_INDEX};`;
+    canvas.style.cssText = `position:absolute;bottom:16px;right:16px;width:${MAP_SIZE + 10}px;height:${MAP_SIZE + 10}px;border-radius:50%;border:2px solid rgba(51,65,85,0.6);box-shadow:0 4px 20px rgba(0,0,0,0.5);pointer-events:none;z-index:${Z_INDEX};`;
     document.body.appendChild(canvas);
   }
   canvas.width = MAP_SIZE;
@@ -47,7 +47,7 @@ function worldToMap(wx, wz, px, pz) {
   const dz = wz - pz;
   return {
     sx: MAP_RADIUS_PX + dx * SCALE,
-    sy: MAP_RADIUS_PX - dz * SCALE
+    sy: MAP_RADIUS_PX - dz * SCALE,
   };
 }
 
@@ -72,7 +72,7 @@ export function renderMinimap() {
   // Camera yaw: angle from player to camera (used to orient minimap so camera looks "up")
   const camAngle = Math.atan2(
     state.camera.position.x - px,
-    state.camera.position.z - pz
+    state.camera.position.z - pz,
   );
 
   ctx.clearRect(0, 0, cw, ch);
@@ -137,8 +137,18 @@ export function renderMinimap() {
   // Rooms (filled semi-transparent areas)
   state.ROOMS.forEach((room) => {
     const layout = ROOM_LAYOUTS[room.id] || {};
-    const topLeft = worldToMap(room.x - room.width / 2, room.z - room.depth / 2, px, pz);
-    const botRight = worldToMap(room.x + room.width / 2, room.z + room.depth / 2, px, pz);
+    const topLeft = worldToMap(
+      room.x - room.width / 2,
+      room.z - room.depth / 2,
+      px,
+      pz,
+    );
+    const botRight = worldToMap(
+      room.x + room.width / 2,
+      room.z + room.depth / 2,
+      px,
+      pz,
+    );
     const rw = botRight.sx - topLeft.sx;
     const rh = topLeft.sy - botRight.sy;
 
@@ -150,7 +160,11 @@ export function renderMinimap() {
       ctx.font = `${Math.min(9, Math.max(6, rw / 4))}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(room.name.substring(0, 3), topLeft.sx + rw / 2, botRight.sy + rh / 2);
+      ctx.fillText(
+        room.name.substring(0, 3),
+        topLeft.sx + rw / 2,
+        botRight.sy + rh / 2,
+      );
     }
   });
 
@@ -187,7 +201,8 @@ export function renderMinimap() {
   // NPCs
   state.npcs.forEach((npc) => {
     const pos = worldToMap(npc.x, npc.z, px, pz);
-    const dx = npc.x - px, dz = npc.z - pz;
+    const dx = npc.x - px,
+      dz = npc.z - pz;
     if (dx * dx + dz * dz > worldRadiusSq) return;
     ctx.fillStyle = NPC_COLOR;
     ctx.beginPath();
@@ -198,7 +213,8 @@ export function renderMinimap() {
   // Remote players (within range)
   state.remotePlayers.forEach((p) => {
     const pos = worldToMap(p.x, p.z, px, pz);
-    const dx = p.x - px, dz = p.z - pz;
+    const dx = p.x - px,
+      dz = p.z - pz;
     if (dx * dx + dz * dz > worldRadiusSq) return;
     ctx.fillStyle = REMOTE_COLOR;
     ctx.beginPath();
@@ -210,7 +226,8 @@ export function renderMinimap() {
   const edgeRadiusSq = WORLD_RADIUS * WORLD_RADIUS * 4;
   const mapR = MAP_RADIUS_PX - 4;
   state.remotePlayers.forEach((p) => {
-    const dx = p.x - px, dz = p.z - pz;
+    const dx = p.x - px,
+      dz = p.z - pz;
     const distSq = dx * dx + dz * dz;
     if (distSq <= worldRadiusSq || distSq > edgeRadiusSq) return;
     const angle = Math.atan2(dz, dx);
@@ -273,7 +290,11 @@ export function renderMinimap() {
   ctx.font = '9px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(`${px.toFixed(0)}, ${pz.toFixed(0)}`, cx, cy + MAP_RADIUS_PX + 4);
+  ctx.fillText(
+    `${px.toFixed(0)}, ${pz.toFixed(0)}`,
+    cx,
+    cy + MAP_RADIUS_PX + 4,
+  );
 }
 
 export function toggleMinimap() {

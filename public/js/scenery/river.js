@@ -1,14 +1,15 @@
 // Meandering river with shader-based water, foam edges, waterfall pool, and bridge
 import * as THREE from 'three';
-import { state } from '../state.js';
-import { getTerrainHeight } from '../physics.js';
-
 import { RIVER_PTS } from '../config.js';
-import { HALF_PI, FLAT } from '../math.js';
+import { FLAT, HALF_PI } from '../math.js';
+import { getTerrainHeight } from '../physics.js';
+import { state } from '../state.js';
 
 const RIVER_WIDTH = 8.0; // wider water mesh to fill the deepened channel
-const BRIDGE_X = 73, BRIDGE_Z = 8;
-const WATERFALL_X = 30, WATERFALL_Z = 90;
+const BRIDGE_X = 73,
+  BRIDGE_Z = 8;
+const WATERFALL_X = 30,
+  WATERFALL_Z = 90;
 
 // ── Shaders ──────────────────────────────────────────────────────────────
 const waterVertShader = `
@@ -83,8 +84,8 @@ function buildRiverRibbon(points, width, material, isUpper) {
   for (let i = 0; i < points.length; i++) {
     const prev = points[Math.max(i - 1, 0)];
     const next = points[Math.min(i + 1, points.length - 1)];
-    let dx = next[0] - prev[0];
-    let dz = next[1] - prev[1];
+    const dx = next[0] - prev[0];
+    const dz = next[1] - prev[1];
     const tangent = new THREE.Vector2(dx, dz);
     if (tangent.lengthSq() < 1e-6) tangent.set(0, 1);
     tangent.normalize();
@@ -111,7 +112,10 @@ function buildRiverRibbon(points, width, material, isUpper) {
     cumulativeDistance += Math.sqrt((next[0] - cx) ** 2 + (next[1] - cz) ** 2);
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
@@ -155,7 +159,7 @@ export function buildRiver() {
     const frac = Math.random();
     const rx = ax + (bx - ax) * frac;
     const rz = az + (bz - az) * frac;
-    const side = (Math.random() > 0.5 ? 1 : -1);
+    const side = Math.random() > 0.5 ? 1 : -1;
     const perpAngle = Math.atan2(bz - az, bx - ax) + Math.PI / 2;
     const offset = (RIVER_WIDTH / 2 + 0.6 + Math.random() * 2.5) * side;
     const bx3 = rx + Math.cos(perpAngle) * offset;
@@ -164,7 +168,11 @@ export function buildRiver() {
     const scaleX = 0.5 + Math.random();
     const scaleY = (0.4 + Math.random() * 0.6) * scaleX;
     _rockObj.position.set(bx3, rockY + 0.05, bz3);
-    _rockObj.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    _rockObj.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+    );
     _rockObj.scale.set(scaleX, scaleY, scaleX);
     _rockObj.updateMatrix();
     rockInstances.setMatrixAt(i, _rockObj.matrix);
@@ -173,8 +181,14 @@ export function buildRiver() {
   state.scene.add(rockInstances);
 
   // ── Daffodils along the riverbanks ── (InstancedMesh — was 100 individual draw calls)
-  const stemMat = new THREE.MeshStandardMaterial({ color: '#22c55e', roughness: 0.9 });
-  const petalMat = new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.7 });
+  const stemMat = new THREE.MeshStandardMaterial({
+    color: '#22c55e',
+    roughness: 0.9,
+  });
+  const petalMat = new THREE.MeshStandardMaterial({
+    color: '#fbbf24',
+    roughness: 0.7,
+  });
   const stemGeo = new THREE.CylinderGeometry(0.015, 0.02, 0.4, 4);
   const headGeo = new THREE.SphereGeometry(0.04, 6, 6);
   const stemInstances = new THREE.InstancedMesh(stemGeo, stemMat, 50);
@@ -189,7 +203,7 @@ export function buildRiver() {
     const frac = Math.random();
     const fx2 = ax + (bx - ax) * frac;
     const fz2 = az + (bz - az) * frac;
-    const side = (Math.random() > 0.5 ? 1 : -1);
+    const side = Math.random() > 0.5 ? 1 : -1;
     const perpAngle = Math.atan2(bz - az, bx - ax) + Math.PI / 2;
     const offset = (RIVER_WIDTH / 2 + 0.4 + Math.random() * 2.0) * side;
     const dax = fx2 + Math.cos(perpAngle) * offset;
@@ -248,13 +262,16 @@ export function buildRiver() {
 
 // ── Waterfall — curtain + pool + foam + rocks ────────────────────────────
 function buildWaterfall(waterMaterials) {
-  const wx = WATERFALL_X, wz = WATERFALL_Z;
+  const wx = WATERFALL_X,
+    wz = WATERFALL_Z;
 
   // Sample terrain upstream (higher) and downstream (lower) of the cliff line
   // The waterfall line runs at angle -0.6 rad through (30,90)
   // Upstream = along (-sin, cos) = (0.565, 0.825), downstream = opposite
-  const upX = wx + 5 * 0.565, upZ = wz + 5 * 0.825;
-  const dnX = wx - 5 * 0.565, dnZ = wz - 5 * 0.825;
+  const upX = wx + 5 * 0.565,
+    upZ = wz + 5 * 0.825;
+  const dnX = wx - 5 * 0.565,
+    dnZ = wz - 5 * 0.825;
   const topY = getTerrainHeight(upX, upZ);
   const botY = getTerrainHeight(dnX, dnZ);
   const fallH = Math.max(1.0, topY - botY);
@@ -269,28 +286,49 @@ function buildWaterfall(waterMaterials) {
   });
   if (waterMaterials) waterMaterials.push(fallMat.uniforms.uTime);
 
-  const fall = new THREE.Mesh(new THREE.PlaneGeometry(RIVER_WIDTH + 1.5, fallH), fallMat);
+  const fall = new THREE.Mesh(
+    new THREE.PlaneGeometry(RIVER_WIDTH + 1.5, fallH),
+    fallMat,
+  );
   fall.position.set(wx, (topY + botY) / 2, wz);
   fall.rotation.y = Math.atan2(0.565, 0.825); // align with cliff line
   state.scene.add(fall);
 
   // Mist / splash at the base (translucent circle)
-  const mistMat = new THREE.MeshBasicMaterial({ color: '#e0f2fe', transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+  const mistMat = new THREE.MeshBasicMaterial({
+    color: '#e0f2fe',
+    transparent: true,
+    opacity: 0.15,
+    side: THREE.DoubleSide,
+  });
   const mist = new THREE.Mesh(new THREE.CircleGeometry(3.0, 16), mistMat);
   mist.rotation.x = FLAT;
   mist.position.set(wx, botY + 0.1, wz);
   state.scene.add(mist);
 
   // Pool at the base (small dark circle at bottom)
-  const poolMat = new THREE.MeshBasicMaterial({ color: '#0a3a5a', transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+  const poolMat = new THREE.MeshBasicMaterial({
+    color: '#0a3a5a',
+    transparent: true,
+    opacity: 0.6,
+    side: THREE.DoubleSide,
+  });
   const pool = new THREE.Mesh(new THREE.CircleGeometry(2.5, 16), poolMat);
   pool.rotation.x = FLAT;
   pool.position.set(wx, botY + 0.05, wz);
   state.scene.add(pool);
 
   // Foam line at the cliff edge (top)
-  const foamMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-  const foam = new THREE.Mesh(new THREE.PlaneGeometry(RIVER_WIDTH + 1.5, 0.3), foamMat);
+  const foamMat = new THREE.MeshBasicMaterial({
+    color: '#ffffff',
+    transparent: true,
+    opacity: 0.3,
+    side: THREE.DoubleSide,
+  });
+  const foam = new THREE.Mesh(
+    new THREE.PlaneGeometry(RIVER_WIDTH + 1.5, 0.3),
+    foamMat,
+  );
   foam.position.set(wx, topY + 0.15, wz);
   foam.rotation.y = Math.atan2(0.565, 0.825);
   state.scene.add(foam);
@@ -303,9 +341,16 @@ function buildWaterfall(waterMaterials) {
     const rx = wx + Math.cos(a) * d;
     const rz = wz + Math.sin(a) * d;
     const ry = getTerrainHeight(rx, rz);
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.6, 0), wfRockMat);
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.6, 0),
+      wfRockMat,
+    );
     rock.position.set(rx, ry + 0.05, rz);
-    rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    rock.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+    );
     rock.scale.set(1, 0.4 + Math.random() * 0.5, 1);
     state.scene.add(rock);
   }
@@ -315,17 +360,31 @@ function buildWaterfall(waterMaterials) {
 // Uses InstancedMesh for voussoirs, crenellations and ramp steps to reduce
 // 54+ individual scene.add() calls to just 5 instanced draw calls.
 function buildStoneArchBridge() {
-  const bx = BRIDGE_X, bz = BRIDGE_Z;
-  const brickMat = new THREE.MeshStandardMaterial({ color: '#8a7a5a', roughness: 0.78 });
-  const stoneMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.7 });
-  const darkStoneMat = new THREE.MeshStandardMaterial({ color: '#5a4a3a', roughness: 0.75 });
-  const roadMat = new THREE.MeshStandardMaterial({ color: '#475569', roughness: 0.8 });
+  const bx = BRIDGE_X,
+    bz = BRIDGE_Z;
+  const brickMat = new THREE.MeshStandardMaterial({
+    color: '#8a7a5a',
+    roughness: 0.78,
+  });
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: '#94a3b8',
+    roughness: 0.7,
+  });
+  const darkStoneMat = new THREE.MeshStandardMaterial({
+    color: '#5a4a3a',
+    roughness: 0.75,
+  });
+  const roadMat = new THREE.MeshStandardMaterial({
+    color: '#475569',
+    roughness: 0.8,
+  });
 
   let segAngle = 0;
   for (let i = 0; i < RIVER_PTS.length - 1; i++) {
     const [ax, az] = RIVER_PTS[i];
     const [bx2, bz2] = RIVER_PTS[i + 1];
-    const midX = (ax + bx2) / 2, midZ = (az + bz2) / 2;
+    const midX = (ax + bx2) / 2,
+      midZ = (az + bz2) / 2;
     if (Math.sqrt((midX - bx) ** 2 + (midZ - bz) ** 2) < 6) {
       segAngle = Math.atan2(bz2 - az, bx2 - ax);
       break;
@@ -337,7 +396,7 @@ function buildStoneArchBridge() {
   // This prevents the recursive getTerrainHeight call from returning the already-elevated
   // bridge deck height, which made the arch crown float ~2u above the road surface.
   const rawBridgeY = getTerrainHeight(bx, bz, true); // river bottom ≈ −6u here
-  const deckSurfaceY = rawBridgeY + 3.6;             // matches physics.js return value
+  const deckSurfaceY = rawBridgeY + 3.6; // matches physics.js return value
 
   const span = 5.0;
   const archRise = 2.2;
@@ -348,30 +407,36 @@ function buildStoneArchBridge() {
   // ── Arch voussoirs — batched into two InstancedMesh (alternating brick/stone)
   const voussoirCount = 18;
   const rowCount = 3;
-  const totalBrick = Math.ceil(voussoirCount / 2) * rowCount;  // even indices
+  const totalBrick = Math.ceil(voussoirCount / 2) * rowCount; // even indices
   const totalStone = Math.floor(voussoirCount / 2) * rowCount; // odd indices
   const vGeo = new THREE.BoxGeometry(0.5, 0.22, 0.3);
   const brickInst = new THREE.InstancedMesh(vGeo, brickMat, totalBrick);
   const stoneInst = new THREE.InstancedMesh(vGeo, stoneMat, totalStone);
-  brickInst.castShadow = true; stoneInst.castShadow = true;
+  brickInst.castShadow = true;
+  stoneInst.castShadow = true;
   const _vo = new THREE.Object3D();
-  let brickIdx = 0, stoneIdx = 0;
+  let brickIdx = 0,
+    stoneIdx = 0;
   for (let i = 0; i < voussoirCount; i++) {
     const t = i / (voussoirCount - 1);
     const axOff = (t - 0.5) * span * 2;
-    const ayOff = centerY + Math.sqrt(Math.max(0, archR * archR - axOff * axOff));
+    const ayOff =
+      centerY + Math.sqrt(Math.max(0, archR * archR - axOff * axOff));
     for (let row = -1; row <= 1; row++) {
       const rOff = row * 0.6;
       _vo.position.set(
         bx + Math.cos(perpAngle) * rOff + Math.cos(segAngle) * axOff,
         ayOff + 0.11,
-        bz + Math.sin(perpAngle) * rOff + Math.sin(segAngle) * axOff
+        bz + Math.sin(perpAngle) * rOff + Math.sin(segAngle) * axOff,
       );
       _vo.rotation.set(0, 0, 0);
       _vo.scale.setScalar(1);
       _vo.updateMatrix();
-      if (i % 2 === 0) { brickInst.setMatrixAt(brickIdx++, _vo.matrix); }
-      else             { stoneInst.setMatrixAt(stoneIdx++, _vo.matrix); }
+      if (i % 2 === 0) {
+        brickInst.setMatrixAt(brickIdx++, _vo.matrix);
+      } else {
+        stoneInst.setMatrixAt(stoneIdx++, _vo.matrix);
+      }
     }
   }
   brickInst.instanceMatrix.needsUpdate = true;
@@ -401,11 +466,12 @@ function buildStoneArchBridge() {
   const merlonInst = new THREE.InstancedMesh(merlonGeo, darkStoneMat, 10);
   crenInst.castShadow = true;
   const _cv = new THREE.Object3D();
-  let crenIdx = 0, merlonIdx = 0;
+  let crenIdx = 0,
+    merlonIdx = 0;
   for (let side = -1; side <= 1; side += 2) {
     const pOff = side * 1.55;
     for (let i = 0; i < 10; i++) {
-      const t = (i / 9) - 0.5;
+      const t = i / 9 - 0.5;
       const px = bx + Math.cos(perpAngle) * pOff + Math.cos(segAngle) * t * 5;
       const pz = bz + Math.sin(perpAngle) * pOff + Math.sin(segAngle) * t * 5;
       _cv.position.set(px, deckSurfaceY + 0.5, pz);
@@ -424,14 +490,17 @@ function buildStoneArchBridge() {
   // Steps interpolate from deckSurfaceY (inner) down to natural terrain (outer).
   for (let side = -1; side <= 1; side += 2) {
     for (let step = 0; step < 5; step++) {
-      const t = (step + 1) / 5;                        // 0.2 → 1.0 going outward
-      const dist = span * 0.5 + t * 4.5;               // 3.0 → 7.0 units from centre
+      const t = (step + 1) / 5; // 0.2 → 1.0 going outward
+      const dist = span * 0.5 + t * 4.5; // 3.0 → 7.0 units from centre
       const stepX = bx + Math.cos(perpAngle) * side * dist;
       const stepZ = bz + Math.sin(perpAngle) * side * dist;
       const groundY = getTerrainHeight(stepX, stepZ, true);
       // Height: starts near deckSurfaceY at t=0, reaches natural terrain at t=1
       const stepSurfaceY = deckSurfaceY + (groundY - deckSurfaceY) * t;
-      const stepMesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.15, 2.2), stoneMat);
+      const stepMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 0.15, 2.2),
+        stoneMat,
+      );
       stepMesh.position.set(stepX, stepSurfaceY + 0.075, stepZ);
       stepMesh.rotation.y = -perpAngle;
       stepMesh.receiveShadow = true;

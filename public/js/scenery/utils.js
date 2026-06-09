@@ -1,8 +1,8 @@
 // Shared scenery utilities — terrain ribbons, terrain helpers, colliders, water shader factory
 import * as THREE from 'three';
-import { state } from '../state.js';
 import { MAP_SIZE } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
+import { state } from '../state.js';
 import { isWorldPlacementAllowed } from '../utils.js';
 
 // ── Terrain deformation helpers ──────────────────────────────────────────
@@ -10,7 +10,13 @@ export function deformPlaneToTerrain(geometry, translateZ) {
   deformGroundGeometry(geometry, 0, translateZ);
 }
 
-export function deformGroundGeometry(geometry, centerX, centerZ, scaleX = 1, scaleY = 1) {
+export function deformGroundGeometry(
+  geometry,
+  centerX,
+  centerZ,
+  scaleX = 1,
+  scaleY = 1,
+) {
   const pos = geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const vx = pos.getX(i) * scaleX;
@@ -26,23 +32,36 @@ export function deformGroundGeometry(geometry, centerX, centerZ, scaleX = 1, sca
 export function getTerrainCeiling(x, z, halfX = 0, halfZ = 0) {
   const sampleOffsets = [
     [0, 0],
-    [-halfX, -halfZ], [-halfX, halfZ],
-    [halfX, -halfZ], [halfX, halfZ],
-    [-halfX, 0], [halfX, 0],
-    [0, -halfZ], [0, halfZ]
+    [-halfX, -halfZ],
+    [-halfX, halfZ],
+    [halfX, -halfZ],
+    [halfX, halfZ],
+    [-halfX, 0],
+    [halfX, 0],
+    [0, -halfZ],
+    [0, halfZ],
   ];
-  return sampleOffsets.reduce((maxHeight, [offsetX, offsetZ]) => {
-    return Math.max(maxHeight, getTerrainHeight(x + offsetX, z + offsetZ));
-  }, getTerrainHeight(x, z));
+  return sampleOffsets.reduce(
+    (maxHeight, [offsetX, offsetZ]) => {
+      return Math.max(maxHeight, getTerrainHeight(x + offsetX, z + offsetZ));
+    },
+    getTerrainHeight(x, z),
+  );
 }
 
-export function createGroundedPatch(geometry, material, centerX, centerZ, {
-  yOffset = 0.02,
-  scaleX = 1,
-  scaleY = 1,
-  receiveShadow = true,
-  castShadow = false
-} = {}) {
+export function createGroundedPatch(
+  geometry,
+  material,
+  centerX,
+  centerZ,
+  {
+    yOffset = 0.02,
+    scaleX = 1,
+    scaleY = 1,
+    receiveShadow = true,
+    castShadow = false,
+  } = {},
+) {
   deformGroundGeometry(geometry, centerX, centerZ, scaleX, scaleY);
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
@@ -52,13 +71,21 @@ export function createGroundedPatch(geometry, material, centerX, centerZ, {
   return mesh;
 }
 
-export function createGroundedRing(innerRadius, outerRadius, segments, material, centerX, centerZ, options = {}) {
+export function createGroundedRing(
+  innerRadius,
+  outerRadius,
+  segments,
+  material,
+  centerX,
+  centerZ,
+  options = {},
+) {
   return createGroundedPatch(
     new THREE.RingGeometry(innerRadius, outerRadius, segments),
     material,
     centerX,
     centerZ,
-    options
+    options,
   );
 }
 
@@ -88,7 +115,10 @@ export function vec2LengthAngle(x1, z1, x2, z2) {
 export function buildTerrainRibbon(points, width, material, options = {}) {
   if (points.length < 2) return null;
   const {
-    yOffset = 0, lateralOffset = 0, addUVs = false, verticalBias = 0,
+    yOffset = 0,
+    lateralOffset = 0,
+    addUVs = false,
+    verticalBias = 0,
   } = options;
 
   const positions = [];
@@ -103,11 +133,18 @@ export function buildTerrainRibbon(points, width, material, options = {}) {
     const cz = prev[1] !== undefined ? prev[1] : prev.z;
     const nx = next[0] !== undefined ? next[0] : next.x;
     const nz = next[1] !== undefined ? next[1] : next.z;
-    let dx = nx - cx, dz = nz - cz;
+    let dx = nx - cx,
+      dz = nz - cz;
     let tangentLen = Math.sqrt(dx * dx + dz * dz);
-    if (tangentLen < 0.001) { dx = 0; dz = 1; tangentLen = 1; }
-    const tx = dx / tangentLen, tz = dz / tangentLen;
-    const rx = -tz, rz = tx;
+    if (tangentLen < 0.001) {
+      dx = 0;
+      dz = 1;
+      tangentLen = 1;
+    }
+    const tx = dx / tangentLen,
+      tz = dz / tangentLen;
+    const rx = -tz,
+      rz = tx;
 
     const ptx = points[i][0] !== undefined ? points[i][0] : points[i].x;
     const ptz = points[i][1] !== undefined ? points[i][1] : points[i].z;
@@ -115,8 +152,14 @@ export function buildTerrainRibbon(points, width, material, options = {}) {
     const centerZ = ptz + rz * lateralOffset;
     const halfW = width / 2;
 
-    const yL = getTerrainHeight(centerX - rx * halfW, centerZ - rz * halfW) + yOffset + (verticalBias > 0 ? verticalBias : 0);
-    const yR = getTerrainHeight(centerX + rx * halfW, centerZ + rz * halfW) + yOffset + (verticalBias < 0 ? -verticalBias : 0);
+    const yL =
+      getTerrainHeight(centerX - rx * halfW, centerZ - rz * halfW) +
+      yOffset +
+      (verticalBias > 0 ? verticalBias : 0);
+    const yR =
+      getTerrainHeight(centerX + rx * halfW, centerZ + rz * halfW) +
+      yOffset +
+      (verticalBias < 0 ? -verticalBias : 0);
 
     positions.push(centerX - rx * halfW, yL, centerZ - rz * halfW);
     positions.push(centerX + rx * halfW, yR, centerZ + rz * halfW);
@@ -130,8 +173,12 @@ export function buildTerrainRibbon(points, width, material, options = {}) {
   }
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  if (addUVs) geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  if (addUVs)
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
 
@@ -146,9 +193,10 @@ export function createWaterShader(opts = {}) {
   const {
     deepColor = [0.02, 0.12, 0.28],
     shallowColor = [0.05, 0.25, 0.45],
-    highlightColor = [0.15, 0.50, 0.75],
+    highlightColor = [0.15, 0.5, 0.75],
     opacity = 0.82,
-    waveFreq1 = 0.8, waveFreq2 = 0.3,
+    waveFreq1 = 0.8,
+    waveFreq2 = 0.3,
     waveAmp = 0.04,
   } = opts;
 
@@ -206,7 +254,11 @@ export function createFloor(w, d, mat, x, y, z, receiveShadow = true) {
 }
 
 // ── Boulder scatter ──────────────────────────────────────────────────────
-const _boulderMat = new THREE.MeshStandardMaterial({ color: '#52525b', roughness: 0.9, flatShading: true });
+const _boulderMat = new THREE.MeshStandardMaterial({
+  color: '#52525b',
+  roughness: 0.9,
+  flatShading: true,
+});
 export function scatterBoulders(centerX, centerZ, count, opts = {}) {
   const { minR = 0.25, maxR = 0.6, spread = 3.0, minDist = 1.0 } = opts;
   for (let i = 0; i < count; i++) {
@@ -215,9 +267,16 @@ export function scatterBoulders(centerX, centerZ, count, opts = {}) {
     const rx = centerX + Math.cos(a) * d;
     const rz = centerZ + Math.sin(a) * d;
     const ry = getTerrainHeight(rx, rz);
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(minR + Math.random() * (maxR - minR), 0), _boulderMat);
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(minR + Math.random() * (maxR - minR), 0),
+      _boulderMat,
+    );
     rock.position.set(rx, ry + 0.05, rz);
-    rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    rock.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+    );
     rock.scale.set(1, 0.4 + Math.random() * 0.5, 1);
     state.scene.add(rock);
   }

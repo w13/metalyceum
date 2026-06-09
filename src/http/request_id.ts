@@ -1,4 +1,4 @@
-const REQUEST_ID_HEADER = "X-Request-Id";
+const REQUEST_ID_HEADER = 'X-Request-Id';
 
 export function getOrCreateRequestId(request: Request): string {
   const incoming = request.headers.get(REQUEST_ID_HEADER)?.trim();

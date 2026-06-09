@@ -1,6 +1,5 @@
 // Camera follow, auto-align, and orbital controls for Metalyceum
 import * as THREE from 'three';
-import { state } from '../state.js';
 import {
   CAMERA_AUTO_ALIGN_DECAY,
   CAMERA_AUTO_ALIGN_DELAY_MS,
@@ -13,10 +12,11 @@ import {
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
   CAMERA_EXIT_WATCH_YAW,
   CAMERA_HEADING_DECAY,
-  CAMERA_TARGET_LOOK_HEIGHT
+  CAMERA_TARGET_LOOK_HEIGHT,
 } from '../config.js';
-import { frameIndependentLerp, frameIndependentAngleLerp } from '../math.js';
+import { frameIndependentAngleLerp, frameIndependentLerp } from '../math.js';
 import { isLocalPlayerUnderRoof } from '../physics.js';
+import { state } from '../state.js';
 
 // Scratch variables to cut garbage collection overhead to 0 per frame
 const _orbitOffset = new THREE.Vector3();
@@ -34,10 +34,12 @@ export function getCameraYaw() {
 }
 
 export function shouldAutoAlignCamera(now = performance.now()) {
-  return state.localPlayer.isMoving &&
+  return (
+    state.localPlayer.isMoving &&
     !state.cameraRig.manualControlActive &&
     now - state.cameraRig.lastManualInputAt >= CAMERA_AUTO_ALIGN_DELAY_MS &&
-    now - state.cameraRig.movementStartedAt >= CAMERA_AUTO_ALIGN_START_DELAY_MS;
+    now - state.cameraRig.movementStartedAt >= CAMERA_AUTO_ALIGN_START_DELAY_MS
+  );
 }
 
 export function isExitCameraWatchActive(now = performance.now()) {
@@ -69,7 +71,7 @@ export function resetCameraFollow() {
   const target = _desiredCameraTarget.set(
     state.localPlayer.x,
     playerY + CAMERA_TARGET_LOOK_HEIGHT,
-    state.localPlayer.z
+    state.localPlayer.z,
   );
 
   state.controls.target.copy(target);
@@ -101,7 +103,7 @@ export function orbitCamera(deltaTheta, deltaPhi) {
   _orbitSpherical.phi += deltaPhi;
   _orbitSpherical.phi = Math.max(
     state.controls.minPolarAngle,
-    Math.min(state.controls.maxPolarAngle, _orbitSpherical.phi)
+    Math.min(state.controls.maxPolarAngle, _orbitSpherical.phi),
   );
   _orbitSpherical.makeSafe();
   _orbitOffset.setFromSpherical(_orbitSpherical);
@@ -111,7 +113,11 @@ export function orbitCamera(deltaTheta, deltaPhi) {
 
 export function updateCameraFollow(dt, now = performance.now()) {
   const exitCameraWatchActive = isExitCameraWatchActive(now);
-  if (!state.localPlayer.mesh || (!exitCameraWatchActive && !shouldAutoAlignCamera(now))) return;
+  if (
+    !state.localPlayer.mesh ||
+    (!exitCameraWatchActive && !shouldAutoAlignCamera(now))
+  )
+    return;
 
   _orbitOffset.copy(state.camera.position).sub(state.controls.target);
   _orbitSpherical.setFromVector3(_orbitOffset);
@@ -119,23 +125,27 @@ export function updateCameraFollow(dt, now = performance.now()) {
     _orbitSpherical.theta,
     exitCameraWatchActive ? CAMERA_EXIT_WATCH_YAW : state.cameraRig.desiredYaw,
     dt,
-    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY
+    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY,
   );
   _orbitSpherical.radius = frameIndependentLerp(
     _orbitSpherical.radius,
-    exitCameraWatchActive ? CAMERA_EXIT_WATCH_DISTANCE : CAMERA_DEFAULT_DISTANCE,
+    exitCameraWatchActive
+      ? CAMERA_EXIT_WATCH_DISTANCE
+      : CAMERA_DEFAULT_DISTANCE,
     dt,
-    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY
+    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY,
   );
   _orbitSpherical.phi = frameIndependentLerp(
     _orbitSpherical.phi,
-    exitCameraWatchActive ? CAMERA_EXIT_WATCH_POLAR_ANGLE : CAMERA_DEFAULT_POLAR_ANGLE,
+    exitCameraWatchActive
+      ? CAMERA_EXIT_WATCH_POLAR_ANGLE
+      : CAMERA_DEFAULT_POLAR_ANGLE,
     dt,
-    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY
+    exitCameraWatchActive ? 0.08 : CAMERA_AUTO_ALIGN_DECAY,
   );
   _orbitSpherical.phi = Math.max(
     state.controls.minPolarAngle,
-    Math.min(state.controls.maxPolarAngle, _orbitSpherical.phi)
+    Math.min(state.controls.maxPolarAngle, _orbitSpherical.phi),
   );
   _orbitSpherical.makeSafe();
   _orbitOffset.setFromSpherical(_orbitSpherical);

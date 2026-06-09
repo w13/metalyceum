@@ -1,20 +1,23 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
-import { state } from '../../public/js/state.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   _initFromModule,
+  getPlayerBodyRef,
+  isCannonReady,
   resetCannon,
   stepCannon,
   syncBodyY,
-  isCannonReady,
-  getPlayerBodyRef,
   teleportPlayer,
 } from '../../public/js/physics-engine.js';
+import { state } from '../../public/js/state.js';
 
 function makePlayer(x = 0, y = 0, z = 0) {
   state.localPlayer = {
-    x, y, z, ry: 0,
+    x,
+    y,
+    z,
+    ry: 0,
     velocity: new THREE.Vector3(),
     displayVelocity: new THREE.Vector3(),
     isGrounded: true,
@@ -23,11 +26,20 @@ function makePlayer(x = 0, y = 0, z = 0) {
   } as any;
 }
 
-function addWall(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number) {
-  state.WALLS.push(new THREE.Box3(
-    new THREE.Vector3(minX, minY, minZ),
-    new THREE.Vector3(maxX, maxY, maxZ)
-  ));
+function addWall(
+  minX: number,
+  minY: number,
+  minZ: number,
+  maxX: number,
+  maxY: number,
+  maxZ: number,
+) {
+  state.WALLS.push(
+    new THREE.Box3(
+      new THREE.Vector3(minX, minY, minZ),
+      new THREE.Vector3(maxX, maxY, maxZ),
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -43,7 +55,6 @@ afterEach(() => {
 const PLAYER_RADIUS = 0.4;
 
 describe('Cannon XZ collision proxy', () => {
-
   // Test 1: Tunneling regression
   // Max game speed = 9.5 u/s. Substep fixed at 1/60 s.
   // Per-substep travel = 9.5/60 = 0.158 u. Thinnest wall AABB ≈ 0.66 u. Margin: 4×.
@@ -58,7 +69,7 @@ describe('Cannon XZ collision proxy', () => {
 
     const body = getPlayerBodyRef()!;
     body.position.set(0, PLAYER_RADIUS, 1); // start near side, z=1
-    body.velocity.set(0, 0, 9.5);           // max game speed toward wall
+    body.velocity.set(0, 0, 9.5); // max game speed toward wall
 
     stepCannon(0.5); // 500ms frame drop
 
@@ -93,7 +104,7 @@ describe('Cannon XZ collision proxy', () => {
       // Simulate the expanded safety-net check (r=0.55) from movement.js
       const sphere = new THREE.Sphere(
         new THREE.Vector3(body.position.x, PLAYER_RADIUS, body.position.z),
-        0.55
+        0.55,
       );
       const wallBox = state.WALLS[0] as THREE.Box3;
       if (wallBox.intersectsSphere(sphere)) {
@@ -173,5 +184,4 @@ describe('Cannon XZ collision proxy', () => {
       expect(lp.displayVelocity.z).toBe(0);
     });
   });
-
 });

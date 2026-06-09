@@ -8,7 +8,8 @@ import { state } from './state.js';
 const HDR_LOADER_URL = 'three/addons/loaders/HDRLoader.js';
 
 // Poly Haven CC0 HDRI — 1K resolution for performance, outdoor dawn sky
-const HDR_URL = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kiara_1_dawn_1k.hdr';
+const HDR_URL =
+  'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kiara_1_dawn_1k.hdr';
 
 let loaded = false;
 
@@ -23,7 +24,10 @@ export function resetHdriLoader() {
 export async function loadHdriEnvironment() {
   if (loaded) return;
   if (!state.renderer || !state.scene) {
-    if (typeof document !== 'undefined' && !document.getElementById('game-container')) {
+    if (
+      typeof document !== 'undefined' &&
+      !document.getElementById('game-container')
+    ) {
       clearTimeout(_retryTimer);
       _retryTimer = null;
       return;
@@ -67,12 +71,18 @@ export async function loadHdriEnvironment() {
         },
         undefined, // onProgress
         (err) => {
-          console.warn('[HDRI] Failed to load HDR file, scene continues without env map:', err);
+          console.warn(
+            '[HDRI] Failed to load HDR file, scene continues without env map:',
+            err,
+          );
           resolve(); // Non-fatal
-        }
+        },
       );
     });
   } catch (importErr) {
-    console.warn('[HDRI] HDRLoader import failed, scene continues without env map:', importErr);
+    console.warn(
+      '[HDRI] HDRLoader import failed, scene continues without env map:',
+      importErr,
+    );
   }
 }

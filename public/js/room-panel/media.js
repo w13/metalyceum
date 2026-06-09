@@ -1,9 +1,16 @@
 // YouTube Live and Google Meet media synchronization for Metalyceum room screens
 import * as THREE from 'three';
+import {
+  restoreSoundtrackAfterRoomMedia,
+  suppressSoundtrackForRoomMedia,
+} from '../audio.js';
+import { closeModal, isModalOpen, isModalRegistered } from '../modals.js';
 import { state } from '../state.js';
-import { getRoomPlaybackStartSeconds, safeMeetUrl, parseVideoInput } from '../utils.js';
-import { closeModal, isModalRegistered, isModalOpen } from '../modals.js';
-import { restoreSoundtrackAfterRoomMedia, suppressSoundtrackForRoomMedia } from '../audio.js';
+import {
+  getRoomPlaybackStartSeconds,
+  parseVideoInput,
+  safeMeetUrl,
+} from '../utils.js';
 
 let _roomVideoContainer = null;
 const roomScreenTextureCache = new Map();
@@ -11,7 +18,10 @@ const roomScreenTextureLoads = new Map();
 const ROOM_MEDIA_SYNC_DELAY_MS = 60;
 const ROOM_MEDIA_LAZY_LOAD_DELAY_MS = 180;
 
-function createElement(tagName, { className = '', textContent = '', styleText = '' } = {}) {
+function createElement(
+  tagName,
+  { className = '', textContent = '', styleText = '' } = {},
+) {
   const el = document.createElement(tagName);
   if (className) el.className = className;
   if (textContent) el.textContent = textContent;
@@ -27,7 +37,9 @@ function setDisplayById(elementId, display) {
 
 function pauseYoutubePlayer(player) {
   if (!player?.pauseVideo) return;
-  try { player.pauseVideo(); } catch (e) {}
+  try {
+    player.pauseVideo();
+  } catch (e) {}
 }
 
 function getEmbeddedYoutubeIframe(containerId) {
@@ -37,11 +49,14 @@ function getEmbeddedYoutubeIframe(containerId) {
 function postYoutubeIframeCommand(iframe, func) {
   if (!iframe?.contentWindow) return;
   try {
-    iframe.contentWindow.postMessage(JSON.stringify({
-      event: 'command',
-      func,
-      args: []
-    }), 'https://www.youtube.com');
+    iframe.contentWindow.postMessage(
+      JSON.stringify({
+        event: 'command',
+        func,
+        args: [],
+      }),
+      'https://www.youtube.com',
+    );
   } catch (e) {}
 }
 
@@ -103,11 +118,17 @@ function clearEmbedTarget(elementId) {
   return target;
 }
 
-function renderYoutubeEmbed({ containerId, videoId, playbackStart = 0, sourceKey }) {
+function renderYoutubeEmbed({
+  containerId,
+  videoId,
+  playbackStart = 0,
+  sourceKey,
+}) {
   const existingIframe = getEmbeddedYoutubeIframe(containerId);
-  const target = existingIframe?.dataset.sourceKey === sourceKey
-    ? document.getElementById(containerId)
-    : clearEmbedTarget(containerId);
+  const target =
+    existingIframe?.dataset.sourceKey === sourceKey
+      ? document.getElementById(containerId)
+      : clearEmbedTarget(containerId);
   if (!target) return;
 
   if (existingIframe?.dataset.sourceKey === sourceKey) {
@@ -129,11 +150,12 @@ function renderYoutubeEmbed({ containerId, videoId, playbackStart = 0, sourceKey
     enablejsapi: '1',
     playsinline: '1',
     rel: '0',
-    ...(startSeconds > 0 ? { start: String(startSeconds) } : {})
+    ...(startSeconds > 0 ? { start: String(startSeconds) } : {}),
   });
   iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(resolvedId)}?${params.toString()}`;
   iframe.title = 'Room video';
-  iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+  iframe.allow =
+    'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
   iframe.referrerPolicy = 'strict-origin-when-cross-origin';
   iframe.allowFullscreen = true;
   iframe.style.position = 'absolute';
@@ -168,19 +190,24 @@ function populateMeetCard(el, videoId, isBoard) {
   el.innerHTML = '';
   const icon = createElement('span', {
     styleText: `font-size: ${isBoard ? 28 : 32}px; margin-bottom: ${isBoard ? 6 : 8}px;`,
-    textContent: '🌐'
+    textContent: '🌐',
   });
   const title = createElement('div', {
-    styleText: "font-weight:600;font-size:14px;margin-bottom:4px;font-family:'Plus Jakarta Sans',sans-serif;",
-    textContent: 'Google Meet Active'
+    styleText:
+      "font-weight:600;font-size:14px;margin-bottom:4px;font-family:'Plus Jakarta Sans',sans-serif;",
+    textContent: 'Google Meet Active',
   });
   const sub = createElement('div', {
-    styleText: "font-size:11px;color:#94a3b8;margin-bottom:12px;font-family:'Plus Jakarta Sans',sans-serif;",
-    textContent: isBoard ? 'Classroom has a live meeting.' : 'Room has a live video call.'
+    styleText:
+      "font-size:11px;color:#94a3b8;margin-bottom:12px;font-family:'Plus Jakarta Sans',sans-serif;",
+    textContent: isBoard
+      ? 'Classroom has a live meeting.'
+      : 'Room has a live video call.',
   });
   const a = createElement('a', {
-    styleText: "background:#2563eb;color:#fff;padding:6px 12px;border-radius:4px;font-size:11px;text-decoration:none;font-weight:600;pointer-events:auto;",
-    textContent: 'Join Meeting'
+    styleText:
+      'background:#2563eb;color:#fff;padding:6px 12px;border-radius:4px;font-size:11px;text-decoration:none;font-weight:600;pointer-events:auto;',
+    textContent: 'Join Meeting',
   });
   const url = safeMeetUrl(videoId);
   if (url) a.href = url;
@@ -189,7 +216,12 @@ function populateMeetCard(el, videoId, isBoard) {
   el.append(icon, title, sub, a);
 }
 
-function hideMediaSlot(youtubeId, meetCardId, player, { preserveYoutube = false } = {}) {
+function hideMediaSlot(
+  youtubeId,
+  meetCardId,
+  player,
+  { preserveYoutube = false } = {},
+) {
   const youtubeTarget = document.getElementById(youtubeId);
   if (youtubeTarget) {
     const iframe = getEmbeddedYoutubeIframe(youtubeId);
@@ -206,7 +238,8 @@ function hideMediaSlot(youtubeId, meetCardId, player, { preserveYoutube = false 
 }
 
 function setRoomPanelMediaVisible(visible) {
-  if (!_roomVideoContainer) _roomVideoContainer = document.querySelector('.video-container');
+  if (!_roomVideoContainer)
+    _roomVideoContainer = document.querySelector('.video-container');
   if (_roomVideoContainer) {
     _roomVideoContainer.style.display = visible ? 'block' : 'none';
   }
@@ -214,7 +247,9 @@ function setRoomPanelMediaVisible(visible) {
 
 function clearRoomMediaUi({ preserveYoutube = false } = {}) {
   clearMediaSlotLoad('room-panel');
-  hideMediaSlot('youtube-player', 'room-meet-card', state.ytPlayer, { preserveYoutube });
+  hideMediaSlot('youtube-player', 'room-meet-card', state.ytPlayer, {
+    preserveYoutube,
+  });
   setRoomPanelMediaVisible(false);
   state.activeRoomVideoId = '';
 }
@@ -222,7 +257,9 @@ function clearRoomMediaUi({ preserveYoutube = false } = {}) {
 function closeTheaterPlayback() {
   const theaterContainer = document.getElementById('theater-player-container');
   if (state._theaterMovedIframeSource && theaterContainer) {
-    const sourceContainer = document.getElementById(state._theaterMovedIframeSource);
+    const sourceContainer = document.getElementById(
+      state._theaterMovedIframeSource,
+    );
     const movedIframe = getEmbeddedYoutubeIframe('theater-player-container');
     if (movedIframe && sourceContainer) {
       movedIframe.style.position = 'absolute';
@@ -339,13 +376,15 @@ function loadRoomScreenThumbnail(videoId) {
     return roomScreenTextureLoads.get(videoId);
   }
 
-  const texturePromise = loadThumbnailSize(videoId, THUMBNAIL_SIZES, 0).then((texture) => {
-    if (texture) {
-      roomScreenTextureCache.set(videoId, texture);
-    }
-    roomScreenTextureLoads.delete(videoId);
-    return texture;
-  });
+  const texturePromise = loadThumbnailSize(videoId, THUMBNAIL_SIZES, 0).then(
+    (texture) => {
+      if (texture) {
+        roomScreenTextureCache.set(videoId, texture);
+      }
+      roomScreenTextureLoads.delete(videoId);
+      return texture;
+    },
+  );
 
   roomScreenTextureLoads.set(videoId, texturePromise);
   return texturePromise;
@@ -356,7 +395,7 @@ export function syncRoomScreenMedia(room) {
   if (!screenEntry) return;
 
   const rawId = room.sourceType === 'youtube' ? getRoomMediaSource(room) : '';
-  const videoId = rawId ? (parseVideoInput(rawId) || rawId) : '';
+  const videoId = rawId ? parseVideoInput(rawId) || rawId : '';
   if (!videoId) {
     applyRoomScreenFallback(room.id);
     return;
@@ -380,7 +419,15 @@ export function syncRoomScreenMedia(room) {
   });
 }
 
-function showMeetSlot({ container, youtubeId, meetCardId, meetCardStyle, player, videoId, isBoard }) {
+function showMeetSlot({
+  container,
+  youtubeId,
+  meetCardId,
+  meetCardStyle,
+  player,
+  videoId,
+  isBoard,
+}) {
   clearEmbedTarget(youtubeId);
   pauseYoutubePlayer(player);
 
@@ -409,13 +456,19 @@ export function setupRoomVideo(roomId) {
   if (oldBoard) oldBoard.style.display = 'none';
 
   hideMediaSlot('youtube-player', 'room-meet-card', state.ytPlayer, {
-    preserveYoutube: !isMeet && hasReusableYoutubeEmbed('youtube-player', mediaStateKey)
+    preserveYoutube:
+      !isMeet && hasReusableYoutubeEmbed('youtube-player', mediaStateKey),
   });
   setRoomPanelMediaVisible(false);
   scheduleMediaSlotLoad('room-panel', () => {
-    if (state.localPlayer.currentRoom !== roomId || getRoomMediaStateKey(roomId) !== mediaStateKey) return;
+    if (
+      state.localPlayer.currentRoom !== roomId ||
+      getRoomMediaStateKey(roomId) !== mediaStateKey
+    )
+      return;
 
-    if (!_roomVideoContainer) _roomVideoContainer = document.querySelector('.video-container');
+    if (!_roomVideoContainer)
+      _roomVideoContainer = document.querySelector('.video-container');
     if (!_roomVideoContainer) return;
     setRoomPanelMediaVisible(true);
 
@@ -427,7 +480,7 @@ export function setupRoomVideo(roomId) {
         meetCardStyle: '',
         player: state.ytPlayer,
         videoId,
-        isBoard: false
+        isBoard: false,
       });
       return;
     }
@@ -436,20 +489,26 @@ export function setupRoomVideo(roomId) {
       containerId: 'youtube-player',
       videoId,
       playbackStart,
-      sourceKey: mediaStateKey
+      sourceKey: mediaStateKey,
     });
   });
   state.activeRoomVideoId = videoId;
 }
 
-function applyActiveRoomMediaState({ roomId = state.localPlayer.currentRoom, stopOtherMedia = false, closeTheater = false } = {}) {
+function applyActiveRoomMediaState({
+  roomId = state.localPlayer.currentRoom,
+  stopOtherMedia = false,
+  closeTheater = false,
+} = {}) {
   const room = roomId >= 0 ? state.ROOMS[roomId] : null;
   const mediaStateKey = getRoomMediaStateKey(roomId);
   const hasMedia = Boolean(room && hasRoomMediaSource(room));
 
-  if (!stopOtherMedia &&
-      state.roomMediaState.activeRoomId === roomId &&
-      state.roomMediaState.activeSourceKey === mediaStateKey) {
+  if (
+    !stopOtherMedia &&
+    state.roomMediaState.activeRoomId === roomId &&
+    state.roomMediaState.activeSourceKey === mediaStateKey
+  ) {
     return;
   }
 
@@ -460,7 +519,9 @@ function applyActiveRoomMediaState({ roomId = state.localPlayer.currentRoom, sto
   }
 
   if (!room) {
-    clearRoomMediaUi({ preserveYoutube: state.roomMediaState.activeSourceType === 'youtube' });
+    clearRoomMediaUi({
+      preserveYoutube: state.roomMediaState.activeSourceType === 'youtube',
+    });
     state.roomMediaState.activeRoomId = -1;
     state.roomMediaState.activeSourceKey = '';
     state.roomMediaState.activeSourceType = 'none';
@@ -514,7 +575,8 @@ export function pauseActiveEmbeddedYoutube() {
 export function resumeActiveEmbeddedYoutube() {
   const roomId = state.localPlayer.currentRoom;
   const room = roomId >= 0 ? state.ROOMS[roomId] : null;
-  if (!room || room.sourceType !== 'youtube' || !getRoomMediaSource(room)) return;
+  if (!room || room.sourceType !== 'youtube' || !getRoomMediaSource(room))
+    return;
 
   const activeIframe = state._theaterMovedIframeSource
     ? getEmbeddedYoutubeIframe('theater-player-container')

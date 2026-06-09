@@ -1,20 +1,34 @@
 // Roads and pathways construction for the outdoor campus
 import * as THREE from 'three';
-import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
+import { state } from '../state.js';
 
 export function buildRoads() {
   // - Road materials (polygonOffset prevents z-fighting with terrain)
   const roadMat = new THREE.MeshStandardMaterial({
-    color: '#334155', roughness: 0.85, metalness: 0.04,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+    color: '#334155',
+    roughness: 0.85,
+    metalness: 0.04,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
   });
   const roadBorderMat = new THREE.MeshStandardMaterial({
-    color: '#475569', roughness: 0.7, metalness: 0.08,
-    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+    color: '#475569',
+    roughness: 0.7,
+    metalness: 0.08,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
 
-  function buildTerrainRibbon(points, width, material, yOffset, lateralOffset = 0) {
+  function buildTerrainRibbon(
+    points,
+    width,
+    material,
+    yOffset,
+    lateralOffset = 0,
+  ) {
     if (points.length < 2) return;
 
     const positions = [];
@@ -37,8 +51,12 @@ export function buildRoads() {
       const rightZ = centerZ + right.z * halfWidth;
 
       positions.push(
-        leftX, getTerrainHeight(leftX, leftZ) + yOffset, leftZ,
-        rightX, getTerrainHeight(rightX, rightZ) + yOffset, rightZ
+        leftX,
+        getTerrainHeight(leftX, leftZ) + yOffset,
+        leftZ,
+        rightX,
+        getTerrainHeight(rightX, rightZ) + yOffset,
+        rightZ,
       );
 
       if (i < points.length - 1) {
@@ -48,7 +66,10 @@ export function buildRoads() {
     }
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(positions, 3),
+    );
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
 
@@ -67,25 +88,36 @@ export function buildRoads() {
   {
     const ampPts = [
       new THREE.Vector3(4.3, 0, 62.7),
-      new THREE.Vector3(14,  0, 78),
-      new THREE.Vector3(27,  0, 97),
-      new THREE.Vector3(42,  0, 118),
-      new THREE.Vector3(56,  0, 137),
-      new THREE.Vector3(65,  0, 150)
+      new THREE.Vector3(14, 0, 78),
+      new THREE.Vector3(27, 0, 97),
+      new THREE.Vector3(42, 0, 118),
+      new THREE.Vector3(56, 0, 137),
+      new THREE.Vector3(65, 0, 150),
     ];
     const curve = new THREE.CatmullRomCurve3(ampPts);
     const pts = curve.getPoints(72);
     buildTerrainRoad(pts, 5.0);
 
-    const bridgeMat = new THREE.MeshStandardMaterial({ color: '#8a7a5a', roughness: 0.78 });
-    const brX = 26, brZ = 93;
+    const bridgeMat = new THREE.MeshStandardMaterial({
+      color: '#8a7a5a',
+      roughness: 0.78,
+    });
+    const brX = 26,
+      brZ = 93;
     const bridgeY = 0.15; // flush with the road on the banks
     const roadAngle = Math.atan2(13, 19);
-    const tangent = new THREE.Vector3(Math.sin(roadAngle), 0, Math.cos(roadAngle));
+    const tangent = new THREE.Vector3(
+      Math.sin(roadAngle),
+      0,
+      Math.cos(roadAngle),
+    );
     const right = new THREE.Vector3(tangent.z, 0, -tangent.x);
 
     // 1. Raised road deck (oriented along roadAngle)
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.25, 12.0), bridgeMat);
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(4.5, 0.25, 12.0),
+      bridgeMat,
+    );
     deck.position.set(brX, bridgeY, brZ);
     deck.rotation.y = roadAngle;
     deck.castShadow = true;
@@ -93,7 +125,7 @@ export function buildRoads() {
     state.scene.add(deck);
 
     // 2. Pillars at both banks (local Z = -4.2 and 4.2)
-    for (let offsetZ of [-4.2, 4.2]) {
+    for (const offsetZ of [-4.2, 4.2]) {
       const px = brX + tangent.x * offsetZ;
       const pz = brZ + tangent.z * offsetZ;
       const pillarBaseY = getTerrainHeight(px, pz, true);
@@ -102,7 +134,7 @@ export function buildRoads() {
 
       const pillar = new THREE.Mesh(
         new THREE.BoxGeometry(4.8, pillarH, 1.5),
-        bridgeMat
+        bridgeMat,
       );
       pillar.position.set(px, pillarY, pz);
       pillar.rotation.y = roadAngle;
@@ -127,7 +159,7 @@ export function buildRoads() {
       // but skipping it leaves gaps in the arch at the edges where terrain meets the banks.
       const block = new THREE.Mesh(
         new THREE.BoxGeometry(4.6, 0.25, 1.0),
-        bridgeMat
+        bridgeMat,
       );
       block.position.set(px, py, pz);
       block.rotation.y = roadAngle;
@@ -138,13 +170,13 @@ export function buildRoads() {
     }
 
     // 4. Side walls (parapets) + posts
-    for (let side of [-1, 1]) {
+    for (const side of [-1, 1]) {
       const wallX = -right.x * side * 2.3;
       const wallZ = -right.z * side * 2.3;
 
       const wall = new THREE.Mesh(
         new THREE.BoxGeometry(0.2, 0.7, 12.0),
-        bridgeMat
+        bridgeMat,
       );
       wall.position.set(brX + wallX, bridgeY + 0.35, brZ + wallZ);
       wall.rotation.y = roadAngle;
@@ -152,15 +184,15 @@ export function buildRoads() {
       state.scene.add(wall);
 
       // Add small decorative posts
-      for (let posZ of [-6.0, -3.0, 0, 3.0, 6.0]) {
+      for (const posZ of [-6.0, -3.0, 0, 3.0, 6.0]) {
         const post = new THREE.Mesh(
           new THREE.BoxGeometry(0.25, 0.9, 0.25),
-          bridgeMat
+          bridgeMat,
         );
         post.position.set(
           brX + wallX + tangent.x * posZ,
           bridgeY + 0.45,
-          brZ + wallZ + tangent.z * posZ
+          brZ + wallZ + tangent.z * posZ,
         );
         post.rotation.y = roadAngle;
         post.castShadow = true;
@@ -169,20 +201,20 @@ export function buildRoads() {
     }
 
     // 5. Small transition ramps at the ends of the bridge
-    for (let side of [-1, 1]) {
+    for (const side of [-1, 1]) {
       const edgeZ = side * 6.0;
       const px = brX + tangent.x * edgeZ;
       const pz = brZ + tangent.z * edgeZ;
       const rampH = getTerrainHeight(px, pz, true);
-      
+
       const ramp = new THREE.Mesh(
         new THREE.BoxGeometry(4.5, 0.1, 1.2),
-        bridgeMat
+        bridgeMat,
       );
       ramp.position.set(
         px + tangent.x * side * 0.6,
         (bridgeY + rampH) / 2,
-        pz + tangent.z * side * 0.6
+        pz + tangent.z * side * 0.6,
       );
       ramp.rotation.y = roadAngle;
       ramp.receiveShadow = true;
@@ -194,11 +226,11 @@ export function buildRoads() {
   {
     const cvPts = [
       new THREE.Vector3(-5.3, 0, 61.8),
-      new THREE.Vector3(-18,  0, 68),
-      new THREE.Vector3(-26,  0, 86),
-      new THREE.Vector3(-38,  0, 104),
-      new THREE.Vector3(-48,  0, 122),
-      new THREE.Vector3(-60,  0, 140)
+      new THREE.Vector3(-18, 0, 68),
+      new THREE.Vector3(-26, 0, 86),
+      new THREE.Vector3(-38, 0, 104),
+      new THREE.Vector3(-48, 0, 122),
+      new THREE.Vector3(-60, 0, 140),
     ];
     const curve = new THREE.CatmullRomCurve3(cvPts);
     const pts = curve.getPoints(56);
@@ -217,10 +249,14 @@ export function buildRoads() {
       new THREE.Vector3(66, 0, 12),
       new THREE.Vector3(73, 0, 8),
     ];
-    roadPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    roadPts.forEach((p) => {
+      p.y = getTerrainHeight(p.x, p.z) + 0.15;
+    });
     const curve = new THREE.CatmullRomCurve3(roadPts);
     const pts = curve.getPoints(30);
-    pts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    pts.forEach((p) => {
+      p.y = getTerrainHeight(p.x, p.z) + 0.15;
+    });
     buildTerrainRoad(pts, 3.5);
   }
 
@@ -234,10 +270,14 @@ export function buildRoads() {
       new THREE.Vector3(120, 0, -62),
       new THREE.Vector3(130, 0, -80),
     ];
-    roadPts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    roadPts.forEach((p) => {
+      p.y = getTerrainHeight(p.x, p.z) + 0.15;
+    });
     const curve = new THREE.CatmullRomCurve3(roadPts);
     const pts = curve.getPoints(25);
-    pts.forEach(p => { p.y = getTerrainHeight(p.x, p.z) + 0.15; });
+    pts.forEach((p) => {
+      p.y = getTerrainHeight(p.x, p.z) + 0.15;
+    });
     buildTerrainRoad(pts, 3.5);
   }
 }

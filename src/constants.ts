@@ -23,9 +23,9 @@ export const MAX_ROOM_NAME_LEN = 48;
 export const MAX_WORLD_ASSETS = 200;
 export const ROOMS_CONFIG_VERSION = 2; // bump to force room re-seed on deploy
 export const DEFAULT_ROOM_DURATION_MINUTES = 60;
-export const DEFAULT_ROOM_START_TIME = "2026-01-01T18:00:00.000Z";
+export const DEFAULT_ROOM_START_TIME = '2026-01-01T18:00:00.000Z';
 
-export type RoomSourceType = "youtube" | "meet" | "none";
+export type RoomSourceType = 'youtube' | 'meet' | 'none';
 
 export type RoomEvent = {
   roomId: number;
@@ -43,30 +43,30 @@ export type PersistedChatMessage = {
   username: string;
   color: string;
   message: string;
-  scope: "global" | "room";
+  scope: 'global' | 'room';
   roomId: number | null;
   timestamp: number;
 };
 
 const DEFAULT_ROOM_SEEDS = [
-  { roomId: 0, name: "North Hall", sourceValue: "V0UzCBrWeTI" },
-  { roomId: 1, name: "East Studio", sourceValue: "V_plEMQhOb8" },
-  { roomId: 2, name: "Open Workshop", sourceValue: "nHlTJtGGOGI" },
-  { roomId: 3, name: "Broadcast Room", sourceValue: "NrNR2MdZN7k" },
-  { roomId: 4, name: "South Lounge", sourceValue: "jbD-r7M4U_8" },
-  { roomId: 5, name: "Crit Room", sourceValue: "hL_HGTRMPqI" },
-  { roomId: 6, name: "Screening Room", sourceValue: "UxSzlY506MM" },
-  { roomId: 7, name: "Commons", sourceValue: "ogyX9nIK0kM" },
-  { roomId: 8, name: "Amphitheater", sourceValue: "DyccRj-TBkU" },
-  { roomId: 9, name: "Concert Venue", sourceValue: "V0UzCBrWeTI" }
+  { roomId: 0, name: 'North Hall', sourceValue: 'V0UzCBrWeTI' },
+  { roomId: 1, name: 'East Studio', sourceValue: 'V_plEMQhOb8' },
+  { roomId: 2, name: 'Open Workshop', sourceValue: 'nHlTJtGGOGI' },
+  { roomId: 3, name: 'Broadcast Room', sourceValue: 'NrNR2MdZN7k' },
+  { roomId: 4, name: 'South Lounge', sourceValue: 'jbD-r7M4U_8' },
+  { roomId: 5, name: 'Crit Room', sourceValue: 'hL_HGTRMPqI' },
+  { roomId: 6, name: 'Screening Room', sourceValue: 'UxSzlY506MM' },
+  { roomId: 7, name: 'Commons', sourceValue: 'ogyX9nIK0kM' },
+  { roomId: 8, name: 'Amphitheater', sourceValue: 'DyccRj-TBkU' },
+  { roomId: 9, name: 'Concert Venue', sourceValue: 'V0UzCBrWeTI' },
 ] as const;
 
 export const DEFAULT_ROOMS: RoomEvent[] = DEFAULT_ROOM_SEEDS.map((room) => ({
   ...room,
-  sourceType: "youtube",
+  sourceType: 'youtube',
   startTime: DEFAULT_ROOM_START_TIME,
   durationMinutes: DEFAULT_ROOM_DURATION_MINUTES,
-  updatedAt: 0
+  updatedAt: 0,
 }));
 
 export type Player = {
@@ -87,7 +87,7 @@ export type TokenBucket = {
 };
 
 export type SessionSource = {
-  clientType: "site-browser" | "external-browser" | "script" | "unknown";
+  clientType: 'site-browser' | 'external-browser' | 'script' | 'unknown';
   originHost: string | null;
   refererHost: string | null;
   userAgent: string;
@@ -114,7 +114,7 @@ export type Bindings = {
     fetch: typeof fetch;
   };
   WORLD_EDITOR_TOKEN?: string;
-  ADMIN_INIT_TOKEN?: string;   // bootstrap: POST /api/v1/auth/init with this token creates first owner
+  ADMIN_INIT_TOKEN?: string; // bootstrap: POST /api/v1/auth/init with this token creates first owner
 };
 
 // For AdminDO — same shape but clearer intent

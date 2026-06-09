@@ -5,7 +5,7 @@ export type ParsedJsonObject =
   | { ok: false; error: string };
 
 function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function parseJsonObjectText(raw: string): ParsedJsonObject {
@@ -17,17 +17,19 @@ export function parseJsonObjectText(raw: string): ParsedJsonObject {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ok: false, error: "Invalid JSON body" };
+    return { ok: false, error: 'Invalid JSON body' };
   }
 
   if (!isJsonObject(parsed)) {
-    return { ok: false, error: "JSON body must be an object" };
+    return { ok: false, error: 'JSON body must be an object' };
   }
 
   return { ok: true, value: parsed };
 }
 
-export async function parseJsonObjectBody(request: Request): Promise<ParsedJsonObject> {
+export async function parseJsonObjectBody(
+  request: Request,
+): Promise<ParsedJsonObject> {
   const raw = await request.text();
   return parseJsonObjectText(raw);
 }

@@ -1,8 +1,8 @@
 // Player Avatars for Metalyceum
 import * as THREE from 'three';
-import { state } from './state.js';
 import { MAP_SIZE, NPC_SPAWNS } from './config.js';
 import { checkCollision, getTerrainHeight } from './physics.js';
+import { state } from './state.js';
 
 // --- Player Name Tag Sprite ---
 function createPlayerNameSprite(name, color = '#ffffff') {
@@ -10,10 +10,13 @@ function createPlayerNameSprite(name, color = '#ffffff') {
   canvas.width = 256;
   canvas.height = 64;
   const ctx = canvas.getContext('2d');
-  
+
   ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
   const r = 8;
-  const x = 8, y = 8, w = 240, h = 48;
+  const x = 8,
+    y = 8,
+    w = 240,
+    h = 48;
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.lineTo(x + w - r, y);
@@ -26,26 +29,42 @@ function createPlayerNameSprite(name, color = '#ffffff') {
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
   ctx.fill();
-  
+
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  
+
   ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(name, 128, 32);
-  
+
   const texture = new THREE.CanvasTexture(canvas);
-  const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const spriteMaterial = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+  });
   const sprite = new THREE.Sprite(spriteMaterial);
   sprite.scale.set(3, 0.75, 1);
   return sprite;
 }
 
 // --- Player Avatar Creation ---
-const EMOJIS = ['👋', '🎵', '💃', '🤘', '👀', '✨', '🔥', '💬', '🤔', '😎', '🙌', '💪'];
+const EMOJIS = [
+  '👋',
+  '🎵',
+  '💃',
+  '🤘',
+  '👀',
+  '✨',
+  '🔥',
+  '💬',
+  '🤔',
+  '😎',
+  '🙌',
+  '💪',
+];
 
 function createNpcEmojiSprite(emoji) {
   const canvas = document.createElement('canvas');
@@ -58,7 +77,11 @@ function createNpcEmojiSprite(emoji) {
   ctx.fillText(emoji, 32, 34);
   const tex = new THREE.CanvasTexture(canvas);
   tex.minFilter = THREE.LinearFilter;
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    depthTest: false,
+  });
   const sprite = new THREE.Sprite(mat);
   sprite.scale.set(0.8, 0.8, 1);
   sprite.position.y = 3.2;
@@ -66,16 +89,41 @@ function createNpcEmojiSprite(emoji) {
   return sprite;
 }
 
-export function createPlayerAvatar(avatarType, colorHex, username, isLocal = false, isNpc = false, npcStyle = {}) {
+export function createPlayerAvatar(
+  avatarType,
+  colorHex,
+  username,
+  isLocal = false,
+  isNpc = false,
+  npcStyle = {},
+) {
   const avatarGroup = new THREE.Group();
 
-  const shirtMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.6 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: npcStyle.skin || '#fbcfe8', roughness: 0.8 });
-  const legMat = new THREE.MeshStandardMaterial({ color: npcStyle.pants || '#1e293b', roughness: 0.8 });
-  const shoeMat = new THREE.MeshStandardMaterial({ color: npcStyle.shoes || '#18181b', roughness: 0.9 });
-  const brownMat = new THREE.MeshStandardMaterial({ color: '#854d0e', roughness: 0.85 });
-  const hatBandMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.5 });
-  
+  const shirtMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    roughness: 0.6,
+  });
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: npcStyle.skin || '#fbcfe8',
+    roughness: 0.8,
+  });
+  const legMat = new THREE.MeshStandardMaterial({
+    color: npcStyle.pants || '#1e293b',
+    roughness: 0.8,
+  });
+  const shoeMat = new THREE.MeshStandardMaterial({
+    color: npcStyle.shoes || '#18181b',
+    roughness: 0.9,
+  });
+  const brownMat = new THREE.MeshStandardMaterial({
+    color: '#854d0e',
+    roughness: 0.85,
+  });
+  const hatBandMat = new THREE.MeshStandardMaterial({
+    color: '#1e293b',
+    roughness: 0.5,
+  });
+
   const torsoGeo = new THREE.CylinderGeometry(0.35, 0.28, 1.0, 6);
   const torso = new THREE.Mesh(torsoGeo, shirtMat);
   torso.position.y = 1.1;
@@ -91,12 +139,27 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
 
   // Optional glasses
   if (npcStyle.glasses) {
-    const glassMat = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.3, metalness: 0.5 });
-    const lensMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.1, transparent: true, opacity: 0.35 });
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.15, 0.05), glassMat);
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: '#1e293b',
+      roughness: 0.3,
+      metalness: 0.5,
+    });
+    const lensMat = new THREE.MeshStandardMaterial({
+      color: '#94a3b8',
+      roughness: 0.1,
+      transparent: true,
+      opacity: 0.35,
+    });
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.15, 0.05),
+      glassMat,
+    );
     frame.position.set(0, 1.85, 0.32);
     avatarGroup.add(frame);
-    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.02), lensMat);
+    const lens = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.08, 0.02),
+      lensMat,
+    );
     lens.position.set(-0.1, 1.85, 0.35);
     avatarGroup.add(lens);
     const lens2 = lens.clone();
@@ -106,44 +169,44 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
 
   // Hat (style-dependent)
   if (npcStyle.hat !== 'none') {
-  const hatGroup = new THREE.Group();
-  const brimGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.04, 8);
-  const brim = new THREE.Mesh(brimGeo, brownMat);
-  brim.position.y = 2.02;
-  brim.castShadow = true;
-  hatGroup.add(brim);
+    const hatGroup = new THREE.Group();
+    const brimGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.04, 8);
+    const brim = new THREE.Mesh(brimGeo, brownMat);
+    brim.position.y = 2.02;
+    brim.castShadow = true;
+    hatGroup.add(brim);
 
-  const bandGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.08, 8);
-  const band = new THREE.Mesh(bandGeo, hatBandMat);
-  band.position.y = 2.1;
-  hatGroup.add(band);
+    const bandGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.08, 8);
+    const band = new THREE.Mesh(bandGeo, hatBandMat);
+    band.position.y = 2.1;
+    hatGroup.add(band);
 
-  const crownGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.3, 8);
-  const crown = new THREE.Mesh(crownGeo, brownMat);
-  crown.position.y = 2.25;
-  crown.castShadow = true;
-  hatGroup.add(crown);
-  avatarGroup.add(hatGroup);
+    const crownGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.3, 8);
+    const crown = new THREE.Mesh(crownGeo, brownMat);
+    crown.position.y = 2.25;
+    crown.castShadow = true;
+    hatGroup.add(crown);
+    avatarGroup.add(hatGroup);
   }
 
   // Backpack (not all NPCs carry one)
   if (!npcStyle.noBackpack) {
-  const packGeo = new THREE.BoxGeometry(0.42, 0.6, 0.22);
-  const backpack = new THREE.Mesh(packGeo, brownMat);
-  backpack.position.set(0, 1.1, -0.28);
-  backpack.castShadow = true;
-  avatarGroup.add(backpack);
+    const packGeo = new THREE.BoxGeometry(0.42, 0.6, 0.22);
+    const backpack = new THREE.Mesh(packGeo, brownMat);
+    backpack.position.set(0, 1.1, -0.28);
+    backpack.castShadow = true;
+    avatarGroup.add(backpack);
   }
 
   // Arms
   const armGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.7, 4);
   armGeo.translate(0, -0.35, 0);
-  
+
   const leftArm = new THREE.Mesh(armGeo, shirtMat);
   leftArm.position.set(-0.48, 1.5, 0);
   leftArm.castShadow = true;
   avatarGroup.add(leftArm);
-  
+
   const rightArm = new THREE.Mesh(armGeo, shirtMat);
   rightArm.position.set(0.48, 1.5, 0);
   rightArm.castShadow = true;
@@ -169,7 +232,7 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
   leftShoe.position.set(0, -0.55, 0.05);
   leftShoe.castShadow = true;
   leftLeg.add(leftShoe);
-  
+
   const rightShoe = new THREE.Mesh(shoeGeo, shoeMat);
   rightShoe.position.set(0, -0.55, 0.05);
   rightShoe.castShadow = true;
@@ -191,20 +254,28 @@ export function createPlayerAvatar(avatarType, colorHex, username, isLocal = fal
 
   return {
     group: avatarGroup,
-    leftLeg, rightLeg,
-    leftArm, rightArm,
+    leftLeg,
+    rightLeg,
+    leftArm,
+    rightArm,
     nameTag,
-    emojiSprite
+    emojiSprite,
   };
 }
-
 
 export function spawnNpcs() {
   NPC_SPAWNS.forEach((spawn) => {
     const npcColor = spawn.color;
     const npcUsername = spawn.name;
 
-    const avatar = createPlayerAvatar('player', npcColor, npcUsername, false, true, spawn);
+    const avatar = createPlayerAvatar(
+      'player',
+      npcColor,
+      npcUsername,
+      false,
+      true,
+      spawn,
+    );
 
     const npc = {
       id: `npc-${spawn.name}`,
@@ -243,7 +314,7 @@ export function spawnNpcs() {
 function setNpcIdle(npc, waitOverride = null) {
   npc.state = 'idle';
   npc.isMoving = false;
-  npc.waitTimer = waitOverride ?? (Math.random() * 4 + 2);
+  npc.waitTimer = waitOverride ?? Math.random() * 4 + 2;
   // Hide emoji when walking starts
   if (npc.emojiSprite) npc.emojiSprite.visible = false;
   npc.emojiDuration = 0;
@@ -266,8 +337,14 @@ function chooseNpcTarget(npc) {
   for (let attempt = 0; attempt < 12; attempt += 1) {
     const angle = Math.random() * Math.PI * 2;
     const dist = 5 + Math.random() * 12;
-    const targetX = Math.max(-limit, Math.min(limit, npc.x + Math.cos(angle) * dist));
-    const targetZ = Math.max(-limit, Math.min(limit, npc.z + Math.sin(angle) * dist));
+    const targetX = Math.max(
+      -limit,
+      Math.min(limit, npc.x + Math.cos(angle) * dist),
+    );
+    const targetZ = Math.max(
+      -limit,
+      Math.min(limit, npc.z + Math.sin(angle) * dist),
+    );
     if (!checkCollision(targetX, targetZ)) {
       npc.targetX = targetX;
       npc.targetZ = targetZ;
@@ -361,7 +438,7 @@ export function updateNpcs(dt) {
       }
     }
 
-    if (npc.state === "idle") {
+    if (npc.state === 'idle') {
       npc.waitTimer -= dt;
       if (npc.waitTimer <= 0) {
         if (!chooseNpcTarget(npc)) {
@@ -369,7 +446,7 @@ export function updateNpcs(dt) {
           resetNpcLimbSwing(npc);
         }
       }
-    } else if (npc.state === "walk") {
+    } else if (npc.state === 'walk') {
       moveNpcTowardTarget(npc, dt);
     }
   });
@@ -410,22 +487,49 @@ export function animateAvatarWalk(playerObj, dt, now, isSprinting = false) {
   } else {
     const lerpSpeed = 10 * dt;
     leftLeg.rotation.x = THREE.MathUtils.lerp(leftLeg.rotation.x, 0, lerpSpeed);
-    rightLeg.rotation.x = THREE.MathUtils.lerp(rightLeg.rotation.x, 0, lerpSpeed);
-    leftLeg.position.y = THREE.MathUtils.lerp(leftLeg.position.y || 0.6, 0.6, lerpSpeed);
-    rightLeg.position.y = THREE.MathUtils.lerp(rightLeg.position.y || 0.6, 0.6, lerpSpeed);
-    
+    rightLeg.rotation.x = THREE.MathUtils.lerp(
+      rightLeg.rotation.x,
+      0,
+      lerpSpeed,
+    );
+    leftLeg.position.y = THREE.MathUtils.lerp(
+      leftLeg.position.y || 0.6,
+      0.6,
+      lerpSpeed,
+    );
+    rightLeg.position.y = THREE.MathUtils.lerp(
+      rightLeg.position.y || 0.6,
+      0.6,
+      lerpSpeed,
+    );
+
     if (leftArm && rightArm) {
-      leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, 0, lerpSpeed);
-      rightArm.rotation.x = THREE.MathUtils.lerp(rightArm.rotation.x, 0, lerpSpeed);
+      leftArm.rotation.x = THREE.MathUtils.lerp(
+        leftArm.rotation.x,
+        0,
+        lerpSpeed,
+      );
+      rightArm.rotation.x = THREE.MathUtils.lerp(
+        rightArm.rotation.x,
+        0,
+        lerpSpeed,
+      );
     }
   }
-  
+
   if (!playerObj.isGrounded && leftArm && rightArm) {
-    leftArm.rotation.z = THREE.MathUtils.lerp(leftArm.rotation.z, -Math.PI / 3, 5 * dt);
-    rightArm.rotation.z = THREE.MathUtils.lerp(rightArm.rotation.z, Math.PI / 3, 5 * dt);
+    leftArm.rotation.z = THREE.MathUtils.lerp(
+      leftArm.rotation.z,
+      -Math.PI / 3,
+      5 * dt,
+    );
+    rightArm.rotation.z = THREE.MathUtils.lerp(
+      rightArm.rotation.z,
+      Math.PI / 3,
+      5 * dt,
+    );
   } else if (leftArm && rightArm) {
     leftArm.rotation.z = THREE.MathUtils.lerp(leftArm.rotation.z, 0, 10 * dt);
     rightArm.rotation.z = THREE.MathUtils.lerp(rightArm.rotation.z, 0, 10 * dt);
   }
 }
-

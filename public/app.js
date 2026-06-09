@@ -1,30 +1,40 @@
 // Metalyceum Entry Point (ES6 Module coordinator)
-import { state } from './js/state.js';
-import { initEngine, startAnimationLoop, stopAnimationLoop } from './js/engine.js';
-import { initDebugPanel, initSoundtrackUi, initUiHandlers } from './js/ui.js';
+
+import {
+  initLandingAudio,
+  pauseSoundtrackPlayback,
+  prepareSoundtrackLoginTransition,
+  resumeAudioContext,
+  resumeLandingAudio,
+  startSoundtrackPlayback,
+  stopLandingAudio,
+} from './js/audio.js';
+import {
+  initEngine,
+  startAnimationLoop,
+  stopAnimationLoop,
+} from './js/engine.js';
+import { initMinimap } from './js/minimap.js';
 import {
   pauseActiveEmbeddedYoutube,
-  resumeActiveEmbeddedYoutube,
   renderEventBoard,
+  resumeActiveEmbeddedYoutube,
   scheduleRoomVisualRefresh,
-  updateRoomPanelDetails
+  updateRoomPanelDetails,
 } from './js/room-panel.js';
-import {
-  resumeAudioContext,
-  pauseSoundtrackPlayback,
-  startSoundtrackPlayback,
-  initLandingAudio,
-  resumeLandingAudio,
-  stopLandingAudio,
-  prepareSoundtrackLoginTransition
-} from './js/audio.js';
-import { initMinimap } from './js/minimap.js';
+import { state } from './js/state.js';
+import { initDebugPanel, initSoundtrackUi, initUiHandlers } from './js/ui.js';
+
 // Dev-tools: only active on localhost or when ?debug is in the URL
-const _isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.search.includes('debug');
+const _isDev =
+  location.hostname === 'localhost' ||
+  location.hostname === '127.0.0.1' ||
+  location.search.includes('debug');
+
 import { initDevTools } from './js/dev-tools.js';
 
 // Global Callback called by YouTube SDK iframe API script loading
-window.onYouTubeIframeAPIReady = function() {
+window.onYouTubeIframeAPIReady = () => {
   state.ytApiReady = true;
 };
 
@@ -44,10 +54,17 @@ function setFatalErrorBanner(message) {
 }
 
 function captureError(type, msg, stack) {
-  state.errorLog.push({ ts: Date.now(), type, msg: String(msg).slice(0, 500), stack: stack ? String(stack).slice(0, 1000) : null });
+  state.errorLog.push({
+    ts: Date.now(),
+    type,
+    msg: String(msg).slice(0, 500),
+    stack: stack ? String(stack).slice(0, 1000) : null,
+  });
   if (state.errorLog.length > MAX_ERRORS) state.errorLog.shift();
   if (type === 'uncaught' || type === 'promise') {
-    setFatalErrorBanner(`Client error: ${String(msg).slice(0, 180)}. Add ?diag to the URL for details.`);
+    setFatalErrorBanner(
+      `Client error: ${String(msg).slice(0, 180)}. Add ?diag to the URL for details.`,
+    );
   }
 }
 
@@ -58,32 +75,63 @@ window.onerror = function (msg, source, line, col, err) {
 };
 
 window.addEventListener('unhandledrejection', (e) => {
-  captureError('promise', e.reason || 'Unknown promise rejection', e.reason?.stack);
+  captureError(
+    'promise',
+    e.reason || 'Unknown promise rejection',
+    e.reason?.stack,
+  );
 });
 
 // Patch console.error to capture as well
 const origConsoleError = console.error;
-console.error = function (...args) {
-  captureError('console', args.map(a => typeof a === 'object' ? (a?.message ?? JSON.stringify(a)) : String(a)).join(' '));
+console.error = (...args) => {
+  captureError(
+    'console',
+    args
+      .map((a) =>
+        typeof a === 'object' ? (a?.message ?? JSON.stringify(a)) : String(a),
+      )
+      .join(' '),
+  );
   origConsoleError.apply(console, args);
 };
 
 // Expose full diagnostics dump for browser console / puppeteer
-window.__metalyceumDump = function () {
-  const diag = typeof getEngineDiagnostics === 'function' ? getEngineDiagnostics() : { error: 'engine not loaded' };
+window.__metalyceumDump = () => {
+  const diag =
+    typeof getEngineDiagnostics === 'function'
+      ? getEngineDiagnostics()
+      : { error: 'engine not loaded' };
   const result = {
     ts: Date.now(),
     errors: state.errorLog.slice(-20),
     diagnostics: diag,
     isJoined: state.isJoined,
-    playerPos: state.localPlayer ? { x: state.localPlayer.x, y: state.localPlayer.y, z: state.localPlayer.z, room: state.localPlayer.currentRoom } : null,
+    playerPos: state.localPlayer
+      ? {
+          x: state.localPlayer.x,
+          y: state.localPlayer.y,
+          z: state.localPlayer.z,
+          room: state.localPlayer.currentRoom,
+        }
+      : null,
     remoteCount: state.remotePlayers?.size ?? 0,
-    rooms: state.ROOMS?.map(r => ({ id: r.id, name: r.name, sourceType: r.sourceType, sourceValue: r.sourceValue?.slice(0, 30) }))
+    rooms: state.ROOMS?.map((r) => ({
+      id: r.id,
+      name: r.name,
+      sourceType: r.sourceType,
+      sourceValue: r.sourceValue?.slice(0, 30),
+    })),
   };
   // Copy to clipboard for easy pasting into chat
   const json = JSON.stringify(result, null, 2);
-  try { navigator.clipboard?.writeText(json); } catch {}
-  console.log('[Metalyceum] Diagnostics captured. Run copy(__metalyceumDump()) to get the JSON.\n', result);
+  try {
+    navigator.clipboard?.writeText(json);
+  } catch {}
+  console.log(
+    '[Metalyceum] Diagnostics captured. Run copy(__metalyceumDump()) to get the JSON.\n',
+    result,
+  );
   return result;
 };
 
@@ -95,11 +143,13 @@ function initPerformanceOptimization() {
       pauseSoundtrackPlayback();
       pauseActiveEmbeddedYoutube();
       if (state.boardYtPlayer && state.boardYtPlayer.pauseVideo) {
-        try { state.boardYtPlayer.pauseVideo(); } catch (e) {}
+        try {
+          state.boardYtPlayer.pauseVideo();
+        } catch (e) {}
       }
       return;
     }
-    
+
     startAnimationLoop();
     if (state.localPlayer.currentRoom !== -1) {
       resumeActiveEmbeddedYoutube();
@@ -122,7 +172,9 @@ function initPerformanceOptimization() {
 if (location.search.includes('debug') || location.search.includes('diag')) {
   // Will be picked up after module init — queue it
   queueMicrotask(() => {
-    import('./js/state.js').then(m => { m.state.DEBUG_STATE.enabled = true; });
+    import('./js/state.js').then((m) => {
+      m.state.DEBUG_STATE.enabled = true;
+    });
   });
 }
 
@@ -150,23 +202,30 @@ window.addEventListener('DOMContentLoaded', async () => {
     resumeLandingAudio();
     // Swap hint to "Now playing"
     if (musicHint) {
-      musicHint.innerHTML = '<span class="login-music-icon">🎵</span> Welcome Threshold — playing';
+      musicHint.innerHTML =
+        '<span class="login-music-icon">🎵</span> Welcome Threshold — playing';
       musicHint.style.color = 'rgba(167, 211, 175, 0.85)';
     }
   }
 
   if (loginOverlay) {
-    loginOverlay.addEventListener('pointerdown', startLandingOnce, { once: false });
+    loginOverlay.addEventListener('pointerdown', startLandingOnce, {
+      once: false,
+    });
     loginOverlay.addEventListener('keydown', startLandingOnce, { once: false });
   }
 
   // Wire stop into the login submit so music fades out on enter
   const loginForm = document.getElementById('login-form');
   if (loginForm) {
-    loginForm.addEventListener('submit', () => {
-      prepareSoundtrackLoginTransition();
-      stopLandingAudio(2.4);
-    }, { capture: true }); // capture fires before ui.js listener removes the overlay
+    loginForm.addEventListener(
+      'submit',
+      () => {
+        prepareSoundtrackLoginTransition();
+        stopLandingAudio(2.4);
+      },
+      { capture: true },
+    ); // capture fires before ui.js listener removes the overlay
   }
 
   state.roomStatusTimer = window.setInterval(() => {

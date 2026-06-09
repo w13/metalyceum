@@ -1,13 +1,22 @@
 // Theater Mode for Metalyceum
 import * as THREE from 'three';
-import { state } from './state.js';
+import {
+  restoreSoundtrackAfterRoomMedia,
+  suppressSoundtrackForRoomMedia,
+} from './audio.js';
 import { addChatLog } from './chat.js';
-import { resetCameraFollow, detectRoomEntry } from './engine.js';
-import { getTerrainHeight } from './physics.js';
-import { restoreSoundtrackAfterRoomMedia, suppressSoundtrackForRoomMedia } from './audio.js';
-import { closeModal, isModalRegistered, openModal, registerModal } from './modals.js';
-import { syncActiveRoomMediaState } from './room-panel.js';
 import { handleEditorCanvasClick } from './editor.js';
+import { detectRoomEntry, resetCameraFollow } from './engine.js';
+import {
+  closeModal,
+  isModalRegistered,
+  openModal,
+  registerModal,
+} from './modals.js';
+import { getTerrainHeight } from './physics.js';
+import { syncActiveRoomMediaState } from './room-panel.js';
+import { state } from './state.js';
+
 // physics-engine.js dynamically loaded in focusRoomFromLobbyMarker (non-blocking)
 
 // Scratch vectors reused per-frame to avoid GC pressure
@@ -21,13 +30,14 @@ export function initTheaterUi() {
     surface: '#theater-modal .theater-card',
     openClass: 'active',
     closeSelectors: ['#close-theater-btn', '#close-theater-footer-btn'],
-    initialFocusSelector: '#close-theater-btn'
+    initialFocusSelector: '#close-theater-btn',
   });
 
   const openTheaterBtn = document.getElementById('open-theater-btn');
   if (openTheaterBtn) {
     openTheaterBtn.addEventListener('click', () => {
-      if (state.localPlayer.currentRoom !== -1) openTheaterMode(state.localPlayer.currentRoom);
+      if (state.localPlayer.currentRoom !== -1)
+        openTheaterMode(state.localPlayer.currentRoom);
     });
   }
 }
@@ -37,7 +47,9 @@ export function initTheaterUi() {
 // Moves a previously relocated iframe back to its source container and restores visibility.
 function _restoreMovedTheaterIframe(container) {
   if (!state._theaterMovedIframeSource) return;
-  const sourceContainer = document.getElementById(state._theaterMovedIframeSource);
+  const sourceContainer = document.getElementById(
+    state._theaterMovedIframeSource,
+  );
   const movedIframe = container.querySelector('iframe');
   if (movedIframe && sourceContainer) {
     movedIframe.style.position = 'absolute';
@@ -54,7 +66,7 @@ function _restoreMovedTheaterIframe(container) {
 
 export function openTheaterMode(roomId) {
   const room = state.ROOMS[roomId];
-  const feedVal = room.sourceValue || room.video || "";
+  const feedVal = room.sourceValue || room.video || '';
 
   const title = document.getElementById('theater-title');
   const container = document.getElementById('theater-player-container');
@@ -85,13 +97,16 @@ export function openTheaterMode(roomId) {
     }
     const iframe = document.createElement('iframe');
     iframe.src = meetUrl;
-    iframe.allow = "camera; microphone; display-capture; autoplay";
+    iframe.allow = 'camera; microphone; display-capture; autoplay';
     container.appendChild(iframe);
     fallbackBtn.href = meetUrl;
     fallbackBtn.style.display = 'inline-flex';
     suppressSoundtrackForRoomMedia();
     openModal('theater-modal');
-    if (state.ytPlayer?.pauseVideo) try { state.ytPlayer.pauseVideo(); } catch(e) {}
+    if (state.ytPlayer?.pauseVideo)
+      try {
+        state.ytPlayer.pauseVideo();
+      } catch (e) {}
     return;
   }
 
@@ -112,10 +127,14 @@ export function openTheaterMode(roomId) {
     // Video hasn't loaded yet — create a fresh iframe with autoplay as fallback
     const iframe = document.createElement('iframe');
     iframe.src = `https://www.youtube.com/embed/${feedVal}?autoplay=1&enablejsapi=1`;
-    iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    iframe.allow =
+      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
     iframe.allowFullscreen = true;
     container.appendChild(iframe);
-    if (state.ytPlayer?.pauseVideo) try { state.ytPlayer.pauseVideo(); } catch(e) {}
+    if (state.ytPlayer?.pauseVideo)
+      try {
+        state.ytPlayer.pauseVideo();
+      } catch (e) {}
   }
 
   suppressSoundtrackForRoomMedia();
@@ -129,7 +148,8 @@ export function closeTheaterMode() {
   // Return the moved iframe to its original room-panel slot before clearing the container
   if (container) _restoreMovedTheaterIframe(container);
 
-  if (modal && isModalRegistered('theater-modal')) closeModal('theater-modal', { restoreFocus: false });
+  if (modal && isModalRegistered('theater-modal'))
+    closeModal('theater-modal', { restoreFocus: false });
   if (container) container.innerHTML = '';
   restoreSoundtrackAfterRoomMedia();
 
@@ -149,7 +169,9 @@ export function onCanvasClick(event) {
   _clickRaycaster.setFromCamera(_clickMouse, state.camera);
 
   // Check for teleport triggers (staircase, etc.)
-  const markerIntersects = _clickRaycaster.intersectObjects(state.clickableRoomMarkers);
+  const markerIntersects = _clickRaycaster.intersectObjects(
+    state.clickableRoomMarkers,
+  );
   if (markerIntersects.length > 0) {
     const ud = markerIntersects[0].object.userData;
     if (ud && ud.teleport) {
@@ -186,18 +208,28 @@ export function focusRoomFromLobbyMarker(roomId) {
 
   state.localPlayer.x = room.x;
   state.localPlayer.z = room.z + (room.z < 0 ? 5.2 : -5.2);
-  state.localPlayer.y = getTerrainHeight(state.localPlayer.x, state.localPlayer.z);
+  state.localPlayer.y = getTerrainHeight(
+    state.localPlayer.x,
+    state.localPlayer.z,
+  );
   state.localPlayer.velocity.set(0, 0, 0);
-  state.localPlayer.mesh.position.set(state.localPlayer.x, state.localPlayer.y, state.localPlayer.z);
+  state.localPlayer.mesh.position.set(
+    state.localPlayer.x,
+    state.localPlayer.y,
+    state.localPlayer.z,
+  );
   // Sync Cannon body position if physics engine is loaded (non-blocking)
-  import('./physics-engine.js').then(m => {
-    if (m.isCannonReady()) m.teleportPlayer(state.localPlayer.x, state.localPlayer.z);
-  }).catch((err) => {
-    console.warn('[Metalyceum] Physics engine sync failed:', err);
-  });
+  import('./physics-engine.js')
+    .then((m) => {
+      if (m.isCannonReady())
+        m.teleportPlayer(state.localPlayer.x, state.localPlayer.z);
+    })
+    .catch((err) => {
+      console.warn('[Metalyceum] Physics engine sync failed:', err);
+    });
   resetCameraFollow();
   addChatLog('System', `Moved closer to ${room.name}.`, 'system-msg');
-  
+
   const event = new CustomEvent('room-marker-teleport');
   window.dispatchEvent(event);
 }

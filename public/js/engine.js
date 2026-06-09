@@ -1,51 +1,50 @@
 // Game Engine, Camera, Rendering Loop, and Physics Update Scheduler for Metalyceum
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { state } from './state.js';
+import { buildMap } from './building.js';
+import { animateAvatarWalk } from './characters.js';
+import { syncChatScopeWithLocation } from './chat.js';
 import {
   CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
   CAMERA_TARGET_DECAY,
   CAMERA_TARGET_LOOK_HEIGHT,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
   REMOTE_PLAYER_SMOOTHING,
-  WORLD_CONFIG,
   ROOM_HEIGHT,
-  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
+  WORLD_CONFIG,
 } from './config.js';
-import { getRoomIdForPosition, isLocalPlayerUnderRoof } from './physics.js';
-import { initCannon, updateElevatorDoorCollider } from './physics-engine.js';
-import { loadHdriEnvironment } from './environment.js';
-import {
-  spawnNpcs,
-  updateNpcs,
-  refreshStaticSceneryVisibility
-} from './scenery.js';
-import { updateDebugPanel } from './ui.js';
-import {
-  closeRoomEventModal,
-  scheduleRoomPlayersListRefresh,
-  scheduleActiveRoomMediaState,
-  updateRoomPanelDetails,
-  syncActiveRoomMediaState,
-} from './room-panel.js';
-import { updateRoomIndicatorAnimations } from './room-animation.js';
-import { syncChatScopeWithLocation } from './chat.js';
-import { buildMap } from './building.js';
-import { renderMinimap } from './minimap.js';
-import { animateAvatarWalk } from './characters.js';
-import { initTransformControls } from './editor.js';
 import { updateDevTools } from './dev-tools.js';
-
+import { initTransformControls } from './editor.js';
 // Camera & Movement Sub-modules — orbitCamera imported once; no duplicate import below.
 import {
-  orbitCamera,
   isExitCameraWatchActive,
+  orbitCamera,
   startExitCameraWatch,
-  updateCameraFollow
+  updateCameraFollow,
 } from './engine/camera.js';
-import { updateLocalPlayer } from './engine/movement.js';
 import { updateJetpack } from './engine/jetpack.js';
-import { updateTorches } from './lighting.js';
+import { updateLocalPlayer } from './engine/movement.js';
+import { loadHdriEnvironment } from './environment.js';
 import { updateFadeZones } from './fade-system.js';
+import { updateTorches } from './lighting.js';
+import { renderMinimap } from './minimap.js';
+import { getRoomIdForPosition, isLocalPlayerUnderRoof } from './physics.js';
+import { initCannon, updateElevatorDoorCollider } from './physics-engine.js';
+import { updateRoomIndicatorAnimations } from './room-animation.js';
+import {
+  closeRoomEventModal,
+  scheduleActiveRoomMediaState,
+  scheduleRoomPlayersListRefresh,
+  syncActiveRoomMediaState,
+  updateRoomPanelDetails,
+} from './room-panel.js';
+import {
+  refreshStaticSceneryVisibility,
+  spawnNpcs,
+  updateNpcs,
+} from './scenery.js';
+import { state } from './state.js';
+import { updateDebugPanel } from './ui.js';
 
 const _desiredCameraTarget = new THREE.Vector3();
 // Pre-allocated scratch for elevator Box3 computation — avoids per-frame allocation
@@ -65,9 +64,9 @@ const _ambInColor = new THREE.Color('#e8a040');
 // Arrow-key camera angular velocity (RuneScape-style smooth orbit)
 let _camVelTheta = 0;
 let _camVelPhi = 0;
-const _CAM_ACCEL = 5.5;  // rad/s² while key held
-const _CAM_MAX   = 1.6;  // rad/s peak speed
-const _CAM_DECAY = 7.0;  // exponential decay rate per second after key release
+const _CAM_ACCEL = 5.5; // rad/s² while key held
+const _CAM_MAX = 1.6; // rad/s peak speed
+const _CAM_DECAY = 7.0; // exponential decay rate per second after key release
 
 // Cache last scanned XZ — skip O(n) room scan when player hasn't moved
 let _roomScanLastX = -99999;
@@ -77,7 +76,11 @@ export function detectRoomEntry() {
   const px = state.localPlayer.x;
   const pz = state.localPlayer.z;
   // Skip scan if player hasn't moved meaningfully since last check
-  if (Math.abs(px - _roomScanLastX) < 0.15 && Math.abs(pz - _roomScanLastZ) < 0.15) return;
+  if (
+    Math.abs(px - _roomScanLastX) < 0.15 &&
+    Math.abs(pz - _roomScanLastZ) < 0.15
+  )
+    return;
   _roomScanLastX = px;
   _roomScanLastZ = pz;
 
@@ -88,7 +91,9 @@ export function detectRoomEntry() {
 
     // WebSocket message is just a buffer write — keep it synchronous
     if (state.socket && state.socket.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ type: "room_change", room: activeRoomId }));
+      state.socket.send(
+        JSON.stringify({ type: 'room_change', room: activeRoomId }),
+      );
     }
 
     // Defer all DOM/media work off the render frame to avoid lag spikes on crossing
@@ -105,14 +110,22 @@ export function detectRoomEntry() {
           panel.setAttribute('aria-hidden', 'true');
         }
         closeRoomEventModal({ restoreFocus: false });
-        syncActiveRoomMediaState({ roomId: -1, stopOtherMedia: true, closeTheater: true });
+        syncActiveRoomMediaState({
+          roomId: -1,
+          stopOtherMedia: true,
+          closeTheater: true,
+        });
       } else {
         updateRoomPanelDetails();
         if (panel) {
           panel.classList.add('room-panel-visible');
           panel.setAttribute('aria-hidden', 'false');
         }
-        scheduleActiveRoomMediaState({ roomId: capturedRoomId, stopOtherMedia: true, closeTheater: true });
+        scheduleActiveRoomMediaState({
+          roomId: capturedRoomId,
+          stopOtherMedia: true,
+          closeTheater: true,
+        });
         scheduleRoomPlayersListRefresh();
       }
     }, 0);
@@ -126,9 +139,8 @@ window.addEventListener('room-marker-teleport', () => {
   detectRoomEntry();
 });
 
-
 function updateRemotePlayer(p, dt, now) {
-  const remoteLerpSpeed = 1 - Math.pow(REMOTE_PLAYER_SMOOTHING, dt);
+  const remoteLerpSpeed = 1 - REMOTE_PLAYER_SMOOTHING ** dt;
   const disconnected = state.disconnectedPlayerIds.has(p.id);
 
   p.x = THREE.MathUtils.lerp(p.x, p.targetX, remoteLerpSpeed);
@@ -172,25 +184,34 @@ export function animate() {
   const dt = Math.min((_now - state.lastTime) / 1000, 0.1);
   state.lastTime = _now;
   state.frameCount = (state.frameCount || 0) + 1;
-  
-  const camInputX = (state.cameraKeys.ArrowRight ? 1 : 0) - (state.cameraKeys.ArrowLeft ? 1 : 0);
-  const camInputY = (state.cameraKeys.ArrowDown  ? 1 : 0) - (state.cameraKeys.ArrowUp   ? 1 : 0);
+
+  const camInputX =
+    (state.cameraKeys.ArrowRight ? 1 : 0) -
+    (state.cameraKeys.ArrowLeft ? 1 : 0);
+  const camInputY =
+    (state.cameraKeys.ArrowDown ? 1 : 0) - (state.cameraKeys.ArrowUp ? 1 : 0);
   if (camInputX !== 0) {
-    _camVelTheta = Math.max(-_CAM_MAX, Math.min(_CAM_MAX, _camVelTheta + camInputX * _CAM_ACCEL * dt));
+    _camVelTheta = Math.max(
+      -_CAM_MAX,
+      Math.min(_CAM_MAX, _camVelTheta + camInputX * _CAM_ACCEL * dt),
+    );
   } else {
-    _camVelTheta *= (1 - Math.min(1, _CAM_DECAY * dt));
+    _camVelTheta *= 1 - Math.min(1, _CAM_DECAY * dt);
     if (Math.abs(_camVelTheta) < 0.001) _camVelTheta = 0;
   }
   if (camInputY !== 0) {
-    _camVelPhi = Math.max(-_CAM_MAX, Math.min(_CAM_MAX, _camVelPhi + camInputY * _CAM_ACCEL * dt));
+    _camVelPhi = Math.max(
+      -_CAM_MAX,
+      Math.min(_CAM_MAX, _camVelPhi + camInputY * _CAM_ACCEL * dt),
+    );
   } else {
-    _camVelPhi *= (1 - Math.min(1, _CAM_DECAY * dt));
+    _camVelPhi *= 1 - Math.min(1, _CAM_DECAY * dt);
     if (Math.abs(_camVelPhi) < 0.001) _camVelPhi = 0;
   }
   if (_camVelTheta !== 0 || _camVelPhi !== 0) {
     orbitCamera(_camVelTheta * dt, _camVelPhi * dt);
   }
-  
+
   updateTorches(_now);
   updateLocalPlayer(dt, _now);
   detectRoomEntry();
@@ -203,7 +224,7 @@ export function animate() {
   });
 
   updateRoomIndicatorAnimations(_now);
-  
+
   const isInside = isLocalPlayerUnderRoof();
   if (state.cameraRig.wasUnderRoof && !isInside) {
     startExitCameraWatch(_now);
@@ -216,9 +237,9 @@ export function animate() {
     _desiredCameraTarget.set(
       state.localPlayer.mesh.position.x,
       state.localPlayer.mesh.position.y + CAMERA_TARGET_LOOK_HEIGHT,
-      state.localPlayer.mesh.position.z - CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET
+      state.localPlayer.mesh.position.z - CAMERA_EXIT_WATCH_TARGET_BACK_OFFSET,
     );
-    const exitTargetLerp = 1 - Math.pow(CAMERA_TARGET_DECAY, dt);
+    const exitTargetLerp = 1 - CAMERA_TARGET_DECAY ** dt;
     state.controls.target.lerp(_desiredCameraTarget, exitTargetLerp);
   }
   updateFadeZones(dt);
@@ -228,12 +249,23 @@ export function animate() {
   // and skips frames when stable, which can leave shared materials stale).
   if (state.ceilingMat) {
     const targetOpacity = isInside ? 0.0 : 1.0;
-    state.ceilingMat.opacity = THREE.MathUtils.lerp(state.ceilingMat.opacity, targetOpacity, 8 * dt);
+    state.ceilingMat.opacity = THREE.MathUtils.lerp(
+      state.ceilingMat.opacity,
+      targetOpacity,
+      8 * dt,
+    );
     state.ceilingMesh.visible = state.ceilingMat.opacity > 0.02;
   }
   if (state.upperWallMat) {
-    const upperWallTarget = !isInside || state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y ? 1.0 : 0.0;
-    state.upperWallMat.opacity = THREE.MathUtils.lerp(state.upperWallMat.opacity, upperWallTarget, 8 * dt);
+    const upperWallTarget =
+      !isInside || state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
+        ? 1.0
+        : 0.0;
+    state.upperWallMat.opacity = THREE.MathUtils.lerp(
+      state.upperWallMat.opacity,
+      upperWallTarget,
+      8 * dt,
+    );
   }
 
   // ── Smooth indoor/outdoor lighting transition (RuneScape-style) ─────
@@ -255,7 +287,8 @@ export function animate() {
       state.sceneSunLight.target.position.set(px, 0, pz);
       // Only rebuild shadow frustum when player moves >2 units — updateProjectionMatrix
       // triggers a GPU uniform upload and was running 60×/s unnecessarily.
-      const shadowMoved = Math.abs(px - _shadowLastPx) > 2 || Math.abs(pz - _shadowLastPz) > 2;
+      const shadowMoved =
+        Math.abs(px - _shadowLastPx) > 2 || Math.abs(pz - _shadowLastPz) > 2;
       if (shadowMoved) {
         _shadowLastPx = px;
         _shadowLastPz = pz;
@@ -269,9 +302,21 @@ export function animate() {
     }
   }
   if (state.sceneHemisphereLight) {
-    state.sceneHemisphereLight.intensity = THREE.MathUtils.lerp(0.78, 0.25, mix);
-    state.sceneHemisphereLight.color.lerpColors(_hemiOutColor, _hemiInColor, mix);
-    state.sceneHemisphereLight.groundColor.lerpColors(_hemiGndOut, _hemiGndIn, mix);
+    state.sceneHemisphereLight.intensity = THREE.MathUtils.lerp(
+      0.78,
+      0.25,
+      mix,
+    );
+    state.sceneHemisphereLight.color.lerpColors(
+      _hemiOutColor,
+      _hemiInColor,
+      mix,
+    );
+    state.sceneHemisphereLight.groundColor.lerpColors(
+      _hemiGndOut,
+      _hemiGndIn,
+      mix,
+    );
   }
   if (state.sceneIndoorLight) {
     state.sceneIndoorLight.intensity = THREE.MathUtils.lerp(0, 0.4, mix);
@@ -293,7 +338,8 @@ export function animate() {
       const dc = state.elevator.doorCollider;
       if (state.elevator.car) {
         // Offset by half the car height so the collider spans floor→ceiling, not underground→mid
-        dc.position.y = state.elevator.car.position.y + (state.elevator.halfHeight ?? 2.75);
+        dc.position.y =
+          state.elevator.car.position.y + (state.elevator.halfHeight ?? 2.75);
       }
       // Sync the physics Box3 so WALLS collision follows the car.
       // When visible=false (doors open or riding), collapse the Box3 to zero
@@ -308,7 +354,10 @@ export function animate() {
         }
         // Sync the Cannon dynamic body for the elevator door — Cannon uses its
         // own body since its buildWallColliders skips tagged dynamic boxes.
-        updateElevatorDoorCollider(state.elevator.doorBox.min, state.elevator.doorBox.max);
+        updateElevatorDoorCollider(
+          state.elevator.doorBox.min,
+          state.elevator.doorBox.max,
+        );
       }
     }
 
@@ -319,7 +368,7 @@ export function animate() {
     }
     state.renderer.render(state.scene, state.camera);
   } catch (err) {
-    console.error("[Metalyceum] Render error:", err);
+    console.error('[Metalyceum] Render error:', err);
   }
 
   // Throttle to ~10 fps (every 6th frame at 60fps)
@@ -341,16 +390,21 @@ export function getEngineDiagnostics() {
     state.scene.children.forEach((child) => {
       if (idx >= 10) return;
       const d = Math.sqrt(
-        (child.position.x - px) ** 2 + (child.position.z - pz) ** 2
+        (child.position.x - px) ** 2 + (child.position.z - pz) ** 2,
       );
       if (d < 50 && child.type === 'Mesh' && child.geometry) {
         const g = child.geometry;
         const params = g.parameters || {};
-        const info = `${child.type} d=${d.toFixed(1)} ` +
+        const info =
+          `${child.type} d=${d.toFixed(1)} ` +
           `pos=(${child.position.x.toFixed(1)},${child.position.y.toFixed(1)},${child.position.z.toFixed(1)}) ` +
           `geo=${g.type}` +
-          (params.width ? ` ${params.width.toFixed(2)}x${params.height?.toFixed(2)}` : '') +
-          (params.radiusTop ? ` r=${params.radiusTop?.toFixed(2)} h=${params.height?.toFixed(2)}` : '');
+          (params.width
+            ? ` ${params.width.toFixed(2)}x${params.height?.toFixed(2)}`
+            : '') +
+          (params.radiusTop
+            ? ` r=${params.radiusTop?.toFixed(2)} h=${params.height?.toFixed(2)}`
+            : '');
         nearby.push(info);
         idx++;
       }
@@ -360,17 +414,21 @@ export function getEngineDiagnostics() {
   return {
     ts: Date.now(),
     fps: state.DEBUG_STATE.fps,
-    camera: state.camera ? {
-      px: state.camera.position.x.toFixed(2),
-      py: state.camera.position.y.toFixed(2),
-      pz: state.camera.position.z.toFixed(2)
-    } : null,
-    player: state.localPlayer ? {
-      x: state.localPlayer.x.toFixed(2),
-      y: state.localPlayer.y.toFixed(2),
-      z: state.localPlayer.z.toFixed(2),
-      room: state.localPlayer.currentRoom
-    } : null,
+    camera: state.camera
+      ? {
+          px: state.camera.position.x.toFixed(2),
+          py: state.camera.position.y.toFixed(2),
+          pz: state.camera.position.z.toFixed(2),
+        }
+      : null,
+    player: state.localPlayer
+      ? {
+          x: state.localPlayer.x.toFixed(2),
+          y: state.localPlayer.y.toFixed(2),
+          z: state.localPlayer.z.toFixed(2),
+          room: state.localPlayer.currentRoom,
+        }
+      : null,
     remotePlayers: state.remotePlayers.size,
     roomIndicators: state.ROOM_INDICATORS?.size ?? 0,
     staticScenery: state.STATIC_SCENERY?.length ?? 0,
@@ -378,7 +436,7 @@ export function getEngineDiagnostics() {
     roofMeshes: state.roofMeshes?.length ?? 0,
     colliders: state.PLACED_ASSET_COLLIDERS?.length ?? 0,
     sceneObjects: state.scene?.children?.length ?? 0,
-    nearby: nearby
+    nearby: nearby,
   };
 }
 
@@ -407,9 +465,17 @@ export async function initEngine() {
   state.scene.background = new THREE.Color('#030712');
   state.scene.fog = new THREE.Fog('#030712', 200, 600);
 
-  state.camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 1000);
+  state.camera = new THREE.PerspectiveCamera(
+    54,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000,
+  );
 
-  state.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+  state.renderer = new THREE.WebGLRenderer({
+    antialias: false,
+    powerPreference: 'high-performance',
+  });
   state.renderer.setSize(window.innerWidth, window.innerHeight);
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
@@ -438,7 +504,11 @@ export async function initEngine() {
   state.sceneAmbientLight = new THREE.AmbientLight('#ffffff', 0.15);
   state.scene.add(state.sceneAmbientLight);
 
-  state.sceneHemisphereLight = new THREE.HemisphereLight('#87ceeb', '#080820', 0.78);
+  state.sceneHemisphereLight = new THREE.HemisphereLight(
+    '#87ceeb',
+    '#080820',
+    0.78,
+  );
   state.sceneHemisphereLight.position.set(0, 50, 0);
   state.scene.add(state.sceneHemisphereLight);
 
@@ -477,7 +547,7 @@ export async function initEngine() {
         topColor: { value: new THREE.Color('#030712') },
         bottomColor: { value: new THREE.Color('#080f25') },
         offset: { value: 33 },
-        exponent: { value: 0.6 }
+        exponent: { value: 0.6 },
       },
       vertexShader: `
         varying vec3 vWorldPosition;
@@ -497,38 +567,40 @@ export async function initEngine() {
           float h = normalize(vWorldPosition + offset).y;
           gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
         }
-      `
-    })
+      `,
+    }),
   );
   state.scene.add(state.skyDome);
-  
+
   const _loadingText = document.querySelector('#loading-screen p');
-  await buildMap((msg) => { if (_loadingText) _loadingText.textContent = msg; });
+  await buildMap((msg) => {
+    if (_loadingText) _loadingText.textContent = msg;
+  });
   // Pre-compile all shaders before the first render frame to avoid compile-stutter on scene entry.
   state.renderer.compile(state.scene, state.camera);
   initCannon(); // async, non-blocking — fallback collision runs until CDN resolves
   refreshStaticSceneryVisibility();
-  
+
   const event = new CustomEvent('room-marker-teleport');
   window.dispatchEvent(event);
-  
+
   spawnNpcs();
 
   window.addEventListener('resize', onWindowResize);
   const loading = document.getElementById('loading-screen');
   if (loading) loading.classList.remove('active');
-  
+
   setTimeout(() => loadHdriEnvironment(), 100);
   initTransformControls();
 
   window.__metalyceumDiagnostics = getEngineDiagnostics;
 }
 
+export { animateAvatarWalk } from './characters.js';
 export {
   noteManualCameraInput,
-  resetCameraFollow,
   orbitCamera,
-  updateCameraFollow
+  resetCameraFollow,
+  updateCameraFollow,
 } from './engine/camera.js';
 export { updateLocalPlayer } from './engine/movement.js';
-export { animateAvatarWalk } from './characters.js';

@@ -1,15 +1,16 @@
 // Elevator state machine: folding doors, ride sequence, and 2nd floor reveal
-import { state } from '../state.js';
+
 import {
-  MAIN_BUILDING_ELEVATOR_GROUND_Y,
-  MAIN_BUILDING_MEZZANINE_Y,
-  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
   MAIN_BUILDING_ELEVATOR_FRONT_Z,
-  MAIN_BUILDING_ELEVATOR_INTERIOR_HALF_WIDTH,
+  MAIN_BUILDING_ELEVATOR_GROUND_Y,
   MAIN_BUILDING_ELEVATOR_INTERIOR_BACK_Z,
   MAIN_BUILDING_ELEVATOR_INTERIOR_FRONT_Z,
-  MAIN_BUILDING_ELEVATOR_PROXIMITY_DIST_SQ
+  MAIN_BUILDING_ELEVATOR_INTERIOR_HALF_WIDTH,
+  MAIN_BUILDING_ELEVATOR_PROXIMITY_DIST_SQ,
+  MAIN_BUILDING_MEZZANINE_Y,
+  MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
 } from '../config.js';
+import { state } from '../state.js';
 
 const DOOR_SWING_ANGLE = Math.PI / 2.2; // ~82° — open enough to walk through
 const RIDE_DURATION = 1.8; // seconds for ascent
@@ -17,13 +18,13 @@ const CABIN_LIGHT_INTENSITY = 1.15;
 const CABIN_GLOW_INTENSITY = 1.35;
 const CABIN_LIGHT_FADE_RATE = 7.5;
 
-let doorProgress = 0;   // 0=closed, 1=open
-let doorTarget = 0;     // target doorProgress
-let rideProgress = 0;   // 0..1 during ride
+let doorProgress = 0; // 0=closed, 1=open
+let doorTarget = 0; // target doorProgress
+let rideProgress = 0; // 0..1 during ride
 let rideStartY = 0;
 let rideEndY = MAIN_BUILDING_MEZZANINE_Y;
 let wasNear = false;
-let phase = 'idle';     // idle | opening | open | waiting | closing | riding | arrival
+let phase = 'idle'; // idle | opening | open | waiting | closing | riding | arrival
 let floorNum = 'L';
 let panel = null;
 let floorDisplay = null;
@@ -42,9 +43,12 @@ function animateDoors(openRatio) {
 }
 
 function isPlayerInsideElevator() {
-  return Math.abs(state.localPlayer.x) < MAIN_BUILDING_ELEVATOR_INTERIOR_HALF_WIDTH
-    && state.localPlayer.z > MAIN_BUILDING_ELEVATOR_INTERIOR_BACK_Z
-    && state.localPlayer.z < MAIN_BUILDING_ELEVATOR_INTERIOR_FRONT_Z;
+  return (
+    Math.abs(state.localPlayer.x) <
+      MAIN_BUILDING_ELEVATOR_INTERIOR_HALF_WIDTH &&
+    state.localPlayer.z > MAIN_BUILDING_ELEVATOR_INTERIOR_BACK_Z &&
+    state.localPlayer.z < MAIN_BUILDING_ELEVATOR_INTERIOR_FRONT_Z
+  );
 }
 
 function startRide(targetY, floor) {
@@ -62,18 +66,24 @@ function startRide(targetY, floor) {
 }
 
 function updateCabinLight(dt, isInsideElevator) {
-  const shouldBeOn = isInsideElevator || phase === 'closing' || phase === 'riding' || phase === 'arrival';
+  const shouldBeOn =
+    isInsideElevator ||
+    phase === 'closing' ||
+    phase === 'riding' ||
+    phase === 'arrival';
   const target = shouldBeOn ? 1 : 0;
-  cabinLightLevel += (target - cabinLightLevel) * Math.min(1, CABIN_LIGHT_FADE_RATE * dt);
+  cabinLightLevel +=
+    (target - cabinLightLevel) * Math.min(1, CABIN_LIGHT_FADE_RATE * dt);
 
   const light = state.elevator.cabinLight;
   const glowMat = state.elevator.cabinGlowMat;
   if (!light && !glowMat) return;
 
   const transitionAmount = Math.abs(target - cabinLightLevel);
-  const flicker = transitionAmount > 0.03
-    ? 0.72 + Math.random() * 0.28 + Math.sin(performance.now() * 0.045) * 0.08
-    : 1;
+  const flicker =
+    transitionAmount > 0.03
+      ? 0.72 + Math.random() * 0.28 + Math.sin(performance.now() * 0.045) * 0.08
+      : 1;
   const litLevel = Math.max(0, cabinLightLevel * flicker);
 
   if (light) {
@@ -130,7 +140,7 @@ export function initElevatorUI() {
       state.elevator.isRiding = true;
       const t = Math.min(rideProgress, 1);
       // Smooth ease-in-out
-      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
       const currentY = rideStartY + (rideEndY - rideStartY) * ease;
 
       // Move the car
@@ -180,7 +190,12 @@ export function initElevatorUI() {
     }
 
     // ── Proximity + idle door logic ───────────────────────────────────────
-    if (phase === 'idle' || phase === 'opening' || phase === 'open' || phase === 'waiting') {
+    if (
+      phase === 'idle' ||
+      phase === 'opening' ||
+      phase === 'open' ||
+      phase === 'waiting'
+    ) {
       if (!state.localPlayer) return;
 
       const dx = state.localPlayer.x;
@@ -195,7 +210,10 @@ export function initElevatorUI() {
           panel.classList.add('elevator-visible');
           panel.setAttribute('aria-hidden', 'false');
         }
-        floorNum = state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y ? '2' : 'L';
+        floorNum =
+          state.localPlayer.y >= MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y
+            ? '2'
+            : 'L';
         if (floorDisplay) floorDisplay.textContent = floorNum;
         phase = 'opening';
       } else if (!near && wasNear) {
@@ -207,7 +225,12 @@ export function initElevatorUI() {
           panel.setAttribute('aria-hidden', 'true');
         }
         phase = 'idle';
-      } else if (near && wasNear && phase === 'opening' && doorProgress > 0.995) {
+      } else if (
+        near &&
+        wasNear &&
+        phase === 'opening' &&
+        doorProgress > 0.995
+      ) {
         // Doors fully open — ready for player to walk in
         phase = 'open';
       } else if (near && wasNear && phase === 'open') {
@@ -215,7 +238,8 @@ export function initElevatorUI() {
         if (insideElevator) {
           phase = 'waiting';
           // Show only the relevant button based on current floor
-          const onGround = state.localPlayer.y < MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y;
+          const onGround =
+            state.localPlayer.y < MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y;
           upBtn.style.display = onGround ? '' : 'none';
           downBtn.style.display = onGround ? 'none' : '';
           if (onGround) upBtn.classList.add('elevator-active');

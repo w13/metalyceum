@@ -1,7 +1,7 @@
 // Soundtrack and Ambient Spatial Audio for Metalyceum
 import * as THREE from 'three';
-import { state } from './state.js';
 import { SOUNDTRACK_LIBRARY } from './config.js';
+import { state } from './state.js';
 import { getRoomEventStatus } from './utils.js';
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ let _hasSelectedInitialTrack = false;
 const _midiFileCache = new Map();
 
 function midiToFrequency(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
+  return 440 * 2 ** ((midi - 69) / 12);
 }
 
 export function beatsToSeconds(beats, bpm) {
@@ -53,7 +53,7 @@ function normalizeSourceLane(source) {
     attack: source.attack ?? 0.02,
     release: source.release ?? 0.18,
     pan: source.pan ?? 0,
-    transpose: source.transpose ?? 0
+    transpose: source.transpose ?? 0,
   };
 }
 
@@ -62,22 +62,26 @@ function collectMidiEvents(midiData, lane, bpm) {
   const fallbackBpm = bpm || 80;
   const secondsPerBeat = 60 / fallbackBpm;
 
-  return midiData.tracks.flatMap((midiTrack) => midiTrack.notes.map((note) => {
-    const beat = typeof note.ticks === 'number'
-      ? note.ticks / ticksPerBeat
-      : secondsToBeats(note.time ?? 0, fallbackBpm);
-    const duration = typeof note.durationTicks === 'number'
-      ? note.durationTicks / ticksPerBeat
-      : secondsToBeats(note.duration ?? secondsPerBeat, fallbackBpm);
+  return midiData.tracks.flatMap((midiTrack) =>
+    midiTrack.notes.map((note) => {
+      const beat =
+        typeof note.ticks === 'number'
+          ? note.ticks / ticksPerBeat
+          : secondsToBeats(note.time ?? 0, fallbackBpm);
+      const duration =
+        typeof note.durationTicks === 'number'
+          ? note.durationTicks / ticksPerBeat
+          : secondsToBeats(note.duration ?? secondsPerBeat, fallbackBpm);
 
-    return {
-      beat,
-      duration: Math.max(duration, 0.05),
-      velocity: Math.max(note.velocity ?? 0.7, 0.08),
-      midi: note.midi + lane.transpose,
-      lane
-    };
-  }));
+      return {
+        beat,
+        duration: Math.max(duration, 0.05),
+        velocity: Math.max(note.velocity ?? 0.7, 0.08),
+        midi: note.midi + lane.transpose,
+        lane,
+      };
+    }),
+  );
 }
 
 async function getMidiParser() {
@@ -119,32 +123,41 @@ export async function normalizeSoundtrackLibrary() {
   _soundtrackLoadError = null;
   _soundtrackLoadPromise = (async () => {
     const Midi = await getMidiParser();
-    const tracks = await Promise.all(SOUNDTRACK_LIBRARY.map(async (trackConfig) => {
-      const parsedSources = await Promise.all(trackConfig.sources.map(async (sourceConfig) => {
-        const midi = await loadMidiSource(Midi, sourceConfig.path);
+    const tracks = await Promise.all(
+      SOUNDTRACK_LIBRARY.map(async (trackConfig) => {
+        const parsedSources = await Promise.all(
+          trackConfig.sources.map(async (sourceConfig) => {
+            const midi = await loadMidiSource(Midi, sourceConfig.path);
+            return {
+              lane: normalizeSourceLane(sourceConfig),
+              midi,
+            };
+          }),
+        );
+
+        const tempoBpm = parsedSources.flatMap(
+          ({ midi }) => midi.header.tempos || [],
+        )[0]?.bpm;
+        const bpm = tempoBpm || trackConfig.fallbackBpm || 80;
+        const events = parsedSources
+          .flatMap(({ lane, midi }) => collectMidiEvents(midi, lane, bpm))
+          .sort((a, b) => a.beat - b.beat);
+        const lengthBeats = Math.max(
+          4,
+          events.reduce(
+            (maxBeat, event) => Math.max(maxBeat, event.beat + event.duration),
+            0,
+          ),
+        );
+
         return {
-          lane: normalizeSourceLane(sourceConfig),
-          midi
+          title: trackConfig.title,
+          bpm,
+          lengthBeats,
+          events,
         };
-      }));
-
-      const tempoBpm = parsedSources.flatMap(({ midi }) => midi.header.tempos || [])[0]?.bpm;
-      const bpm = tempoBpm || trackConfig.fallbackBpm || 80;
-      const events = parsedSources
-        .flatMap(({ lane, midi }) => collectMidiEvents(midi, lane, bpm))
-        .sort((a, b) => a.beat - b.beat);
-      const lengthBeats = Math.max(
-        4,
-        events.reduce((maxBeat, event) => Math.max(maxBeat, event.beat + event.duration), 0)
-      );
-
-      return {
-        title: trackConfig.title,
-        bpm,
-        lengthBeats,
-        events
-      };
-    }));
+      }),
+    );
 
     state.soundtrackTracks = tracks;
     ensureInitialSoundtrackTrackIndex(tracks.length);
@@ -169,7 +182,11 @@ function stopActiveNodeSet(audioCtx, activeNodes, fadeSeconds = 0.18) {
   const stopAt = now + fadeSeconds + 0.04;
   activeNodes.forEach((entry) => {
     entry.gain.gain.cancelScheduledValues(now);
-    entry.gain.gain.setTargetAtTime(0.0001, now, Math.max(fadeSeconds / 3, 0.03));
+    entry.gain.gain.setTargetAtTime(
+      0.0001,
+      now,
+      Math.max(fadeSeconds / 3, 0.03),
+    );
     try {
       entry.oscillator.stop(stopAt);
     } catch (err) {
@@ -178,7 +195,14 @@ function stopActiveNodeSet(audioCtx, activeNodes, fadeSeconds = 0.18) {
   });
 }
 
-function scheduleTrackEvent(audioCtx, outputGain, activeNodes, trackStartedAt, track, event) {
+function scheduleTrackEvent(
+  audioCtx,
+  outputGain,
+  activeNodes,
+  trackStartedAt,
+  track,
+  event,
+) {
   if (!audioCtx || !outputGain) return;
 
   const noteStart = trackStartedAt + beatsToSeconds(event.beat, track.bpm);
@@ -186,16 +210,23 @@ function scheduleTrackEvent(audioCtx, outputGain, activeNodes, trackStartedAt, t
   const lane = event.lane;
   const oscillator = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  const stereoPanner = typeof audioCtx.createStereoPanner === 'function'
-    ? audioCtx.createStereoPanner()
-    : null;
+  const stereoPanner =
+    typeof audioCtx.createStereoPanner === 'function'
+      ? audioCtx.createStereoPanner()
+      : null;
 
   oscillator.type = lane.wave;
   oscillator.frequency.setValueAtTime(midiToFrequency(event.midi), noteStart);
 
   gain.gain.setValueAtTime(0.0001, noteStart);
-  gain.gain.linearRampToValueAtTime(Math.max(lane.volume * event.velocity, 0.0001), noteStart + lane.attack);
-  gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + noteDuration + lane.release);
+  gain.gain.linearRampToValueAtTime(
+    Math.max(lane.volume * event.velocity, 0.0001),
+    noteStart + lane.attack,
+  );
+  gain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    noteStart + noteDuration + lane.release,
+  );
 
   oscillator.connect(gain);
   if (stereoPanner) {
@@ -223,16 +254,26 @@ function scheduleLandingTrack(track, startAt) {
   if (!_landingCtx || !_landingGain) return;
 
   track.events.forEach((event) => {
-    scheduleTrackEvent(_landingCtx, _landingGain, _landingActiveNodes, startAt, track, event);
+    scheduleTrackEvent(
+      _landingCtx,
+      _landingGain,
+      _landingActiveNodes,
+      startAt,
+      track,
+      event,
+    );
   });
 
   const trackEnd = startAt + beatsToSeconds(track.lengthBeats, track.bpm) + 1.2;
   const loopDelay = (trackEnd - _landingCtx.currentTime - 0.45) * 1000;
-  _landingLoopId = setTimeout(() => {
-    if (_landingCtx && _landingGain) {
-      scheduleLandingTrack(track, _landingCtx.currentTime + 0.08);
-    }
-  }, Math.max(loopDelay, 500));
+  _landingLoopId = setTimeout(
+    () => {
+      if (_landingCtx && _landingGain) {
+        scheduleLandingTrack(track, _landingCtx.currentTime + 0.08);
+      }
+    },
+    Math.max(loopDelay, 500),
+  );
 }
 
 export function initLandingAudio() {
@@ -243,12 +284,17 @@ export function initLandingAudio() {
     _landingCtx = new AudioCtx();
     _landingGain = _landingCtx.createGain();
     _landingGain.gain.setValueAtTime(0.0001, _landingCtx.currentTime);
-    _landingGain.gain.linearRampToValueAtTime(LANDING_MASTER_VOLUME, _landingCtx.currentTime + 2.5);
+    _landingGain.gain.linearRampToValueAtTime(
+      LANDING_MASTER_VOLUME,
+      _landingCtx.currentTime + 2.5,
+    );
     _landingGain.connect(_landingCtx.destination);
     normalizeSoundtrackLibrary()
       .then((tracks) => {
         if (!_landingCtx || !_landingGain) return;
-        const landingTrackIndex = ensureInitialSoundtrackTrackIndex(tracks.length);
+        const landingTrackIndex = ensureInitialSoundtrackTrackIndex(
+          tracks.length,
+        );
         const landingTrack = tracks[landingTrackIndex];
         if (!landingTrack) return;
         scheduleLandingTrack(landingTrack, _landingCtx.currentTime + 0.12);
@@ -272,32 +318,52 @@ export function resumeLandingAudio() {
 
 export function stopLandingAudio(fadeSecs = 1.8) {
   if (!_landingCtx || !_landingGain) return;
-  if (_landingLoopId !== null) { clearTimeout(_landingLoopId); _landingLoopId = null; }
+  if (_landingLoopId !== null) {
+    clearTimeout(_landingLoopId);
+    _landingLoopId = null;
+  }
   stopActiveNodeSet(_landingCtx, _landingActiveNodes, Math.min(fadeSecs, 0.36));
   const now = _landingCtx.currentTime;
   _landingGain.gain.cancelScheduledValues(now);
   _landingGain.gain.setTargetAtTime(0.0001, now, fadeSecs / 3);
-  setTimeout(() => {
-    try { _landingCtx.close(); } catch (err) {
-      console.warn('[Metalyceum] Landing audio close failed:', err);
-    }
-    _landingCtx = null;
-    _landingGain = null;
-    _landingActiveNodes = new Set();
-  }, (fadeSecs + 0.5) * 1000);
+  setTimeout(
+    () => {
+      try {
+        _landingCtx.close();
+      } catch (err) {
+        console.warn('[Metalyceum] Landing audio close failed:', err);
+      }
+      _landingCtx = null;
+      _landingGain = null;
+      _landingActiveNodes = new Set();
+    },
+    (fadeSecs + 0.5) * 1000,
+  );
 }
 
 export function updateSoundtrackUi() {
-  if (!state.soundtrackCard || !state.soundtrackTitleEl || !state.soundtrackStatusEl) return;
+  if (
+    !state.soundtrackCard ||
+    !state.soundtrackTitleEl ||
+    !state.soundtrackStatusEl
+  )
+    return;
 
-  const track = state.soundtrackTracks[state.soundtrackState.trackIndex]
-    || SOUNDTRACK_LIBRARY[state.soundtrackState.trackIndex];
-  state.soundtrackTitleEl.textContent = track ? track.title : 'Ambient soundtrack';
+  const track =
+    state.soundtrackTracks[state.soundtrackState.trackIndex] ||
+    SOUNDTRACK_LIBRARY[state.soundtrackState.trackIndex];
+  state.soundtrackTitleEl.textContent = track
+    ? track.title
+    : 'Ambient soundtrack';
 
-  const total = Math.max(state.soundtrackTracks.length, SOUNDTRACK_LIBRARY.length);
+  const total = Math.max(
+    state.soundtrackTracks.length,
+    SOUNDTRACK_LIBRARY.length,
+  );
   const idx = state.soundtrackState.trackIndex + 1;
   const isLoading = !state.soundtrackTracks.length && !!_soundtrackLoadPromise;
-  const isUnavailable = !state.soundtrackTracks.length && !!_soundtrackLoadError;
+  const isUnavailable =
+    !state.soundtrackTracks.length && !!_soundtrackLoadError;
   state.soundtrackStatusEl.textContent = !state.soundtrackState.enabled
     ? `Paused · ${idx} / ${total}`
     : isUnavailable
@@ -309,36 +375,54 @@ export function updateSoundtrackUi() {
           : `Ready · ${idx} / ${total}`;
 
   if (state.soundtrackPlayPauseBtn) {
-    const playing = state.soundtrackState.enabled && state.soundtrackState.isPlaying;
+    const playing =
+      state.soundtrackState.enabled && state.soundtrackState.isPlaying;
     state.soundtrackPlayPauseBtn.textContent = playing ? '⏸' : '▶';
-    state.soundtrackPlayPauseBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    state.soundtrackPlayPauseBtn.setAttribute(
+      'aria-label',
+      playing ? 'Pause' : 'Play',
+    );
   }
 
-  state.soundtrackCard.classList.toggle('paused', !state.soundtrackState.enabled);
+  state.soundtrackCard.classList.toggle(
+    'paused',
+    !state.soundtrackState.enabled,
+  );
 
   // Keep the music icon button in active state while the panel is open
   // (icon active state is toggled by click handler; here we just reflect play state via label)
-  const musicIconBtn = state.musicIconBtn || document.getElementById('music-icon-btn');
+  const musicIconBtn =
+    state.musicIconBtn || document.getElementById('music-icon-btn');
   if (musicIconBtn) {
-    const playing = state.soundtrackState.enabled && state.soundtrackState.isPlaying;
+    const playing =
+      state.soundtrackState.enabled && state.soundtrackState.isPlaying;
     const label = musicIconBtn.querySelector('.hud-icon-label');
     if (label) label.textContent = playing ? '♪ On' : 'Music';
   }
 
   if (state.soundtrackTracklistEl) {
-    state.soundtrackTracklistEl.querySelectorAll('.soundtrack-track-btn').forEach((btn, i) => {
-      btn.classList.toggle('active', i === state.soundtrackState.trackIndex);
-    });
+    state.soundtrackTracklistEl
+      .querySelectorAll('.soundtrack-track-btn')
+      .forEach((btn, i) => {
+        btn.classList.toggle('active', i === state.soundtrackState.trackIndex);
+      });
   }
 }
 
 export function jumpToTrack(index) {
-  const count = Math.max(state.soundtrackTracks.length, SOUNDTRACK_LIBRARY.length);
+  const count = Math.max(
+    state.soundtrackTracks.length,
+    SOUNDTRACK_LIBRARY.length,
+  );
   if (!count) return;
   _hasSelectedInitialTrack = true;
   state.soundtrackState.trackIndex = ((index % count) + count) % count;
   clearSoundtrackTimers();
-  if (state.soundtrackState.enabled && state.audioCtx && state.soundtrackTracks.length > 0) {
+  if (
+    state.soundtrackState.enabled &&
+    state.audioCtx &&
+    state.soundtrackTracks.length > 0
+  ) {
     startSoundtrackPlayback();
   } else {
     updateSoundtrackUi();
@@ -369,11 +453,14 @@ function captureSoundtrackResumePoint() {
   }
 
   const secondsPerBeat = 60 / track.bpm;
-  const elapsedSeconds = Math.max(0, state.audioCtx.currentTime - state.soundtrackState.trackStartedAt);
+  const elapsedSeconds = Math.max(
+    0,
+    state.audioCtx.currentTime - state.soundtrackState.trackStartedAt,
+  );
   const elapsedBeats = elapsedSeconds / secondsPerBeat;
   const clampedBeat = Math.min(
     Math.max(elapsedBeats, 0),
-    Math.max(track.lengthBeats - 0.01, 0)
+    Math.max(track.lengthBeats - 0.01, 0),
   );
 
   state.soundtrackState.resumeTrackIndex = state.soundtrackState.trackIndex;
@@ -381,7 +468,11 @@ function captureSoundtrackResumePoint() {
 }
 
 export function stopActiveSoundtrackNodes(fadeSeconds = 0.18) {
-  stopActiveNodeSet(state.audioCtx, state.soundtrackState.activeNodes, fadeSeconds);
+  stopActiveNodeSet(
+    state.audioCtx,
+    state.soundtrackState.activeNodes,
+    fadeSeconds,
+  );
 }
 
 export function scheduleSoundtrackNote(track, event) {
@@ -391,36 +482,53 @@ export function scheduleSoundtrackNote(track, event) {
     state.soundtrackState.activeNodes,
     state.soundtrackState.trackStartedAt,
     track,
-    event
+    event,
   );
 }
 
 export function queueNextSoundtrackTrack(delaySeconds = 0.4) {
   const count = state.soundtrackTracks.length;
-  if (state.soundtrackState.transitionId !== null || !state.soundtrackState.enabled || !count) return;
+  if (
+    state.soundtrackState.transitionId !== null ||
+    !state.soundtrackState.enabled ||
+    !count
+  )
+    return;
   state.soundtrackState.transitionId = window.setTimeout(() => {
     state.soundtrackState.transitionId = null;
-    state.soundtrackState.trackIndex = (state.soundtrackState.trackIndex + 1) % count;
+    state.soundtrackState.trackIndex =
+      (state.soundtrackState.trackIndex + 1) % count;
     startSoundtrackPlayback();
   }, delaySeconds * 1000);
 }
 
 export function scheduleSoundtrackTick() {
-  if (!state.audioCtx || !state.soundtrackState.isPlaying || !state.soundtrackState.enabled) return;
+  if (
+    !state.audioCtx ||
+    !state.soundtrackState.isPlaying ||
+    !state.soundtrackState.enabled
+  )
+    return;
 
   const track = state.soundtrackTracks[state.soundtrackState.trackIndex];
   if (!track) return;
 
   const lookAheadBeat = Math.max(
     0,
-    ((state.audioCtx.currentTime + state.soundtrackState.lookAheadSeconds) - state.soundtrackState.trackStartedAt) / (60 / track.bpm)
+    (state.audioCtx.currentTime +
+      state.soundtrackState.lookAheadSeconds -
+      state.soundtrackState.trackStartedAt) /
+      (60 / track.bpm),
   );
 
   while (
     state.soundtrackState.nextEventIndex < track.events.length &&
     track.events[state.soundtrackState.nextEventIndex].beat < lookAheadBeat
   ) {
-    scheduleSoundtrackNote(track, track.events[state.soundtrackState.nextEventIndex]);
+    scheduleSoundtrackNote(
+      track,
+      track.events[state.soundtrackState.nextEventIndex],
+    );
     state.soundtrackState.nextEventIndex += 1;
   }
 
@@ -434,18 +542,30 @@ export function scheduleSoundtrackTick() {
     return;
   }
 
-  state.soundtrackState.schedulerId = window.setTimeout(scheduleSoundtrackTick, state.soundtrackState.schedulerIntervalMs);
+  state.soundtrackState.schedulerId = window.setTimeout(
+    scheduleSoundtrackTick,
+    state.soundtrackState.schedulerIntervalMs,
+  );
 }
 
 export function startSoundtrackPlayback() {
-  if (!state.audioCtx || !state.soundtrackMasterGain || !state.soundtrackState.enabled) {
+  if (
+    !state.audioCtx ||
+    !state.soundtrackMasterGain ||
+    !state.soundtrackState.enabled
+  ) {
     return;
   }
   if (state.soundtrackTracks.length === 0) {
     updateSoundtrackUi();
     normalizeSoundtrackLibrary()
       .then(() => {
-        if (state.audioCtx && state.soundtrackMasterGain && state.soundtrackState.enabled && !state.soundtrackState.isPlaying) {
+        if (
+          state.audioCtx &&
+          state.soundtrackMasterGain &&
+          state.soundtrackState.enabled &&
+          !state.soundtrackState.isPlaying
+        ) {
           startSoundtrackPlayback();
         }
       })
@@ -464,30 +584,53 @@ export function startSoundtrackPlayback() {
   const startDelaySeconds = state.soundtrackState.pendingStartDelaySeconds ?? 0;
   const fadeInSeconds = state.soundtrackState.pendingFadeInSeconds ?? 0.7;
   const targetVolume = state.soundtrackState.masterVolume ?? 1;
-  const resumeBeatOffset = state.soundtrackState.resumeTrackIndex === state.soundtrackState.trackIndex
-    ? Math.max(0, Math.min(state.soundtrackState.resumeBeatOffset ?? 0, Math.max(track.lengthBeats - 0.01, 0)))
-    : 0;
+  const resumeBeatOffset =
+    state.soundtrackState.resumeTrackIndex === state.soundtrackState.trackIndex
+      ? Math.max(
+          0,
+          Math.min(
+            state.soundtrackState.resumeBeatOffset ?? 0,
+            Math.max(track.lengthBeats - 0.01, 0),
+          ),
+        )
+      : 0;
   state.soundtrackState.pendingStartDelaySeconds = 0;
   state.soundtrackState.pendingFadeInSeconds = 0.7;
   clearSoundtrackResumePoint();
-  state.soundtrackState.trackStartedAt = state.audioCtx.currentTime + 0.08 + startDelaySeconds - beatsToSeconds(resumeBeatOffset, track.bpm);
-  state.soundtrackState.trackEndTime = state.soundtrackState.trackStartedAt + beatsToSeconds(track.lengthBeats, track.bpm);
-  state.soundtrackState.nextEventIndex = track.events.findIndex((event) => event.beat >= resumeBeatOffset);
+  state.soundtrackState.trackStartedAt =
+    state.audioCtx.currentTime +
+    0.08 +
+    startDelaySeconds -
+    beatsToSeconds(resumeBeatOffset, track.bpm);
+  state.soundtrackState.trackEndTime =
+    state.soundtrackState.trackStartedAt +
+    beatsToSeconds(track.lengthBeats, track.bpm);
+  state.soundtrackState.nextEventIndex = track.events.findIndex(
+    (event) => event.beat >= resumeBeatOffset,
+  );
   if (state.soundtrackState.nextEventIndex === -1) {
     state.soundtrackState.nextEventIndex = track.events.length;
   }
   state.soundtrackState.isPlaying = true;
-  state.soundtrackMasterGain.gain.cancelScheduledValues(state.audioCtx.currentTime);
-  state.soundtrackMasterGain.gain.setValueAtTime(0.0001, state.audioCtx.currentTime);
+  state.soundtrackMasterGain.gain.cancelScheduledValues(
+    state.audioCtx.currentTime,
+  );
+  state.soundtrackMasterGain.gain.setValueAtTime(
+    0.0001,
+    state.audioCtx.currentTime,
+  );
   state.soundtrackMasterGain.gain.linearRampToValueAtTime(
     targetVolume,
-    state.audioCtx.currentTime + startDelaySeconds + fadeInSeconds
+    state.audioCtx.currentTime + startDelaySeconds + fadeInSeconds,
   );
   updateSoundtrackUi();
   scheduleSoundtrackTick();
 }
 
-export function pauseSoundtrackPlayback({ preservePosition = false, fadeOutSeconds = 0.14 } = {}) {
+export function pauseSoundtrackPlayback({
+  preservePosition = false,
+  fadeOutSeconds = 0.14,
+} = {}) {
   if (!state.audioCtx) return;
   if (preservePosition && state.soundtrackState.isPlaying) {
     captureSoundtrackResumePoint();
@@ -497,8 +640,14 @@ export function pauseSoundtrackPlayback({ preservePosition = false, fadeOutSecon
   clearSoundtrackTimers();
   state.soundtrackState.isPlaying = false;
   if (state.soundtrackMasterGain) {
-    state.soundtrackMasterGain.gain.cancelScheduledValues(state.audioCtx.currentTime);
-    state.soundtrackMasterGain.gain.setTargetAtTime(0.0001, state.audioCtx.currentTime, Math.max(fadeOutSeconds / 3, 0.04));
+    state.soundtrackMasterGain.gain.cancelScheduledValues(
+      state.audioCtx.currentTime,
+    );
+    state.soundtrackMasterGain.gain.setTargetAtTime(
+      0.0001,
+      state.audioCtx.currentTime,
+      Math.max(fadeOutSeconds / 3, 0.04),
+    );
   }
   // Stop active oscillators synchronously — `clearSoundtrackTimers()` prevents
   // re-entrance so this is safe without deferring. A stale microtask could fire
@@ -604,8 +753,13 @@ export function updateRoomAudioState() {
     const room = state.ROOMS[roomId];
     if (!room) return;
     const status = getRoomEventStatus(room);
-    const gainTarget = status.tone === 'live' ? 0.017 : status.tone === 'upcoming' ? 0.009 : 0.0;
-    nodes.gain.gain.setTargetAtTime(gainTarget, state.audioCtx.currentTime, 0.18);
+    const gainTarget =
+      status.tone === 'live' ? 0.017 : status.tone === 'upcoming' ? 0.009 : 0.0;
+    nodes.gain.gain.setTargetAtTime(
+      gainTarget,
+      state.audioCtx.currentTime,
+      0.18,
+    );
   });
 }
 

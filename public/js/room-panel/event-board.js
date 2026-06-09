@@ -23,20 +23,23 @@ export function renderEventBoard() {
   let upcomingCount = 0;
 
   const statusPriority = { live: 0, upcoming: 1, ready: 2, ended: 3, idle: 4 };
-  const roomsForBoard = state.ROOMS
-    .map((room) => ({
-      room,
-      status: getRoomEventStatus(room),
-      startDate: getRoomEventWindow(room).startDate
-    }))
-    .sort((a, b) => {
-      const toneDiff = statusPriority[a.status.tone] - statusPriority[b.status.tone];
-      if (toneDiff !== 0) return toneDiff;
-      const aStart = a.startDate ? a.startDate.getTime() : Number.POSITIVE_INFINITY;
-      const bStart = b.startDate ? b.startDate.getTime() : Number.POSITIVE_INFINITY;
-      if (aStart !== bStart) return aStart - bStart;
-      return a.room.id - b.room.id;
-    });
+  const roomsForBoard = state.ROOMS.map((room) => ({
+    room,
+    status: getRoomEventStatus(room),
+    startDate: getRoomEventWindow(room).startDate,
+  })).sort((a, b) => {
+    const toneDiff =
+      statusPriority[a.status.tone] - statusPriority[b.status.tone];
+    if (toneDiff !== 0) return toneDiff;
+    const aStart = a.startDate
+      ? a.startDate.getTime()
+      : Number.POSITIVE_INFINITY;
+    const bStart = b.startDate
+      ? b.startDate.getTime()
+      : Number.POSITIVE_INFINITY;
+    if (aStart !== bStart) return aStart - bStart;
+    return a.room.id - b.room.id;
+  });
 
   roomsForBoard.forEach(({ room, status }) => {
     if (status.tone === 'live') liveCount += 1;
@@ -58,11 +61,12 @@ export function renderEventBoard() {
 
     const meta = document.createElement('div');
     meta.className = 'event-board-item-meta';
-    meta.textContent = room.sourceType === 'meet'
-      ? 'Google Meet'
-      : room.sourceType === 'youtube'
-        ? 'YouTube Live'
-        : 'No source set';
+    meta.textContent =
+      room.sourceType === 'meet'
+        ? 'Google Meet'
+        : room.sourceType === 'youtube'
+          ? 'YouTube Live'
+          : 'No source set';
 
     const detail = document.createElement('div');
     detail.className = 'event-board-item-detail';

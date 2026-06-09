@@ -1,12 +1,12 @@
 // World Editor and Placeable Assets for Metalyceum
 import * as THREE from 'three';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { state } from './state.js';
 import { MAP_SIZE, WORLD_ASSET_CATALOG } from './config.js';
-import { getTerrainHeight, getRoomIdForPosition } from './physics.js';
-import { rebuildAssetColliders } from './physics-engine.js';
 import { closeModal, openModal, registerModal } from './modals.js';
+import { getRoomIdForPosition, getTerrainHeight } from './physics.js';
+import { rebuildAssetColliders } from './physics-engine.js';
 import { closeRoomEventModal } from './room-panel.js';
+import { state } from './state.js';
 
 export function transformControlsMode(mode) {
   if (mode === 'rotate') return 'rotate';
@@ -30,20 +30,42 @@ function cloneAssetDef(asset) {
     z: Number(asset.z) || 0,
     rotationY: Number(asset.rotationY) || 0,
     scale: Number(asset.scale) || 1,
-    roomId: Number.isInteger(asset.roomId) ? asset.roomId : -1
+    roomId: Number.isInteger(asset.roomId) ? asset.roomId : -1,
   };
 }
 
 export function createPlacedAssetModel(type) {
   const group = new THREE.Group();
-  const darkMat = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.8 });
-  const woodMat = new THREE.MeshStandardMaterial({ color: '#6b4f3b', roughness: 0.86 });
-  const leafMat = new THREE.MeshStandardMaterial({ color: '#166534', roughness: 0.78, flatShading: true });
-  const stoneMat = new THREE.MeshStandardMaterial({ color: '#52525b', roughness: 0.9, flatShading: true });
-  const accentMat = new THREE.MeshStandardMaterial({ color: '#38bdf8', emissive: '#0ea5e9', emissiveIntensity: 0.15, roughness: 0.55 });
+  const darkMat = new THREE.MeshStandardMaterial({
+    color: '#0f172a',
+    roughness: 0.8,
+  });
+  const woodMat = new THREE.MeshStandardMaterial({
+    color: '#6b4f3b',
+    roughness: 0.86,
+  });
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: '#166534',
+    roughness: 0.78,
+    flatShading: true,
+  });
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: '#52525b',
+    roughness: 0.9,
+    flatShading: true,
+  });
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: '#38bdf8',
+    emissive: '#0ea5e9',
+    emissiveIntensity: 0.15,
+    roughness: 0.55,
+  });
 
   if (type === 'tree') {
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 2.3, 6), woodMat);
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.34, 2.3, 6),
+      woodMat,
+    );
     trunk.position.y = 1.15;
     const top = new THREE.Mesh(new THREE.ConeGeometry(1.05, 2.1, 7), leafMat);
     top.position.y = 2.8;
@@ -56,30 +78,59 @@ export function createPlacedAssetModel(type) {
     rock.position.y = 0.45;
     group.add(rock);
   } else if (type === 'flower') {
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.55, 5), new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.85 }));
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.035, 0.55, 5),
+      new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.85 }),
+    );
     stem.position.y = 0.28;
-    const bloom = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), new THREE.MeshStandardMaterial({ color: '#f43f5e', roughness: 0.75, flatShading: true }));
+    const bloom = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.16, 0),
+      new THREE.MeshStandardMaterial({
+        color: '#f43f5e',
+        roughness: 0.75,
+        flatShading: true,
+      }),
+    );
     bloom.position.y = 0.62;
     group.add(stem, bloom);
   } else if (type === 'grass_tuft') {
-    const grassMat = new THREE.MeshStandardMaterial({ color: '#16a34a', roughness: 0.9, flatShading: true });
+    const grassMat = new THREE.MeshStandardMaterial({
+      color: '#16a34a',
+      roughness: 0.9,
+      flatShading: true,
+    });
     for (let i = 0; i < 5; i++) {
-      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.48, 3), grassMat);
+      const blade = new THREE.Mesh(
+        new THREE.ConeGeometry(0.045, 0.48, 3),
+        grassMat,
+      );
       blade.position.y = 0.24;
       blade.rotation.z = (i - 2) * 0.16;
       blade.rotation.y = i * 1.25;
       group.add(blade);
     }
   } else if (type === 'lantern') {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.2, 6), darkMat);
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, 2.2, 6),
+      darkMat,
+    );
     pole.position.y = 1.1;
-    const housing = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.55), darkMat);
+    const housing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.55, 0.6, 0.55),
+      darkMat,
+    );
     housing.position.y = 2.35;
-    const glow = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.42, 0.35), new THREE.MeshBasicMaterial({ color: '#38bdf8' }));
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.35, 0.42, 0.35),
+      new THREE.MeshBasicMaterial({ color: '#38bdf8' }),
+    );
     glow.position.y = 2.35;
     group.add(pole, housing, glow, new THREE.PointLight('#38bdf8', 0.45, 7, 2));
   } else if (type === 'banner') {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6), darkMat);
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.08, 3.2, 6),
+      darkMat,
+    );
     pole.position.y = 1.6;
     const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.8), accentMat);
     cloth.position.set(0.65, 2.45, 0);
@@ -88,21 +139,37 @@ export function createPlacedAssetModel(type) {
   } else if (type === 'bench') {
     const seat = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.16, 0.7), woodMat);
     seat.position.y = 0.55;
-    const back = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.65, 0.12), woodMat);
+    const back = new THREE.Mesh(
+      new THREE.BoxGeometry(2.8, 0.65, 0.12),
+      woodMat,
+    );
     back.position.set(0, 0.95, -0.33);
     group.add(seat, back);
     [-1.1, 1.1].forEach((x) => {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.55, 5), darkMat);
+      const leg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 0.55, 5),
+        darkMat,
+      );
       leg.position.set(x, 0.25, 0);
       group.add(leg);
     });
   } else if (type === 'plant') {
-    const planter = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.55, 0.65, 7), stoneMat);
+    const planter = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.55, 0.65, 7),
+      stoneMat,
+    );
     planter.position.y = 0.32;
     group.add(planter);
     for (let i = 0; i < 5; i++) {
-      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 5), leafMat);
-      leaf.position.set(Math.cos(i * 1.25) * 0.12, 1.05, Math.sin(i * 1.25) * 0.12);
+      const leaf = new THREE.Mesh(
+        new THREE.ConeGeometry(0.22, 1.1, 5),
+        leafMat,
+      );
+      leaf.position.set(
+        Math.cos(i * 1.25) * 0.12,
+        1.05,
+        Math.sin(i * 1.25) * 0.12,
+      );
       leaf.rotation.z = (i - 2) * 0.12;
       group.add(leaf);
     }
@@ -112,7 +179,10 @@ export function createPlacedAssetModel(type) {
     group.add(top);
     [-0.95, 0.95].forEach((x) => {
       [-0.38, 0.38].forEach((z) => {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.8, 5), darkMat);
+        const leg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.055, 0.055, 0.8, 5),
+          darkMat,
+        );
         leg.position.set(x, 0.4, z);
         group.add(leg);
       });
@@ -196,12 +266,15 @@ export function renderPlacedAssets(assetDefs, options = {}) {
         minX: asset.x - half,
         maxX: asset.x + half,
         minZ: asset.z - half,
-        maxZ: asset.z + half
+        maxZ: asset.z + half,
       });
     }
   });
 
-  if (state.editor.selectedId && state.placedAssets.has(state.editor.selectedId)) {
+  if (
+    state.editor.selectedId &&
+    state.placedAssets.has(state.editor.selectedId)
+  ) {
     attachEditorTransform(state.editor.selectedId);
   } else {
     selectEditorAsset(null);
@@ -209,13 +282,16 @@ export function renderPlacedAssets(assetDefs, options = {}) {
 }
 
 export function serializePlacedAssetsFromMap() {
-  return Array.from(state.placedAssets.values()).map(({ asset }) => cloneAssetDef(asset));
+  return Array.from(state.placedAssets.values()).map(({ asset }) =>
+    cloneAssetDef(asset),
+  );
 }
 
 function getAssetIdFromObject(object) {
   let current = object;
   while (current) {
-    if (current.userData && current.userData.assetId) return current.userData.assetId;
+    if (current.userData && current.userData.assetId)
+      return current.userData.assetId;
     current = current.parent;
   }
   return null;
@@ -244,7 +320,10 @@ export function updateEditorStatus(message) {
 
 export function updateEditorPalette() {
   document.querySelectorAll('.editor-asset-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.assetType === state.editor.placingType);
+    btn.classList.toggle(
+      'active',
+      btn.dataset.assetType === state.editor.placingType,
+    );
   });
 }
 
@@ -252,7 +331,9 @@ export function updateEditorInspector() {
   const inspector = document.getElementById('editor-inspector');
   const label = document.getElementById('editor-selection-label');
   if (!inspector || !label) return;
-  const entry = state.editor.selectedId ? state.placedAssets.get(state.editor.selectedId) : null;
+  const entry = state.editor.selectedId
+    ? state.placedAssets.get(state.editor.selectedId)
+    : null;
   inspector.classList.toggle('editor-inspector-empty', !entry);
 
   if (!entry) {
@@ -266,10 +347,13 @@ export function updateEditorInspector() {
   document.getElementById('editor-pos-x').value = asset.x.toFixed(1);
   document.getElementById('editor-pos-y').value = asset.y.toFixed(1);
   document.getElementById('editor-pos-z').value = asset.z.toFixed(1);
-  document.getElementById('editor-rot-y').value = String(Math.round(THREE.MathUtils.radToDeg(asset.rotationY)));
+  document.getElementById('editor-rot-y').value = String(
+    Math.round(THREE.MathUtils.radToDeg(asset.rotationY)),
+  );
   document.getElementById('editor-scale').value = asset.scale.toFixed(2);
   const room = state.ROOMS[asset.roomId];
-  document.getElementById('editor-room-label').textContent = `Scope: ${room ? room.name : 'Outdoor'}`;
+  document.getElementById('editor-room-label').textContent =
+    `Scope: ${room ? room.name : 'Outdoor'}`;
 }
 
 export function attachEditorTransform(assetId) {
@@ -281,7 +365,9 @@ export function attachEditorTransform(assetId) {
     return;
   }
   state.editor.transformControls.attach(entry.group);
-  state.editor.transformControls.setMode(transformControlsMode(state.editor.mode));
+  state.editor.transformControls.setMode(
+    transformControlsMode(state.editor.mode),
+  );
   state.editor.transformControls.visible = state.editor.enabled;
 }
 
@@ -295,13 +381,23 @@ export function syncSelectedAssetFromObject() {
   if (!state.editor.selectedId) return;
   const entry = state.placedAssets.get(state.editor.selectedId);
   if (!entry) return;
-  const roomId = getRoomIdForPosition(entry.group.position.x, entry.group.position.z);
+  const roomId = getRoomIdForPosition(
+    entry.group.position.x,
+    entry.group.position.z,
+  );
   entry.asset.x = Number(entry.group.position.x.toFixed(3));
-  entry.asset.y = Number((roomId === -1 ? getTerrainHeight(entry.group.position.x, entry.group.position.z) : 0).toFixed(3));
+  entry.asset.y = Number(
+    (roomId === -1
+      ? getTerrainHeight(entry.group.position.x, entry.group.position.z)
+      : 0
+    ).toFixed(3),
+  );
   entry.asset.z = Number(entry.group.position.z.toFixed(3));
   entry.asset.roomId = roomId;
   entry.asset.rotationY = Number(entry.group.rotation.y.toFixed(5));
-  entry.asset.scale = Number(THREE.MathUtils.clamp(entry.group.scale.x, 0.25, 3).toFixed(3));
+  entry.asset.scale = Number(
+    THREE.MathUtils.clamp(entry.group.scale.x, 0.25, 3).toFixed(3),
+  );
   entry.group.position.y = entry.asset.y;
   entry.group.scale.setScalar(entry.asset.scale);
   setEditorDirty(true);
@@ -319,7 +415,7 @@ export function placeEditorAsset(type, point) {
     z: Number(point.z.toFixed(3)),
     rotationY: 0,
     scale: catalog.defaultScale,
-    roomId: point.roomId
+    roomId: point.roomId,
   };
   const nextAssets = serializePlacedAssetsFromMap().concat(asset);
   renderPlacedAssets(nextAssets, { applyColliders: false });
@@ -332,9 +428,9 @@ export function getSurfacePointFromPointer(event) {
   const rect = state.renderer.domElement.getBoundingClientRect();
   const mouse = new THREE.Vector2(
     ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
   );
-  
+
   // Create a raycaster locally or reuse one
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, state.camera);
@@ -362,8 +458,13 @@ export function handleEditorCanvasClick(event) {
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, state.camera);
-  const intersects = raycaster.intersectObjects(state.editorSelectableObjects, true);
-  selectEditorAsset(intersects.length > 0 ? getAssetIdFromObject(intersects[0].object) : null);
+  const intersects = raycaster.intersectObjects(
+    state.editorSelectableObjects,
+    true,
+  );
+  selectEditorAsset(
+    intersects.length > 0 ? getAssetIdFromObject(intersects[0].object) : null,
+  );
   return true;
 }
 
@@ -378,7 +479,8 @@ export function setEditorEnabled(enabled) {
   updateEditorPalette();
   updateEditorStatus();
   if (enabled) {
-    const roomPanel = state.roomPanelEl || document.getElementById('room-panel');
+    const roomPanel =
+      state.roomPanelEl || document.getElementById('room-panel');
     if (roomPanel) roomPanel.classList.remove('room-panel-visible');
     closeRoomEventModal({ restoreFocus: false });
     closeModal('editor-auth-modal', { restoreFocus: false });
@@ -392,24 +494,34 @@ export function setEditorEnabled(enabled) {
 }
 
 export function applyPublishedWorldAssets(assetDefs) {
-  state.publishedWorldAssets = Array.isArray(assetDefs) ? assetDefs.map(cloneAssetDef) : [];
+  state.publishedWorldAssets = Array.isArray(assetDefs)
+    ? assetDefs.map(cloneAssetDef)
+    : [];
   if (state.editor.enabled && state.editor.dirty) {
     updateEditorStatus('Published layout changed. Save or cancel your draft.');
     return;
   }
-  renderPlacedAssets(state.publishedWorldAssets, { applyColliders: !state.editor.enabled });
+  renderPlacedAssets(state.publishedWorldAssets, {
+    applyColliders: !state.editor.enabled,
+  });
   rebuildAssetColliders(); // sync Cannon asset bodies with updated PLACED_ASSET_COLLIDERS
 }
 
 export function saveWorldAssets() {
-  if (!state.socket || state.socket.readyState !== WebSocket.OPEN || !state.editor.authed) {
+  if (
+    !state.socket ||
+    state.socket.readyState !== WebSocket.OPEN ||
+    !state.editor.authed
+  ) {
     updateEditorStatus('Editor is not connected.');
     return;
   }
-  state.socket.send(JSON.stringify({
-    type: 'world_assets_save',
-    assets: serializePlacedAssetsFromMap()
-  }));
+  state.socket.send(
+    JSON.stringify({
+      type: 'world_assets_save',
+      assets: serializePlacedAssetsFromMap(),
+    }),
+  );
   setEditorDirty(false);
   updateEditorStatus('Saving world layout...');
 }
@@ -430,7 +542,10 @@ export function duplicateSelectedAsset() {
   copy.id = makePlacedAssetId();
   copy.x = Number((copy.x + 1).toFixed(3));
   copy.z = Number((copy.z + 1).toFixed(3));
-  copy.y = copy.roomId === -1 ? Number(getTerrainHeight(copy.x, copy.z).toFixed(3)) : 0;
+  copy.y =
+    copy.roomId === -1
+      ? Number(getTerrainHeight(copy.x, copy.z).toFixed(3))
+      : 0;
   const nextAssets = serializePlacedAssetsFromMap().concat(copy);
   renderPlacedAssets(nextAssets, { applyColliders: false });
   selectEditorAsset(copy.id);
@@ -439,7 +554,9 @@ export function duplicateSelectedAsset() {
 
 export function deleteSelectedAsset() {
   if (!state.editor.selectedId) return;
-  const nextAssets = serializePlacedAssetsFromMap().filter((asset) => asset.id !== state.editor.selectedId);
+  const nextAssets = serializePlacedAssetsFromMap().filter(
+    (asset) => asset.id !== state.editor.selectedId,
+  );
   renderPlacedAssets(nextAssets, { applyColliders: false });
   selectEditorAsset(null);
   setEditorDirty(true);
@@ -453,13 +570,16 @@ export function applyInspectorValues() {
   const y = Number.parseFloat(document.getElementById('editor-pos-y').value);
   const z = Number.parseFloat(document.getElementById('editor-pos-z').value);
   const rot = Number.parseFloat(document.getElementById('editor-rot-y').value);
-  const scale = Number.parseFloat(document.getElementById('editor-scale').value);
+  const scale = Number.parseFloat(
+    document.getElementById('editor-scale').value,
+  );
   if (![x, y, z, rot, scale].every(Number.isFinite)) return;
   const editorLimit = MAP_SIZE / 2 - 10;
   entry.asset.x = THREE.MathUtils.clamp(x, -editorLimit, editorLimit);
   entry.asset.z = THREE.MathUtils.clamp(z, -editorLimit, editorLimit);
   entry.asset.roomId = getRoomIdForPosition(entry.asset.x, entry.asset.z);
-  entry.asset.y = entry.asset.roomId === -1 ? THREE.MathUtils.clamp(y, -10, 40) : 0;
+  entry.asset.y =
+    entry.asset.roomId === -1 ? THREE.MathUtils.clamp(y, -10, 40) : 0;
   entry.asset.rotationY = THREE.MathUtils.degToRad(rot);
   entry.asset.scale = THREE.MathUtils.clamp(scale, 0.25, 3);
   entry.group.position.set(entry.asset.x, entry.asset.y, entry.asset.z);
@@ -477,7 +597,7 @@ export function initEditorUiHandlers() {
     openClass: 'active',
     closeSelectors: ['#close-editor-auth-btn', '#cancel-editor-auth-btn'],
     initialFocusSelector: '#editor-token-input',
-    ignoreElements: ['#editor-toggle-btn']
+    ignoreElements: ['#editor-toggle-btn'],
   });
 
   const palette = document.getElementById('editor-asset-palette');
@@ -491,7 +611,8 @@ export function initEditorUiHandlers() {
       btn.textContent = config.label;
       btn.addEventListener('click', () => {
         if (!state.editor.enabled) return;
-        state.editor.placingType = state.editor.placingType === type ? null : type;
+        state.editor.placingType =
+          state.editor.placingType === type ? null : type;
         updateEditorPalette();
         updateEditorStatus();
       });
@@ -524,13 +645,17 @@ export function initEditorUiHandlers() {
     authForm.addEventListener('submit', (e) => {
       e.preventDefault();
       if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
-        if (authStatus) authStatus.textContent = 'Connect to Metalyceum before unlocking the editor.';
+        if (authStatus)
+          authStatus.textContent =
+            'Connect to Metalyceum before unlocking the editor.';
         return;
       }
-      state.socket.send(JSON.stringify({
-        type: 'editor_auth',
-        token: authInput ? authInput.value : ''
-      }));
+      state.socket.send(
+        JSON.stringify({
+          type: 'editor_auth',
+          token: authInput ? authInput.value : '',
+        }),
+      );
       if (authStatus) authStatus.textContent = 'Checking token...';
     });
   }
@@ -547,12 +672,20 @@ export function initEditorUiHandlers() {
         modeBtn.classList.toggle('active', modeBtn === btn);
       });
       if (state.editor.transformControls) {
-        state.editor.transformControls.setMode(transformControlsMode(state.editor.mode));
+        state.editor.transformControls.setMode(
+          transformControlsMode(state.editor.mode),
+        );
       }
     });
   });
 
-  ['editor-pos-x', 'editor-pos-y', 'editor-pos-z', 'editor-rot-y', 'editor-scale'].forEach((id) => {
+  [
+    'editor-pos-x',
+    'editor-pos-y',
+    'editor-pos-z',
+    'editor-rot-y',
+    'editor-scale',
+  ].forEach((id) => {
     const input = document.getElementById(id);
     if (input) {
       input.addEventListener('change', applyInspectorValues);
@@ -560,7 +693,8 @@ export function initEditorUiHandlers() {
   });
 
   const duplicateBtn = document.getElementById('editor-duplicate-btn');
-  if (duplicateBtn) duplicateBtn.addEventListener('click', duplicateSelectedAsset);
+  if (duplicateBtn)
+    duplicateBtn.addEventListener('click', duplicateSelectedAsset);
 
   const deleteBtn = document.getElementById('editor-delete-btn');
   if (deleteBtn) deleteBtn.addEventListener('click', deleteSelectedAsset);
@@ -576,7 +710,10 @@ export function initTransformControls() {
   if (!state.camera || !state.renderer || !state.scene) return;
   if (state.editor.transformControls) return;
 
-  const controls = new TransformControls(state.camera, state.renderer.domElement);
+  const controls = new TransformControls(
+    state.camera,
+    state.renderer.domElement,
+  );
   controls.setMode(transformControlsMode(state.editor.mode));
   controls.visible = false;
   controls.addEventListener('dragging-changed', (event) => {
@@ -589,4 +726,3 @@ export function initTransformControls() {
   state.scene.add(controls.getHelper());
   state.editor.transformControls = controls;
 }
-

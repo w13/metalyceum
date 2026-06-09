@@ -1,28 +1,33 @@
 // Procedural instanced details: forest trees, wildflower meadows, ponds, and grass patches
 import * as THREE from 'three';
-import { state } from '../state.js';
+import { FLAT, HALF_PI } from '../math.js';
 import { getTerrainHeight } from '../physics.js';
-import { isFrontPlazaFootprint, isVenueRoadFootprint, AMP_ROAD_SEGMENTS, CV_ROAD_SEGMENTS } from '../utils.js';
+import { state } from '../state.js';
+import {
+  AMP_ROAD_SEGMENTS,
+  CV_ROAD_SEGMENTS,
+  isFrontPlazaFootprint,
+  isVenueRoadFootprint,
+} from '../utils.js';
+import { addSceneryCollider, deformGroundGeometry } from './utils.js';
 import { registerStaticScenery } from './visibility.js';
-import { deformGroundGeometry, addSceneryCollider } from './utils.js';
-import { HALF_PI, FLAT } from '../math.js';
 
 export function buildWorldDetails() {
   const _t = new THREE.Object3D();
 
   // Returns false if the point overlaps a road, building, or venue.
   function isSafe(x, z) {
-    if (Math.abs(x) < 33 && Math.abs(z) < 45) return false;           // main building
+    if (Math.abs(x) < 33 && Math.abs(z) < 45) return false; // main building
     if (isFrontPlazaFootprint(x, z)) return false;
     if (isVenueRoadFootprint(x, z, 4)) return false;
     if (Math.abs(x - 65) < 42 && Math.abs(z - 150) < 42) return false; // amphitheater platform
     if (Math.abs(x + 85) < 27 && Math.abs(z - 140) < 21) return false; // concert hall footprint
     if (Math.abs(x - 160) < 55 && Math.abs(z - 220) < 55) return false; // airport
-    if (Math.abs(x - 75) < 25 && Math.abs(z - 25) < 25) return false;   // cave & underground city
+    if (Math.abs(x - 75) < 25 && Math.abs(z - 25) < 25) return false; // cave & underground city
     // Road corridors
-    if (z > 58 && z < 152 && x > -4 && x < 70) return false;         // road -> amphitheater
-    if (z > 58 && z < 140 && x > -90 && x < 4) return false;         // road -> concert hall
-    if (z > 40 && z < 59 && Math.abs(x) < 5) return false;           // road -> main building
+    if (z > 58 && z < 152 && x > -4 && x < 70) return false; // road -> amphitheater
+    if (z > 58 && z < 140 && x > -90 && x < 4) return false; // road -> concert hall
+    if (z > 40 && z < 59 && Math.abs(x) < 5) return false; // road -> main building
     return true;
   }
 
@@ -73,19 +78,40 @@ export function buildWorldDetails() {
 
   if (treePts.length > 0) {
     const n = treePts.length;
-    const iT = new THREE.InstancedMesh(state.sharedScenery.treeTrunkGeo, state.sharedScenery.treeTrunkMat, n);
-    const iC1 = new THREE.InstancedMesh(state.sharedScenery.treeCone1Geo, state.sharedScenery.treeFoliageMat, n);
-    const iC2 = new THREE.InstancedMesh(state.sharedScenery.treeCone2Geo, state.sharedScenery.treeFoliageMat, n);
-    [iT, iC1, iC2].forEach(m => { m.castShadow = true; m.receiveShadow = true; });
+    const iT = new THREE.InstancedMesh(
+      state.sharedScenery.treeTrunkGeo,
+      state.sharedScenery.treeTrunkMat,
+      n,
+    );
+    const iC1 = new THREE.InstancedMesh(
+      state.sharedScenery.treeCone1Geo,
+      state.sharedScenery.treeFoliageMat,
+      n,
+    );
+    const iC2 = new THREE.InstancedMesh(
+      state.sharedScenery.treeCone2Geo,
+      state.sharedScenery.treeFoliageMat,
+      n,
+    );
+    [iT, iC1, iC2].forEach((m) => {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    });
 
     treePts.forEach(({ x, z, s }, i) => {
       const gy = getTerrainHeight(x, z);
       _t.scale.setScalar(s);
       _t.rotation.set(0, Math.random() * Math.PI * 2, 0);
 
-      _t.position.set(x, gy + 2 * s, z); _t.updateMatrix(); iT.setMatrixAt(i, _t.matrix);
-      _t.position.set(x, gy + 4.2 * s, z); _t.updateMatrix(); iC1.setMatrixAt(i, _t.matrix);
-      _t.position.set(x, gy + 5.6 * s, z); _t.updateMatrix(); iC2.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 2 * s, z);
+      _t.updateMatrix();
+      iT.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 4.2 * s, z);
+      _t.updateMatrix();
+      iC1.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 5.6 * s, z);
+      _t.updateMatrix();
+      iC2.setMatrixAt(i, _t.matrix);
     });
     iT.instanceMatrix.needsUpdate = true;
     iC1.instanceMatrix.needsUpdate = true;
@@ -99,18 +125,25 @@ export function buildWorldDetails() {
   const pondDefs = [
     { x: 132, z: -32, r: 7 },
     { x: -136, z: -26, r: 6 },
-    { x: 14, z: -110, r: 7 },       // shifted north, shrunk — clear of tree cluster (0,-145)
+    { x: 14, z: -110, r: 7 }, // shifted north, shrunk — clear of tree cluster (0,-145)
     { x: 172, z: 55, r: 6 },
-    { x: -150, z: 72, r: 5 },       // moved — clear of tree cluster (-158,36) and venue road
-    { x: 30, z: 215, r: 5 },        // moved — clear of tree cluster (64,198), north of amphitheater
-    { x: -50, z: 215, r: 5 },       // moved — east of river (river at z=215 is at x≈-122)
+    { x: -150, z: 72, r: 5 }, // moved — clear of tree cluster (-158,36) and venue road
+    { x: 30, z: 215, r: 5 }, // moved — clear of tree cluster (64,198), north of amphitheater
+    { x: -50, z: 215, r: 5 }, // moved — east of river (river at z=215 is at x≈-122)
   ];
 
   // Batch all reeds across all ponds into one InstancedMesh
   const REEDS_PER_POND = 16;
   const reedGeo = new THREE.CylinderGeometry(0.035, 0.055, 1.0, 4);
-  const reedMat = new THREE.MeshStandardMaterial({ color: '#4a7a20', roughness: 0.88 });
-  const reedInst = new THREE.InstancedMesh(reedGeo, reedMat, pondDefs.length * REEDS_PER_POND);
+  const reedMat = new THREE.MeshStandardMaterial({
+    color: '#4a7a20',
+    roughness: 0.88,
+  });
+  const reedInst = new THREE.InstancedMesh(
+    reedGeo,
+    reedMat,
+    pondDefs.length * REEDS_PER_POND,
+  );
   reedInst.castShadow = true;
   let ri = 0;
 
@@ -119,8 +152,8 @@ export function buildWorldDetails() {
 
     // Mud/earth ring
     const mud = new THREE.Mesh(
-      new THREE.RingGeometry(r * 0.80, r * 1.30, 48),
-      new THREE.MeshStandardMaterial({ color: '#3b2618', roughness: 0.97 })
+      new THREE.RingGeometry(r * 0.8, r * 1.3, 48),
+      new THREE.MeshStandardMaterial({ color: '#3b2618', roughness: 0.97 }),
     );
     mud.rotation.x = FLAT;
     mud.position.set(cx, by + 0.01, cz);
@@ -130,7 +163,7 @@ export function buildWorldDetails() {
     // Gravel / stone apron
     const gravel = new THREE.Mesh(
       new THREE.RingGeometry(r * 1.28, r * 1.62, 48),
-      new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.82 })
+      new THREE.MeshStandardMaterial({ color: '#64748b', roughness: 0.82 }),
     );
     gravel.rotation.x = FLAT;
     gravel.position.set(cx, by + 0.009, cz);
@@ -180,7 +213,10 @@ export function buildWorldDetails() {
       transparent: true,
       side: THREE.DoubleSide,
     });
-    const water = new THREE.Mesh(new THREE.CircleGeometry(r * 0.82, 48), waterMat);
+    const water = new THREE.Mesh(
+      new THREE.CircleGeometry(r * 0.82, 48),
+      waterMat,
+    );
     water.rotation.x = FLAT;
     water.position.set(cx, by + 0.03, cz);
     water.receiveShadow = true;
@@ -191,9 +227,13 @@ export function buildWorldDetails() {
     const shimmer = new THREE.Mesh(
       new THREE.RingGeometry(r * 0.08, r * 0.48, 32),
       new THREE.MeshStandardMaterial({
-        color: '#38bdf8', roughness: 0.02, metalness: 0.28,
-        transparent: true, opacity: 0.25, side: THREE.DoubleSide
-      })
+        color: '#38bdf8',
+        roughness: 0.02,
+        metalness: 0.28,
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+      }),
     );
     shimmer.rotation.x = FLAT;
     shimmer.position.set(cx, by + 0.04, cz);
@@ -221,13 +261,13 @@ export function buildWorldDetails() {
       const stemH = 0.3 + Math.random() * 0.15;
       const stem = new THREE.Mesh(
         new THREE.CylinderGeometry(0.015, 0.02, stemH, 4),
-        state.sharedScenery.flowerStemMat
+        state.sharedScenery.flowerStemMat,
       );
       stem.position.set(dx, dy + stemH / 2, dz);
       state.scene.add(stem);
       const petal = new THREE.Mesh(
         new THREE.SphereGeometry(0.035, 6, 6),
-        new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.7 })
+        new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.7 }),
       );
       petal.position.set(dx, dy + stemH + 0.02, dz);
       state.scene.add(petal);
@@ -243,7 +283,7 @@ export function buildWorldDetails() {
       const rz = cz + Math.sin(ang) * rockDist;
       const rock = new THREE.Mesh(
         new THREE.DodecahedronGeometry(rockR, 0),
-        state.sharedScenery.boulderMat
+        state.sharedScenery.boulderMat,
       );
       rock.position.set(rx, by + 0.03 + rockR * 0.35, rz);
       rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
@@ -253,13 +293,20 @@ export function buildWorldDetails() {
 
       // Ripple ring around the rock
       const rippleMat = new THREE.MeshBasicMaterial({
-        color: '#7dd3fc', transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false
+        color: '#7dd3fc',
+        transparent: true,
+        opacity: 0.18,
+        side: THREE.DoubleSide,
+        depthWrite: false,
       });
-      const ripple = new THREE.Mesh(new THREE.RingGeometry(rockR * 0.6, rockR * 1.2, 24), rippleMat);
+      const ripple = new THREE.Mesh(
+        new THREE.RingGeometry(rockR * 0.6, rockR * 1.2, 24),
+        rippleMat,
+      );
       ripple.rotation.x = FLAT;
       ripple.position.set(rx, by + 0.035, rz);
       ripple.userData = {
-        baseOpacity: 0.12 + Math.random() * 0.10,
+        baseOpacity: 0.12 + Math.random() * 0.1,
         phase: Math.random() * Math.PI * 2,
         speed: 0.8 + Math.random() * 0.6,
         scaleSpeed: 0.5 + Math.random() * 0.4,
@@ -272,19 +319,30 @@ export function buildWorldDetails() {
 
     // Reeds
     for (let i = 0; i < REEDS_PER_POND; i++) {
-      const ang = (Math.PI * 2 * i) / REEDS_PER_POND + (Math.random() - 0.5) * 0.45;
+      const ang =
+        (Math.PI * 2 * i) / REEDS_PER_POND + (Math.random() - 0.5) * 0.45;
       const rx = cx + Math.cos(ang) * (r * 0.65 + Math.random() * r * 0.45);
       const rz = cz + Math.sin(ang) * (r * 0.65 + Math.random() * r * 0.45);
       const rh = 0.7 + Math.random() * 0.95;
       _t.position.set(rx, getTerrainHeight(rx, rz) + rh * 0.5, rz);
       _t.scale.set(1, rh, 1);
-      _t.rotation.set((Math.random() - 0.5) * 0.18, Math.random() * Math.PI * 2, 0);
+      _t.rotation.set(
+        (Math.random() - 0.5) * 0.18,
+        Math.random() * Math.PI * 2,
+        0,
+      );
       _t.updateMatrix();
       reedInst.setMatrixAt(ri++, _t.matrix);
     }
 
     // Soft collision barrier
-    addSceneryCollider(cx - r * 0.72, cx + r * 0.72, cz - r * 0.72, cz + r * 0.72, `pond-${cx}-${cz}`);
+    addSceneryCollider(
+      cx - r * 0.72,
+      cx + r * 0.72,
+      cz - r * 0.72,
+      cz + r * 0.72,
+      `pond-${cx}-${cz}`,
+    );
     registerStaticScenery(water, { kind: 'outdoor', distance: 130 });
   });
 
@@ -292,7 +350,15 @@ export function buildWorldDetails() {
   state.scene.add(reedInst);
 
   // ── 3. WILDFLOWER MEADOWS (InstancedMesh) ─────────────────────────────────
-  const flowerColors = ['#f43f5e', '#eab308', '#3b82f6', '#a855f7', '#22c55e', '#f97316', '#fb923c'];
+  const flowerColors = [
+    '#f43f5e',
+    '#eab308',
+    '#3b82f6',
+    '#a855f7',
+    '#22c55e',
+    '#f97316',
+    '#fb923c',
+  ];
   const meadowDefs = [
     // East and west of venue roads
     { cx: 100, cz: 90, n: 50, r: 18 },
@@ -319,13 +385,21 @@ export function buildWorldDetails() {
       const x = cx + Math.cos(a) * d;
       const z = cz + Math.sin(a) * d;
       if (!isSafe(x, z)) continue;
-      mPts.push({ x, z, s: 0.65 + Math.random() * 0.55, c: flowerColors[Math.floor(Math.random() * flowerColors.length)] });
+      mPts.push({
+        x,
+        z,
+        s: 0.65 + Math.random() * 0.55,
+        c: flowerColors[Math.floor(Math.random() * flowerColors.length)],
+      });
     }
   });
 
   if (mPts.length > 0) {
     // Wind-animated ShaderMaterial for stems
-    const stemWindUniforms = { uTime: { value: 0 }, uColor: { value: new THREE.Color('#22c55e') } };
+    const stemWindUniforms = {
+      uTime: { value: 0 },
+      uColor: { value: new THREE.Color('#22c55e') },
+    };
     const stemWindMat = new THREE.ShaderMaterial({
       uniforms: stemWindUniforms,
       vertexShader: `
@@ -375,8 +449,16 @@ export function buildWorldDetails() {
       `,
     });
 
-    const mStem = new THREE.InstancedMesh(state.sharedScenery.flowerStemGeo, stemWindMat, mPts.length);
-    const mCenter = new THREE.InstancedMesh(state.sharedScenery.flowerCenterGeo, centerWindMat, mPts.length);
+    const mStem = new THREE.InstancedMesh(
+      state.sharedScenery.flowerStemGeo,
+      stemWindMat,
+      mPts.length,
+    );
+    const mCenter = new THREE.InstancedMesh(
+      state.sharedScenery.flowerCenterGeo,
+      centerWindMat,
+      mPts.length,
+    );
     mStem.castShadow = true;
     mCenter.castShadow = true;
     mStem.userData.windUniforms = stemWindUniforms;
@@ -387,8 +469,12 @@ export function buildWorldDetails() {
       _t.scale.setScalar(s);
       _t.rotation.set(0, Math.random() * Math.PI * 2, 0);
 
-      _t.position.set(x, gy + 0.25 * s, z); _t.updateMatrix(); mStem.setMatrixAt(i, _t.matrix);
-      _t.position.set(x, gy + 0.50 * s, z); _t.updateMatrix(); mCenter.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 0.25 * s, z);
+      _t.updateMatrix();
+      mStem.setMatrixAt(i, _t.matrix);
+      _t.position.set(x, gy + 0.5 * s, z);
+      _t.updateMatrix();
+      mCenter.setMatrixAt(i, _t.matrix);
       mCenter.setColorAt(i, new THREE.Color(c));
     });
     mStem.instanceMatrix.needsUpdate = true;
@@ -399,7 +485,7 @@ export function buildWorldDetails() {
     state.animatedScenery.push({
       object: { userData: {} },
       type: 'river',
-      update: function (time) {
+      update: (time) => {
         const t = time * 0.001;
         stemWindUniforms.uTime.value = t;
         centerWindMat.uniforms.uTime.value = t;
@@ -436,14 +522,18 @@ export function buildWorldDetails() {
           rx: (Math.random() - 0.5) * 0.4,
           ry: Math.random() * Math.PI * 2,
           rz: (Math.random() - 0.5) * 0.4,
-          sy: 0.75 + Math.random() * 0.45
+          sy: 0.75 + Math.random() * 0.45,
         });
       }
     }
   });
 
   if (gPts.length > 0) {
-    const gInst = new THREE.InstancedMesh(state.sharedScenery.grassBladeGeo, state.sharedScenery.grassTuftMat, gPts.length);
+    const gInst = new THREE.InstancedMesh(
+      state.sharedScenery.grassBladeGeo,
+      state.sharedScenery.grassTuftMat,
+      gPts.length,
+    );
     gInst.castShadow = true;
     gPts.forEach(({ x, z, rx, ry, rz, sy }, i) => {
       _t.position.set(x, getTerrainHeight(x, z), z);
@@ -460,7 +550,12 @@ export function buildWorldDetails() {
   // Collect all pond water meshes and their ripple data from the scene
   const pondWaterMeshes = [];
   state.scene.traverse((child) => {
-    if (child.isMesh && child.userData && child.userData.waterUniforms && child.userData.ripples) {
+    if (
+      child.isMesh &&
+      child.userData &&
+      child.userData.waterUniforms &&
+      child.userData.ripples
+    ) {
       pondWaterMeshes.push(child);
     }
   });
@@ -468,7 +563,7 @@ export function buildWorldDetails() {
     state.animatedScenery.push({
       object: { userData: {} },
       type: 'river',
-      update: function (time) {
+      update: (time) => {
         const t = time * 0.001;
         for (let p = 0; p < pondWaterMeshes.length; p++) {
           const water = pondWaterMeshes[p];
@@ -483,7 +578,8 @@ export function buildWorldDetails() {
               const ring = ripples[r];
               const ud = ring.userData;
               const pulse = Math.sin(t * ud.speed + ud.phase) * 0.5 + 0.5;
-              const scalePulse = 0.96 + Math.sin(t * ud.scaleSpeed + ud.phase * 1.3) * 0.06;
+              const scalePulse =
+                0.96 + Math.sin(t * ud.scaleSpeed + ud.phase * 1.3) * 0.06;
               ring.scale.setScalar(scalePulse);
               ring.material.opacity = ud.baseOpacity * (0.5 + pulse * 0.5);
             }

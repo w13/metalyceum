@@ -1,14 +1,15 @@
 // Jetpack flight system — thrust particles, smoke, crash physics, and cascade-fan wings
-import { state } from '../state.js';
-import { getTerrainHeight } from '../physics.js';
+
 import * as THREE from 'three';
+import { getTerrainHeight } from '../physics.js';
+import { state } from '../state.js';
 
 const POOL_SIZE = 60;
 const THRUST_COLOR = 0xff6600;
 const SMOKE_COLOR = 0x888888;
 
 // Pre-allocated particle pool — zero allocs at runtime
-let pool = [];
+const pool = [];
 let poolIdx = 0;
 let crashing = false;
 let crashTime = 0;
@@ -71,7 +72,7 @@ function initWings() {
       pivot.position.copy(wingPos);
       pivot.position.x *= side;
       // Folded: rotY = 0 means pointing straight back; we'll animate from +85° (tucked) to target
-      pivot.rotation.y = side * (85 * Math.PI / 180);
+      pivot.rotation.y = side * ((85 * Math.PI) / 180);
 
       // Main panel
       const panel = new THREE.Mesh(shapeGeo, wingMat);
@@ -91,8 +92,8 @@ function initWings() {
         pivot,
         side,
         index: s,
-        foldAngle: side * (85 * Math.PI / 180),
-        openAngle: side * (FAN_ANGLES[s] * Math.PI / 180),
+        foldAngle: side * ((85 * Math.PI) / 180),
+        openAngle: side * ((FAN_ANGLES[s] * Math.PI) / 180),
         startDelay: s * CASCADE_STAGGER,
       });
     }
@@ -106,11 +107,24 @@ function ensurePool() {
   if (pool.length) return;
   const geo = new THREE.SphereGeometry(0.06, 4, 4);
   for (let i = 0; i < POOL_SIZE; i++) {
-    const mat = new THREE.MeshBasicMaterial({ color: THRUST_COLOR, transparent: true, opacity: 0 });
+    const mat = new THREE.MeshBasicMaterial({
+      color: THRUST_COLOR,
+      transparent: true,
+      opacity: 0,
+    });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.visible = false;
     state.scene.add(mesh);
-    pool.push({ mesh, mat, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, size: 0.06 });
+    pool.push({
+      mesh,
+      mat,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      life: 0,
+      maxLife: 1,
+      size: 0.06,
+    });
   }
 }
 
@@ -122,14 +136,18 @@ function spawnParticle(px, py, pz, vx, vy, vz, color, life, size) {
   p.mesh.visible = true;
   p.mat.color.setHex(color);
   p.mat.opacity = 1;
-  p.vx = vx; p.vy = vy; p.vz = vz;
-  p.life = life; p.maxLife = life;
+  p.vx = vx;
+  p.vy = vy;
+  p.vz = vz;
+  p.life = life;
+  p.maxLife = life;
   p.size = size;
   p.mesh.scale.setScalar(size / 0.06);
 }
 
 export function toggleJetpackTakeoff() {
-  if (!state.localPlayer || state.localPlayer.flying || crashing || rolling) return;
+  if (!state.localPlayer || state.localPlayer.flying || crashing || rolling)
+    return;
   initWings();
   state.localPlayer.flying = true;
   state.localPlayer.velocity.y = 12.0;
@@ -139,7 +157,8 @@ export function toggleJetpackTakeoff() {
 }
 
 export function toggleJetpackLand() {
-  if (!state.localPlayer || !state.localPlayer.flying || crashing || rolling) return;
+  if (!state.localPlayer || !state.localPlayer.flying || crashing || rolling)
+    return;
   if (wingData) wingData.targetProgress = 0;
   crashing = true;
   crashTime = 0;
@@ -154,22 +173,36 @@ export function updateJetpack(dt, now) {
   if (!state.localPlayer || !state.localPlayer.mesh) return;
 
   const lp = state.localPlayer;
-  const px = lp.x, py = lp.y, pz = lp.z;
+  const px = lp.x,
+    py = lp.y,
+    pz = lp.z;
 
   // Idle thrust
   if (lp.flying) {
     for (let i = 0; i < 3; i++) {
       spawnParticle(
-        px + (Math.random() - 0.5) * 0.4, py - 0.6, pz + (Math.random() - 0.5) * 0.4,
-        (Math.random() - 0.5) * 0.3, -(1.0 + Math.random()), (Math.random() - 0.5) * 0.3,
-        THRUST_COLOR, 0.4 + Math.random() * 0.3, 0.04 + Math.random() * 0.04
+        px + (Math.random() - 0.5) * 0.4,
+        py - 0.6,
+        pz + (Math.random() - 0.5) * 0.4,
+        (Math.random() - 0.5) * 0.3,
+        -(1.0 + Math.random()),
+        (Math.random() - 0.5) * 0.3,
+        THRUST_COLOR,
+        0.4 + Math.random() * 0.3,
+        0.04 + Math.random() * 0.04,
       );
     }
     if (Math.random() < 0.4) {
       spawnParticle(
-        px + (Math.random() - 0.5) * 0.5, py - 0.8, pz + (Math.random() - 0.5) * 0.5,
-        (Math.random() - 0.5) * 0.5, -(0.5 + Math.random() * 0.5), (Math.random() - 0.5) * 0.5,
-        SMOKE_COLOR, 0.8 + Math.random() * 0.4, 0.08 + Math.random() * 0.06
+        px + (Math.random() - 0.5) * 0.5,
+        py - 0.8,
+        pz + (Math.random() - 0.5) * 0.5,
+        (Math.random() - 0.5) * 0.5,
+        -(0.5 + Math.random() * 0.5),
+        (Math.random() - 0.5) * 0.5,
+        SMOKE_COLOR,
+        0.8 + Math.random() * 0.4,
+        0.08 + Math.random() * 0.06,
       );
     }
   }
@@ -186,9 +219,15 @@ export function updateJetpack(dt, now) {
 
       for (let i = 0; i < 4; i++) {
         spawnParticle(
-          px + (Math.random() - 0.5) * 0.6, py - 0.3, pz + (Math.random() - 0.5) * 0.6,
-          (Math.random() - 0.5) * 2, Math.random() * 1 - 2, (Math.random() - 0.5) * 2,
-          SMOKE_COLOR, 0.6 + Math.random() * 0.4, 0.1 + Math.random() * 0.1
+          px + (Math.random() - 0.5) * 0.6,
+          py - 0.3,
+          pz + (Math.random() - 0.5) * 0.6,
+          (Math.random() - 0.5) * 2,
+          Math.random() * 1 - 2,
+          (Math.random() - 0.5) * 2,
+          SMOKE_COLOR,
+          0.6 + Math.random() * 0.4,
+          0.1 + Math.random() * 0.1,
         );
       }
 
@@ -201,7 +240,17 @@ export function updateJetpack(dt, now) {
         crashAngVel = 8;
         for (let i = 0; i < 8; i++) {
           const a = Math.random() * Math.PI * 2;
-          spawnParticle(px, groundY, pz, Math.cos(a)*2, Math.random()*2, Math.sin(a)*2, 0xaaaaaa, 0.5, 0.15);
+          spawnParticle(
+            px,
+            groundY,
+            pz,
+            Math.cos(a) * 2,
+            Math.random() * 2,
+            Math.sin(a) * 2,
+            0xaaaaaa,
+            0.5,
+            0.15,
+          );
         }
       }
     }
@@ -225,19 +274,25 @@ export function updateJetpack(dt, now) {
   // ── Wing cascade animation ────────────────────────────────────────────
   if (wingData && wingData.targetProgress !== wingData.progress) {
     const speed = wingData.targetProgress > wingData.progress ? 2.0 : 2.8;
-    wingData.progress += (wingData.targetProgress - wingData.progress) * Math.min(1, speed * dt);
-    if (Math.abs(wingData.targetProgress - wingData.progress) < 0.001) wingData.progress = wingData.targetProgress;
+    wingData.progress +=
+      (wingData.targetProgress - wingData.progress) * Math.min(1, speed * dt);
+    if (Math.abs(wingData.targetProgress - wingData.progress) < 0.001)
+      wingData.progress = wingData.targetProgress;
 
     const p = wingData.progress;
     const segments = wingData.segments;
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       // Cascade: each segment's local progress starts after its delay
-      const localT = Math.max(0, Math.min(1, (p - seg.startDelay) / (1 - seg.startDelay)));
+      const localT = Math.max(
+        0,
+        Math.min(1, (p - seg.startDelay) / (1 - seg.startDelay)),
+      );
       // Ease-out cubic for smooth snap at full extension
-      const ease = 1 - Math.pow(1 - localT, 3);
+      const ease = 1 - (1 - localT) ** 3;
       // Interpolate between fold angle and open angle
-      seg.pivot.rotation.y = seg.foldAngle + (seg.openAngle - seg.foldAngle) * ease;
+      seg.pivot.rotation.y =
+        seg.foldAngle + (seg.openAngle - seg.foldAngle) * ease;
     }
   }
 
@@ -264,5 +319,8 @@ export function updateJetpack(dt, now) {
 }
 
 export function clearJetpackParticles() {
-  pool.forEach(p => { p.mesh.visible = false; p.mat.opacity = 0; });
+  pool.forEach((p) => {
+    p.mesh.visible = false;
+    p.mat.opacity = 0;
+  });
 }

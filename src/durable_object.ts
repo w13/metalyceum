@@ -1,51 +1,63 @@
-import { DurableObject } from "cloudflare:workers";
-import {
-  sanitizeText,
-  clampNum,
-  sanitizeColor,
-  deriveSourceType,
-  parseOptionalVideoInput,
-  parseStartTime,
-  parseDurationMinutes,
-  parseWorldAssets,
-  type WorldAssetDefinition
-} from "./validation";
-import { INTERNAL_ADMIN_PATHS } from "./internal/admin_endpoints";
-import { parseJsonObjectBody, parseJsonObjectText } from "./http/json";
+import { DurableObject } from 'cloudflare:workers';
 import {
   type Bindings,
+  BUCKET_CAPACITY,
+  BUCKET_REFILL,
+  CHAT_MIN_INTERVAL,
+  DEFAULT_ROOMS,
+  DISCONNECT_GRACE_MS,
+  MAX_CHAT_HISTORY,
+  MAX_CHAT_LEN,
+  MAX_MOVE_STEP,
+  MAX_MOVE_STEP_SQ,
+  MAX_PLAYERS,
+  MAX_ROOM_NAME_LEN,
+  MAX_USERNAME_LEN,
+  MAX_WORLD_ASSETS,
   type PersistedChatMessage,
+  type Player,
   ROOM_COUNT,
   ROOMS_CONFIG_VERSION,
   type RoomEvent,
-  DEFAULT_ROOMS,
-  type Player,
   type Session,
-  MAX_PLAYERS,
-  MAX_USERNAME_LEN,
-  MAX_CHAT_LEN,
-  MAX_CHAT_HISTORY,
+  STALE_SESSION_MS,
   WORLD_LIMIT,
-  Y_MIN,
   Y_MAX,
-  MAX_MOVE_STEP,
-  MAX_MOVE_STEP_SQ,
-  CHAT_MIN_INTERVAL,
-  BUCKET_CAPACITY,
-  BUCKET_REFILL,
-  MAX_ROOM_NAME_LEN,
-  MAX_WORLD_ASSETS,
-  DISCONNECT_GRACE_MS,
-  STALE_SESSION_MS
-} from "./constants";
-import { arePlayersRelevant, getVisibleChatHistory, normalizeChatScope, shouldDeliverChat } from "./realtime";
-import { getSessionSource } from "./session_source";
+  Y_MIN,
+} from './constants';
+import { parseJsonObjectBody, parseJsonObjectText } from './http/json';
+import { INTERNAL_ADMIN_PATHS } from './internal/admin_endpoints';
+import {
+  arePlayersRelevant,
+  getVisibleChatHistory,
+  normalizeChatScope,
+  shouldDeliverChat,
+} from './realtime';
+import { getSessionSource } from './session_source';
+import {
+  clampNum,
+  deriveSourceType,
+  parseDurationMinutes,
+  parseOptionalVideoInput,
+  parseStartTime,
+  parseWorldAssets,
+  sanitizeColor,
+  sanitizeText,
+  type WorldAssetDefinition,
+} from './validation';
 
 // Ring buffer of recent server-side events (shared across this isolate)
 const MAX_SERVER_EVENTS = 100;
-const serverEventLog: Array<{ event: string; ts: number; fields: Record<string, unknown> }> = [];
+const serverEventLog: Array<{
+  event: string;
+  ts: number;
+  fields: Record<string, unknown>;
+}> = [];
 
-export function logEvent(event: string, fields: Record<string, unknown> = {}): void {
+export function logEvent(
+  event: string,
+  fields: Record<string, unknown> = {},
+): void {
   const entry = { event, ts: Date.now(), fields };
   serverEventLog.push(entry);
   if (serverEventLog.length > MAX_SERVER_EVENTS) serverEventLog.shift();
@@ -55,7 +67,7 @@ export function logEvent(event: string, fields: Record<string, unknown> = {}): v
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -80,7 +92,7 @@ type PersistedChatRow = {
   username: string;
   color: string;
   message: string;
-  scope: "global" | "room";
+  scope: 'global' | 'room';
   room_id: number | null;
   created_at: number;
 };
@@ -98,7 +110,10 @@ export class MetalyceumWorld extends DurableObject {
   storageInitError: string | null = null;
   private readonly dirtyPlayerIds = new Set<string>();
   /** Tracks grace-period cleanup timers keyed by username. */
-  private readonly disconnectedGraceTimers = new Map<string, ReturnType<typeof globalThis.setTimeout>>();
+  private readonly disconnectedGraceTimers = new Map<
+    string,
+    ReturnType<typeof globalThis.setTimeout>
+  >();
   /** Timestamp of the last stale-session scan; avoids O(N) scan on every message. */
   private lastPruneAt = 0;
   private static readonly PRUNE_INTERVAL_MS = 15_000;
@@ -112,7 +127,7 @@ export class MetalyceumWorld extends DurableObject {
   private serializeSession(ws: WebSocket, session: Session): void {
     ws.serializeAttachment({
       ...session,
-      visiblePlayerIds: Array.from(session.visiblePlayerIds)
+      visiblePlayerIds: Array.from(session.visiblePlayerIds),
     });
   }
 
@@ -123,9 +138,14 @@ export class MetalyceumWorld extends DurableObject {
   private rebuildSessionsIfNeeded(): void {
     if (this.sessions.size > 0) return;
     for (const ws of this.ctx.getWebSockets()) {
-      const raw = ws.deserializeAttachment() as (Omit<Session, "visiblePlayerIds"> & { visiblePlayerIds: string[] }) | null;
+      const raw = ws.deserializeAttachment() as
+        | (Omit<Session, 'visiblePlayerIds'> & { visiblePlayerIds: string[] })
+        | null;
       if (!raw) continue;
-      this.sessions.set(ws, { ...raw, visiblePlayerIds: new Set(raw.visiblePlayerIds) });
+      this.sessions.set(ws, {
+        ...raw,
+        visiblePlayerIds: new Set(raw.visiblePlayerIds),
+      });
     }
   }
 
@@ -136,7 +156,12 @@ export class MetalyceumWorld extends DurableObject {
     this.handleMessage(ws, message);
   }
 
-  webSocketClose(ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): void {
+  webSocketClose(
+    ws: WebSocket,
+    _code: number,
+    _reason: string,
+    _wasClean: boolean,
+  ): void {
     this.rebuildSessionsIfNeeded();
     this.closeHandler(ws);
   }
@@ -151,24 +176,33 @@ export class MetalyceumWorld extends DurableObject {
     this.lastPruneAt = now;
     for (const [ws, session] of this.sessions.entries()) {
       // Expire sessions that didn't reconnect within the grace period
-      if (session.disconnectedAt !== null && now - session.disconnectedAt > DISCONNECT_GRACE_MS) {
+      if (
+        session.disconnectedAt !== null &&
+        now - session.disconnectedAt > DISCONNECT_GRACE_MS
+      ) {
         this.sessions.delete(ws);
         this.expireDisconnectedSession(ws);
-        logEvent("player_grace_expired", { id: session.id, username: session.username });
+        logEvent('player_grace_expired', {
+          id: session.id,
+          username: session.username,
+        });
         continue;
       }
       if (now - session.lastSeenAt <= STALE_SESSION_MS) continue;
       try {
-        ws.close(1001, "Session timed out");
+        ws.close(1001, 'Session timed out');
       } catch (error) {
-        logEvent("stale_session_close_failed", {
+        logEvent('stale_session_close_failed', {
           id: session.id,
           username: session.username,
           error: error instanceof Error ? error.message : String(error),
         });
       }
       this.closeHandler(ws);
-      logEvent("player_timed_out", { id: session.id, username: session.username });
+      logEvent('player_timed_out', {
+        id: session.id,
+        username: session.username,
+      });
     }
   }
 
@@ -183,9 +217,10 @@ export class MetalyceumWorld extends DurableObject {
         await this.loadChatHistory();
         this.storageInitError = null;
       } catch (error) {
-        this.storageInitError = error instanceof Error ? error.message : String(error);
-        logEvent("storage_init_error", {
-          error: this.storageInitError
+        this.storageInitError =
+          error instanceof Error ? error.message : String(error);
+        logEvent('storage_init_error', {
+          error: this.storageInitError,
         });
         this.rooms = DEFAULT_ROOMS.map((room) => ({ ...room }));
         this.worldAssets = [];
@@ -204,7 +239,7 @@ export class MetalyceumWorld extends DurableObject {
         source_value TEXT NOT NULL,
         start_time TEXT,
         duration_minutes INTEGER NOT NULL DEFAULT 0
-      )`
+      )`,
     );
     this.ctx.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS world_assets (
@@ -216,10 +251,10 @@ export class MetalyceumWorld extends DurableObject {
         rotation_y REAL NOT NULL,
         scale REAL NOT NULL,
         room_id INTEGER NOT NULL
-      )`
+      )`,
     );
     this.ctx.storage.sql.exec(
-      `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`
+      `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
     );
     this.ctx.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS chat_messages (
@@ -231,36 +266,41 @@ export class MetalyceumWorld extends DurableObject {
         scope TEXT NOT NULL,
         room_id INTEGER,
         created_at INTEGER NOT NULL
-      )`
+      )`,
     );
   }
 
   private getMeta(key: string): string | null {
-    const cursor = this.ctx.storage.sql.exec("SELECT value FROM meta WHERE key=?", key);
+    const cursor = this.ctx.storage.sql.exec(
+      'SELECT value FROM meta WHERE key=?',
+      key,
+    );
     const row = firstCursorRow<{ value: string }>(cursor);
     return row?.value ?? null;
   }
 
   private setMeta(key: string, value: string): void {
     this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", key, value
+      'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
+      key,
+      value,
     );
   }
 
   private tableExists(tableName: string): boolean {
     const cursor = this.ctx.storage.sql.exec(
       "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-      tableName
+      tableName,
     );
     return firstCursorRow(cursor) !== null;
   }
 
   private migrateLegacyRooms(): Map<number, string> {
     const migratedSources = new Map<number, string>();
-    if (this.tableExists("room_videos")) {
-      const oldRows = this.ctx.storage.sql.exec(
-        "SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC"
-      ).toArray() as { room_id: number; video_id: string }[];
+    if (this.tableExists('room_videos')) {
+      const oldRows = this.ctx.storage.sql
+        .exec('SELECT room_id, video_id FROM room_videos ORDER BY room_id ASC')
+        .toArray() as { room_id: number; video_id: string }[];
       for (const row of oldRows) {
         if (row.room_id >= 0 && row.room_id < ROOM_COUNT) {
           migratedSources.set(row.room_id, row.video_id);
@@ -274,33 +314,43 @@ export class MetalyceumWorld extends DurableObject {
     for (const defaults of DEFAULT_ROOMS) {
       this.persistRoom({
         ...defaults,
-        sourceValue: migratedSources.get(defaults.roomId) ?? defaults.sourceValue
+        sourceValue:
+          migratedSources.get(defaults.roomId) ?? defaults.sourceValue,
       });
     }
   }
 
   private async loadRooms(): Promise<void> {
-    const storedVersion = Number(this.getMeta("rooms_version") || "0");
+    const storedVersion = Number(this.getMeta('rooms_version') || '0');
     const needsReseed = storedVersion < ROOMS_CONFIG_VERSION;
 
-    const countCursor = this.ctx.storage.sql.exec("SELECT COUNT(*) as cnt FROM room_events");
-    const count = Number((countCursor.one() as { cnt: number } | null)?.cnt ?? 0);
+    const countCursor = this.ctx.storage.sql.exec(
+      'SELECT COUNT(*) as cnt FROM room_events',
+    );
+    const count = Number(
+      (countCursor.one() as { cnt: number } | null)?.cnt ?? 0,
+    );
 
     if (count === 0 || needsReseed) {
       if (needsReseed && count > 0) {
         // Migration: wipe old room data and re-seed with new defaults
-        this.ctx.storage.sql.exec("DELETE FROM room_events");
-        logEvent("rooms_migrated", { fromVersion: storedVersion, toVersion: ROOMS_CONFIG_VERSION });
+        this.ctx.storage.sql.exec('DELETE FROM room_events');
+        logEvent('rooms_migrated', {
+          fromVersion: storedVersion,
+          toVersion: ROOMS_CONFIG_VERSION,
+        });
       }
       const migratedSources = this.migrateLegacyRooms();
       this.seedDefaultRooms(migratedSources);
-      this.setMeta("rooms_version", String(ROOMS_CONFIG_VERSION));
+      this.setMeta('rooms_version', String(ROOMS_CONFIG_VERSION));
     }
 
-    const roomRows = this.ctx.storage.sql.exec(
-      `SELECT room_id, name, source_value, start_time, duration_minutes
-       FROM room_events ORDER BY room_id ASC`
-    ).toArray() as {
+    const roomRows = this.ctx.storage.sql
+      .exec(
+        `SELECT room_id, name, source_value, start_time, duration_minutes
+       FROM room_events ORDER BY room_id ASC`,
+      )
+      .toArray() as {
       room_id: number;
       name: string;
       source_value: string;
@@ -320,36 +370,46 @@ export class MetalyceumWorld extends DurableObject {
         startTime: row.start_time ?? defaults.startTime,
         durationMinutes: clampNum(
           Number(row.duration_minutes) || defaults.durationMinutes,
-          1, 24 * 60, defaults.durationMinutes
+          1,
+          24 * 60,
+          defaults.durationMinutes,
         ),
-        updatedAt: defaults.updatedAt
+        updatedAt: defaults.updatedAt,
       });
     }
 
-    this.rooms = DEFAULT_ROOMS.map((defaults) => roomMap.get(defaults.roomId) ?? defaults);
+    this.rooms = DEFAULT_ROOMS.map(
+      (defaults) => roomMap.get(defaults.roomId) ?? defaults,
+    );
   }
 
   private async loadWorldAssets(): Promise<void> {
-    const assetRows = this.ctx.storage.sql.exec(
-      `SELECT id, asset_type, x, y, z, rotation_y, scale, room_id
-       FROM world_assets ORDER BY rowid ASC`
-    ).toArray() as PersistedAssetRow[];
+    const assetRows = this.ctx.storage.sql
+      .exec(
+        `SELECT id, asset_type, x, y, z, rotation_y, scale, room_id
+       FROM world_assets ORDER BY rowid ASC`,
+      )
+      .toArray() as PersistedAssetRow[];
 
     const parsedAssets = parseWorldAssets(
       assetRows.map((row) => ({
         id: row.id,
         type: row.asset_type,
-        x: row.x, y: row.y, z: row.z,
+        x: row.x,
+        y: row.y,
+        z: row.z,
         rotationY: row.rotation_y,
         scale: row.scale,
-        roomId: row.room_id
+        roomId: row.room_id,
       })),
-      this.worldAssetValidation()
+      this.worldAssetValidation(),
     );
 
     this.worldAssets = parsedAssets ?? [];
     if (!parsedAssets && assetRows.length > 0) {
-      logEvent("world_assets_load_repaired", { originalCount: assetRows.length });
+      logEvent('world_assets_load_repaired', {
+        originalCount: assetRows.length,
+      });
     }
   }
 
@@ -359,18 +419,20 @@ export class MetalyceumWorld extends DurableObject {
        WHERE id NOT IN (
          SELECT id FROM chat_messages ORDER BY id DESC LIMIT ?
        )`,
-      MAX_CHAT_HISTORY
+      MAX_CHAT_HISTORY,
     );
   }
 
   private async loadChatHistory(): Promise<void> {
-    const chatRows = this.ctx.storage.sql.exec(
-      `SELECT id, sender_id, username, color, message, scope, room_id, created_at
+    const chatRows = this.ctx.storage.sql
+      .exec(
+        `SELECT id, sender_id, username, color, message, scope, room_id, created_at
        FROM chat_messages
        ORDER BY id DESC
        LIMIT ?`,
-      MAX_CHAT_HISTORY
-    ).toArray() as PersistedChatRow[];
+        MAX_CHAT_HISTORY,
+      )
+      .toArray() as PersistedChatRow[];
 
     this.chatHistory = chatRows
       .slice()
@@ -381,9 +443,9 @@ export class MetalyceumWorld extends DurableObject {
         username: row.username,
         color: row.color,
         message: row.message,
-        scope: row.scope === "room" ? "room" : "global",
+        scope: row.scope === 'room' ? 'room' : 'global',
         roomId: Number.isInteger(row.room_id) ? row.room_id : null,
-        timestamp: row.created_at
+        timestamp: row.created_at,
       }));
 
     this.prunePersistedChatMessages();
@@ -395,7 +457,7 @@ export class MetalyceumWorld extends DurableObject {
       yMin: Y_MIN,
       yMax: Y_MAX,
       roomCount: ROOM_COUNT,
-      maxAssets: Math.max(1, Math.min(MAX_WORLD_ASSETS, 200))
+      maxAssets: Math.max(1, Math.min(MAX_WORLD_ASSETS, 200)),
     };
   }
 
@@ -407,16 +469,20 @@ export class MetalyceumWorld extends DurableObject {
       ws.send(payload);
     } catch (err) {
       const session = this.sessions.get(ws);
-      logEvent("ws_send_failed", {
-        id: session?.id ?? "unknown",
-        username: session?.username ?? "unknown",
+      logEvent('ws_send_failed', {
+        id: session?.id ?? 'unknown',
+        username: session?.username ?? 'unknown',
         error: err instanceof Error ? err.message : String(err),
       });
       this.closeHandler(ws);
     }
   }
 
-  broadcast(msg: object, excludeId?: string, predicate?: (session: Session) => boolean): void {
+  broadcast(
+    msg: object,
+    excludeId?: string,
+    predicate?: (session: Session) => boolean,
+  ): void {
     for (const [ws, session] of this.sessions.entries()) {
       if (excludeId && session.id === excludeId) continue;
       if (predicate && !predicate(session)) continue;
@@ -429,22 +495,24 @@ export class MetalyceumWorld extends DurableObject {
   private async handleAdminBroadcast(request: Request): Promise<Response> {
     const parsed = await parseJsonObjectBody(request);
     if (!parsed.ok) {
-      return jsonResponse({ ok: false, error: "Invalid request" }, 400);
+      return jsonResponse({ ok: false, error: 'Invalid request' }, 400);
     }
     const body = parsed.value;
     const message = body.message;
-    if (!message || typeof message !== "string") {
-      return jsonResponse({ ok: false, error: "Missing message" }, 400);
+    if (!message || typeof message !== 'string') {
+      return jsonResponse({ ok: false, error: 'Missing message' }, 400);
     }
-    const author = sanitizeText(String(body.author || "System"), MAX_USERNAME_LEN) || "System";
+    const author =
+      sanitizeText(String(body.author || 'System'), MAX_USERNAME_LEN) ||
+      'System';
     const persistedMessage = this.persistChatMessage({
-      senderId: "admin",
+      senderId: 'admin',
       username: author,
       message: message.slice(0, 500),
-      color: "#f43f5e",
-      scope: "global",
+      color: '#f43f5e',
+      scope: 'global',
       roomId: null,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
     this.broadcastChatMessage(persistedMessage);
     return jsonResponse({ ok: true });
@@ -453,26 +521,45 @@ export class MetalyceumWorld extends DurableObject {
   private async handleAdminSyncRoom(request: Request): Promise<Response> {
     const parsed = await parseJsonObjectBody(request);
     if (!parsed.ok) {
-      return jsonResponse({ ok: false, error: "Invalid request" }, 400);
+      return jsonResponse({ ok: false, error: 'Invalid request' }, 400);
     }
     const body = parsed.value;
-    const roomId = typeof body.roomId === "number" ? body.roomId : -1;
+    const roomId = typeof body.roomId === 'number' ? body.roomId : -1;
     if (roomId < 0 || roomId >= ROOM_COUNT) {
-      return jsonResponse({ ok: false, error: "Invalid room ID" }, 400);
+      return jsonResponse({ ok: false, error: 'Invalid room ID' }, 400);
     }
     const current = this.rooms[roomId] ?? DEFAULT_ROOMS[roomId];
     const nextRoom: RoomEvent = {
       roomId,
-      name: typeof body.name === "string" ? body.name.trim().slice(0, 48) : current.name,
-      sourceType: body.sourceType === "meet" ? "meet" : body.sourceType === "youtube" ? "youtube" : current.sourceType,
-      sourceValue: typeof body.sourceValue === "string" ? body.sourceValue : current.sourceValue,
-      startTime: typeof body.startTime === "string" ? body.startTime : current.startTime,
-      durationMinutes: typeof body.durationMinutes === "number" ? Math.max(0, Math.min(1440, body.durationMinutes)) : current.durationMinutes,
+      name:
+        typeof body.name === 'string'
+          ? body.name.trim().slice(0, 48)
+          : current.name,
+      sourceType:
+        body.sourceType === 'meet'
+          ? 'meet'
+          : body.sourceType === 'youtube'
+            ? 'youtube'
+            : current.sourceType,
+      sourceValue:
+        typeof body.sourceValue === 'string'
+          ? body.sourceValue
+          : current.sourceValue,
+      startTime:
+        typeof body.startTime === 'string' ? body.startTime : current.startTime,
+      durationMinutes:
+        typeof body.durationMinutes === 'number'
+          ? Math.max(0, Math.min(1440, body.durationMinutes))
+          : current.durationMinutes,
       updatedAt: Date.now(),
     };
     this.rooms[roomId] = nextRoom;
     this.persistRoom(nextRoom);
-    this.broadcast({ type: "room_update", roomId: nextRoom.roomId, room: nextRoom });
+    this.broadcast({
+      type: 'room_update',
+      roomId: nextRoom.roomId,
+      room: nextRoom,
+    });
     return jsonResponse({ ok: true, room: nextRoom });
   }
 
@@ -497,7 +584,7 @@ export class MetalyceumWorld extends DurableObject {
       z: number;
       room: number;
       isMoving: boolean;
-      source: Session["source"];
+      source: Session['source'];
     }> = [];
     for (const session of this.sessions.values()) {
       if (!session.player) continue;
@@ -510,7 +597,7 @@ export class MetalyceumWorld extends DurableObject {
         z: session.player.z,
         room: session.player.room,
         isMoving: session.player.isMoving,
-        source: session.source
+        source: session.source,
       });
     }
     const worldState = {
@@ -523,11 +610,14 @@ export class MetalyceumWorld extends DurableObject {
           id: r.roomId,
           name: r.name,
           sourceType: r.sourceType,
-          sourceValue: r.sourceValue ? r.sourceValue.slice(0, 30) + (r.sourceValue.length > 30 ? "..." : "") : null,
+          sourceValue: r.sourceValue
+            ? r.sourceValue.slice(0, 30) +
+              (r.sourceValue.length > 30 ? '...' : '')
+            : null,
           hasEvent: !!r.sourceValue,
         })),
         worldAssetCount: this.worldAssets.length,
-      }
+      },
     };
     return jsonResponse(worldState);
   }
@@ -537,11 +627,17 @@ export class MetalyceumWorld extends DurableObject {
     this.ctx.storage.sql.exec(
       `INSERT OR REPLACE INTO room_events (room_id, name, source_value, start_time, duration_minutes)
        VALUES (?, ?, ?, ?, ?)`,
-      room.roomId, room.name, room.sourceValue, storedStartTime, room.durationMinutes
+      room.roomId,
+      room.name,
+      room.sourceValue,
+      storedStartTime,
+      room.durationMinutes,
     );
   }
 
-  private persistChatMessage(message: Omit<PersistedChatMessage, "id">): PersistedChatMessage {
+  private persistChatMessage(
+    message: Omit<PersistedChatMessage, 'id'>,
+  ): PersistedChatMessage {
     this.ctx.storage.sql.exec(
       `INSERT INTO chat_messages (sender_id, username, color, message, scope, room_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -551,15 +647,15 @@ export class MetalyceumWorld extends DurableObject {
       message.message,
       message.scope,
       message.roomId,
-      message.timestamp
+      message.timestamp,
     );
 
-    const insertedRow = this.ctx.storage.sql.exec(
-      "SELECT last_insert_rowid() AS id"
-    ).one() as { id: number | bigint } | null;
+    const insertedRow = this.ctx.storage.sql
+      .exec('SELECT last_insert_rowid() AS id')
+      .one() as { id: number | bigint } | null;
     const persistedMessage: PersistedChatMessage = {
       id: Number(insertedRow?.id ?? 0),
-      ...message
+      ...message,
     };
 
     this.chatHistory.push(persistedMessage);
@@ -571,13 +667,15 @@ export class MetalyceumWorld extends DurableObject {
     return persistedMessage;
   }
 
-  private getVisibleHistoryFor(player: Pick<Player, "room">): PersistedChatMessage[] {
+  private getVisibleHistoryFor(
+    player: Pick<Player, 'room'>,
+  ): PersistedChatMessage[] {
     return getVisibleChatHistory(this.chatHistory, player, MAX_CHAT_HISTORY);
   }
 
   private toChatPayload(message: PersistedChatMessage) {
     return {
-      type: "chat" as const,
+      type: 'chat' as const,
       messageId: message.id,
       id: message.senderId,
       username: message.username,
@@ -585,30 +683,29 @@ export class MetalyceumWorld extends DurableObject {
       message: message.message,
       scope: message.scope,
       roomId: message.roomId,
-      timestamp: message.timestamp
+      timestamp: message.timestamp,
     };
   }
 
   private sendStorageInitWarning(ws: WebSocket): void {
     if (!this.storageInitError) return;
     this.send(ws, {
-      type: "error",
-      message: `Server storage failed to initialize; using fallback room data. Details: ${this.storageInitError}`
+      type: 'error',
+      message: `Server storage failed to initialize; using fallback room data. Details: ${this.storageInitError}`,
     });
   }
 
   private broadcastChatMessage(
     message: PersistedChatMessage,
-    sender?: Pick<Player, "room"> | null
+    sender?: Pick<Player, 'room'> | null,
   ): void {
-    this.broadcast(
-      this.toChatPayload(message),
-      undefined,
-      (otherSession) => Boolean(
+    this.broadcast(this.toChatPayload(message), undefined, (otherSession) =>
+      Boolean(
         otherSession.disconnectedAt === null &&
-        otherSession.player &&
-        (!sender || shouldDeliverChat(sender, otherSession.player, message.scope))
-      )
+          otherSession.player &&
+          (!sender ||
+            shouldDeliverChat(sender, otherSession.player, message.scope)),
+      ),
     );
   }
 
@@ -638,7 +735,9 @@ export class MetalyceumWorld extends DurableObject {
 
       const nextVisiblePlayerIds = new Set<string>();
       const joiningPlayers: Player[] = [];
-      const updatedPlayers: Array<Pick<Player, "id" | "x" | "y" | "z" | "ry" | "isMoving" | "room">> = [];
+      const updatedPlayers: Array<
+        Pick<Player, 'id' | 'x' | 'y' | 'z' | 'ry' | 'isMoving' | 'room'>
+      > = [];
 
       for (const otherSession of this.sessions.values()) {
         const other = otherSession.player;
@@ -652,20 +751,26 @@ export class MetalyceumWorld extends DurableObject {
         }
         if (this.dirtyPlayerIds.has(other.id)) {
           updatedPlayers.push({
-            id: other.id, x: other.x, y: other.y, z: other.z,
-            ry: other.ry, isMoving: other.isMoving, room: other.room
+            id: other.id,
+            x: other.x,
+            y: other.y,
+            z: other.z,
+            ry: other.ry,
+            isMoving: other.isMoving,
+            room: other.room,
           });
         }
       }
 
       for (const playerId of session.visiblePlayerIds) {
         if (!nextVisiblePlayerIds.has(playerId)) {
-          this.send(ws, { type: "leave", id: playerId });
+          this.send(ws, { type: 'leave', id: playerId });
         }
       }
-      for (const player of joiningPlayers) this.send(ws, { type: "join", player });
+      for (const player of joiningPlayers)
+        this.send(ws, { type: 'join', player });
       if (updatedPlayers.length > 0) {
-        this.send(ws, { type: "state_batch", players: updatedPlayers });
+        this.send(ws, { type: 'state_batch', players: updatedPlayers });
       }
       session.visiblePlayerIds = nextVisiblePlayerIds;
     }
@@ -679,70 +784,93 @@ export class MetalyceumWorld extends DurableObject {
     const url = new URL(request.url);
     this.pruneStaleSessions();
 
-      // --- Internal admin proxy endpoints (called from AdminDO) ---
-    if (url.pathname === INTERNAL_ADMIN_PATHS.broadcast && request.method === "POST") {
+    // --- Internal admin proxy endpoints (called from AdminDO) ---
+    if (
+      url.pathname === INTERNAL_ADMIN_PATHS.broadcast &&
+      request.method === 'POST'
+    ) {
       return this.handleAdminBroadcast(request);
     }
-    if (url.pathname === INTERNAL_ADMIN_PATHS.worldState && request.method === "GET") {
+    if (
+      url.pathname === INTERNAL_ADMIN_PATHS.worldState &&
+      request.method === 'GET'
+    ) {
       return this.handleAdminWorldState();
     }
-    if (url.pathname === INTERNAL_ADMIN_PATHS.syncRoom && request.method === "POST") {
+    if (
+      url.pathname === INTERNAL_ADMIN_PATHS.syncRoom &&
+      request.method === 'POST'
+    ) {
       return this.handleAdminSyncRoom(request);
     }
-    if (url.pathname === INTERNAL_ADMIN_PATHS.worldAssets && request.method === "GET") {
+    if (
+      url.pathname === INTERNAL_ADMIN_PATHS.worldAssets &&
+      request.method === 'GET'
+    ) {
       return this.handleAdminWorldAssets();
     }
 
     // --- Debug / health-check endpoint ---
-    if (url.pathname === "/debug") {
+    if (url.pathname === '/debug') {
       const players = Array.from(this.sessions.values()).map((s) => ({
         id: s.id,
         username: s.username,
         color: s.color,
         hasPlayer: !!s.player,
-        position: s.player ? { x: s.player.x, y: s.player.y, z: s.player.z, room: s.player.room } : null,
-        bucket: s.bucket ? { tokens: s.bucket.tokens, last: s.bucket.last } : null,
+        position: s.player
+          ? { x: s.player.x, y: s.player.y, z: s.player.z, room: s.player.room }
+          : null,
+        bucket: s.bucket
+          ? { tokens: s.bucket.tokens, last: s.bucket.last }
+          : null,
         visibleCount: s.visiblePlayerIds.size,
-        source: s.source
+        source: s.source,
       }));
 
       const rooms = this.rooms.map((r) => ({
         id: r.roomId,
         name: r.name,
         sourceType: r.sourceType,
-        sourceValue: r.sourceValue?.substring(0, 20) + (r.sourceValue?.length > 20 ? "..." : ""),
+        sourceValue:
+          r.sourceValue?.substring(0, 20) +
+          (r.sourceValue?.length > 20 ? '...' : ''),
         startTime: r.startTime,
-        durationMinutes: r.durationMinutes
+        durationMinutes: r.durationMinutes,
       }));
 
       const recentEvents = getRecentEvents(20);
-      const body = JSON.stringify({
-        ok: true,
-        version: 1,
-        ts: Date.now(),
-        diagnostics: {
-          sessionCount: this.sessions.size,
-          playerCount: players.filter((p) => p.hasPlayer).length,
-          worldAssetCount: this.worldAssets.length,
-          activeWebSockets: this.ctx.getWebSockets().length,
-          dirtyPlayerCount: this.dirtyPlayerIds.size,
-          storageInitError: this.storageInitError
+      const body = JSON.stringify(
+        {
+          ok: true,
+          version: 1,
+          ts: Date.now(),
+          diagnostics: {
+            sessionCount: this.sessions.size,
+            playerCount: players.filter((p) => p.hasPlayer).length,
+            worldAssetCount: this.worldAssets.length,
+            activeWebSockets: this.ctx.getWebSockets().length,
+            dirtyPlayerCount: this.dirtyPlayerIds.size,
+            storageInitError: this.storageInitError,
+          },
+          rooms,
+          players,
+          recentEvents,
         },
-        rooms,
-        players,
-        recentEvents
-      }, null, 2);
+        null,
+        2,
+      );
 
       return new Response(body, {
         status: 200,
-        headers: { "Content-Type": "application/json" }
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const isWebSocket = request.headers.get("Upgrade")?.toLowerCase() === "websocket";
-    if (url.pathname === "/ws" && isWebSocket) {
+    const isWebSocket =
+      request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
+    if (url.pathname === '/ws' && isWebSocket) {
       if (this.sessions.size >= MAX_PLAYERS) {
-        return new Response("Room full", { status: 429 });
+        return new Response('Room full', { status: 429 });
       }
 
       const pair = new WebSocketPair();
@@ -750,8 +878,10 @@ export class MetalyceumWorld extends DurableObject {
       const server = pair[1];
       this.ctx.acceptWebSocket(server); // hibernation API — DO sleeps between messages
 
-      const username = sanitizeText(url.searchParams.get("username"), MAX_USERNAME_LEN) || "Guest";
-      const color = sanitizeColor(url.searchParams.get("color"));
+      const username =
+        sanitizeText(url.searchParams.get('username'), MAX_USERNAME_LEN) ||
+        'Guest';
+      const color = sanitizeColor(url.searchParams.get('color'));
       const source = getSessionSource(request);
 
       // Check for a disconnected session to revive (grace-period reconnect)
@@ -761,7 +891,10 @@ export class MetalyceumWorld extends DurableObject {
         this.disconnectedGraceTimers.delete(username);
 
         for (const [oldWs, oldSession] of this.sessions.entries()) {
-          if (oldSession.username === username && oldSession.disconnectedAt !== null) {
+          if (
+            oldSession.username === username &&
+            oldSession.disconnectedAt !== null
+          ) {
             // Revive this session — swap WebSocket, clear disconnected state
             oldSession.disconnectedAt = null;
             oldSession.lastSeenAt = Date.now();
@@ -774,20 +907,26 @@ export class MetalyceumWorld extends DurableObject {
 
             // Re-init with existing player data — no broadcast of "join"
             if (oldSession.player) {
-              const visiblePlayers = this.getRelevantPlayersFor(oldSession.player);
-              oldSession.visiblePlayerIds = new Set(visiblePlayers.map((p) => p.id));
+              const visiblePlayers = this.getRelevantPlayersFor(
+                oldSession.player,
+              );
+              oldSession.visiblePlayerIds = new Set(
+                visiblePlayers.map((p) => p.id),
+              );
               this.send(server, {
-                type: "init",
+                type: 'init',
                 id: oldSession.id,
                 players: visiblePlayers,
                 rooms: this.rooms,
                 worldAssets: this.worldAssets,
-                chatHistory: this.getVisibleHistoryFor(oldSession.player).map((entry) => this.toChatPayload(entry))
+                chatHistory: this.getVisibleHistoryFor(oldSession.player).map(
+                  (entry) => this.toChatPayload(entry),
+                ),
               });
               this.sendStorageInitWarning(server);
             }
 
-            logEvent("player_reconnected", { id: oldSession.id, username });
+            logEvent('player_reconnected', { id: oldSession.id, username });
             return new Response(null, { status: 101, webSocket: client });
           }
         }
@@ -797,30 +936,32 @@ export class MetalyceumWorld extends DurableObject {
       // Normal first-time connection — no prior session to revive
       const id = crypto.randomUUID();
       const session: Session = {
-        id, username, color,
+        id,
+        username,
+        color,
         player: null,
         bucket: { tokens: BUCKET_CAPACITY, last: Date.now() },
         lastChatAt: 0,
         lastSeenAt: Date.now(),
         visiblePlayerIds: new Set(),
         source,
-        disconnectedAt: null
+        disconnectedAt: null,
       };
       this.sessions.set(server, session);
       this.serializeSession(server, session); // persist for hibernation
 
-      logEvent("player_connected", {
+      logEvent('player_connected', {
         id,
         username,
         clientType: source.clientType,
         originHost: source.originHost,
         refererHost: source.refererHost,
-        userAgent: source.userAgent
+        userAgent: source.userAgent,
       });
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    return new Response("Not found", { status: 404 });
+    return new Response('Not found', { status: 404 });
   }
 
   // --- Message dispatch table ---
@@ -829,61 +970,82 @@ export class MetalyceumWorld extends DurableObject {
     string,
     (ws: WebSocket, msg: Record<string, unknown>, session: Session) => void
   > = {
-    heartbeat: (ws) => { this.send(ws, { type: "heartbeat_ack" }); },
+    heartbeat: (ws) => {
+      this.send(ws, { type: 'heartbeat_ack' });
+    },
 
     world_assets: (ws, msg, session) => {
       try {
-        const parsed = parseWorldAssets(msg.assets, this.worldAssetValidation());
+        const parsed = parseWorldAssets(
+          msg.assets,
+          this.worldAssetValidation(),
+        );
         if (!parsed) {
-          this.send(ws, { type: "error", message: "Invalid world assets." });
+          this.send(ws, { type: 'error', message: 'Invalid world assets.' });
           return;
         }
         this.worldAssets = parsed;
-        this.ctx.storage.sql.exec("BEGIN");
+        this.ctx.storage.sql.exec('BEGIN');
         try {
-          this.ctx.storage.sql.exec("DELETE FROM world_assets");
+          this.ctx.storage.sql.exec('DELETE FROM world_assets');
           for (const asset of parsed) {
             this.ctx.storage.sql.exec(
               `INSERT INTO world_assets (id, asset_type, x, y, z, rotation_y, scale, room_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              asset.id, asset.type, asset.x, asset.y, asset.z,
-              asset.rotationY, asset.scale, asset.roomId
+              asset.id,
+              asset.type,
+              asset.x,
+              asset.y,
+              asset.z,
+              asset.rotationY,
+              asset.scale,
+              asset.roomId,
             );
           }
-          this.ctx.storage.sql.exec("COMMIT");
+          this.ctx.storage.sql.exec('COMMIT');
         } catch (e) {
-          this.ctx.storage.sql.exec("ROLLBACK");
+          this.ctx.storage.sql.exec('ROLLBACK');
           throw e;
         }
-        this.broadcast({ type: "world_assets", assets: this.worldAssets });
+        this.broadcast({ type: 'world_assets', assets: this.worldAssets });
       } catch (error) {
-        logEvent("set_world_assets_rejected", {
+        logEvent('set_world_assets_rejected', {
           id: session.id,
           username: session.username,
           error: error instanceof Error ? error.message : String(error),
         });
-        this.send(ws, { type: "error", message: "Invalid world assets." });
+        this.send(ws, { type: 'error', message: 'Invalid world assets.' });
       }
     },
 
     set_room_event: (ws, msg) => {
       const roomId = clampNum(Number(msg.roomId), 0, ROOM_COUNT - 1, 0);
       const currentRoom = this.rooms[roomId] ?? DEFAULT_ROOMS[roomId];
-      const rawVideoInput = String(msg.videoId ?? "").trim();
-      const parsedSource = rawVideoInput ? parseOptionalVideoInput(msg.videoId) : null;
-      const nextSourceValue = parsedSource !== null ? parsedSource : currentRoom.sourceValue;
+      const rawVideoInput = String(msg.videoId ?? '').trim();
+      const parsedSource = rawVideoInput
+        ? parseOptionalVideoInput(msg.videoId)
+        : null;
+      const nextSourceValue =
+        parsedSource !== null ? parsedSource : currentRoom.sourceValue;
       const nextRoom: RoomEvent = {
         roomId,
         name: sanitizeText(msg.name, MAX_ROOM_NAME_LEN) || currentRoom.name,
         sourceType: deriveSourceType(nextSourceValue),
         sourceValue: nextSourceValue,
         startTime: parseStartTime(msg.startTime) ?? currentRoom.startTime,
-        durationMinutes: parseDurationMinutes(msg.durationMinutes, currentRoom.durationMinutes),
-        updatedAt: Date.now()
+        durationMinutes: parseDurationMinutes(
+          msg.durationMinutes,
+          currentRoom.durationMinutes,
+        ),
+        updatedAt: Date.now(),
       };
       this.rooms[roomId] = nextRoom;
       this.persistRoom(nextRoom);
-      this.broadcast({ type: "room_update", roomId: nextRoom.roomId, room: nextRoom });
+      this.broadcast({
+        type: 'room_update',
+        roomId: nextRoom.roomId,
+        room: nextRoom,
+      });
     },
 
     join: (ws, msg, session) => {
@@ -894,31 +1056,35 @@ export class MetalyceumWorld extends DurableObject {
         id: session.id,
         username: session.username,
         color: session.color,
-        x, y, z,
+        x,
+        y,
+        z,
         ry: Number(msg.ry) || 0,
         isMoving: false,
-        room: clampNum(Number(msg.room), -1, ROOM_COUNT - 1, -1)
+        room: clampNum(Number(msg.room), -1, ROOM_COUNT - 1, -1),
       };
 
       session.player = player;
       const visiblePlayers = this.getRelevantPlayersFor(player);
       session.visiblePlayerIds = new Set(visiblePlayers.map((p) => p.id));
       this.send(ws, {
-        type: "init",
+        type: 'init',
         id: session.id,
         players: visiblePlayers,
         rooms: this.rooms,
         worldAssets: this.worldAssets,
-        chatHistory: this.getVisibleHistoryFor(player).map((entry) => this.toChatPayload(entry))
+        chatHistory: this.getVisibleHistoryFor(player).map((entry) =>
+          this.toChatPayload(entry),
+        ),
       });
       this.sendStorageInitWarning(ws);
-      this.broadcast(
-        { type: "join", player },
-        session.id,
-        (otherSession) =>
-          Boolean(otherSession.player && arePlayersRelevant(otherSession.player, player))
+      this.broadcast({ type: 'join', player }, session.id, (otherSession) =>
+        Boolean(
+          otherSession.player &&
+            arePlayersRelevant(otherSession.player, player),
+        ),
       );
-      logEvent("player_joined", { id: session.id, username: session.username });
+      logEvent('player_joined', { id: session.id, username: session.username });
       this.serializeSession(ws, session); // persist so it survives hibernation
       // Ensure the prune alarm is scheduled while sessions exist.
       void this.ctx.storage.setAlarm(Date.now() + STALE_SESSION_MS);
@@ -930,15 +1096,25 @@ export class MetalyceumWorld extends DurableObject {
       const bucket = session.bucket;
       bucket.tokens = Math.min(
         BUCKET_CAPACITY,
-        bucket.tokens + ((now - bucket.last) / 1000) * BUCKET_REFILL
+        bucket.tokens + ((now - bucket.last) / 1000) * BUCKET_REFILL,
       );
       bucket.last = now;
       if (bucket.tokens < 1) return;
       bucket.tokens -= 1;
 
-      const x = clampNum(Number(msg.x), -WORLD_LIMIT, WORLD_LIMIT, session.player.x);
+      const x = clampNum(
+        Number(msg.x),
+        -WORLD_LIMIT,
+        WORLD_LIMIT,
+        session.player.x,
+      );
       const y = clampNum(Number(msg.y), Y_MIN, Y_MAX, session.player.y);
-      const z = clampNum(Number(msg.z), -WORLD_LIMIT, WORLD_LIMIT, session.player.z);
+      const z = clampNum(
+        Number(msg.z),
+        -WORLD_LIMIT,
+        WORLD_LIMIT,
+        session.player.z,
+      );
       const ry = Number(msg.ry) || 0;
       const isMoving = Boolean(msg.isMoving);
       const dx = x - session.player.x;
@@ -957,7 +1133,12 @@ export class MetalyceumWorld extends DurableObject {
 
     room_change: (ws, msg, session) => {
       if (!session.player) return;
-      const room = clampNum(Number(msg.room), -1, ROOM_COUNT - 1, session.player.room);
+      const room = clampNum(
+        Number(msg.room),
+        -1,
+        ROOM_COUNT - 1,
+        session.player.room,
+      );
       session.player.room = room;
       this.markPlayerDirty(session.id);
       this.flushMovementBatch();
@@ -979,12 +1160,12 @@ export class MetalyceumWorld extends DurableObject {
         color: session.color,
         message,
         scope,
-        roomId: scope === "room" ? session.player.room : null,
-        timestamp: now
+        roomId: scope === 'room' ? session.player.room : null,
+        timestamp: now,
       });
 
       this.broadcastChatMessage(persistedMessage, session.player);
-    }
+    },
   };
 
   handleMessage(ws: WebSocket, raw: unknown): void {
@@ -995,7 +1176,7 @@ export class MetalyceumWorld extends DurableObject {
 
     const parsed = parseJsonObjectText(String(raw));
     if (!parsed.ok) {
-      logEvent("invalid_ws_payload", {
+      logEvent('invalid_ws_payload', {
         id: session.id,
         username: session.username,
         error: parsed.error,
@@ -1030,7 +1211,10 @@ export class MetalyceumWorld extends DurableObject {
     }, DISCONNECT_GRACE_MS);
     this.disconnectedGraceTimers.set(username, timer);
 
-    logEvent("player_disconnected_grace", { id: session.id, username: session.username });
+    logEvent('player_disconnected_grace', {
+      id: session.id,
+      username: session.username,
+    });
   }
 
   /** Full cleanup after the grace period expires without a reconnect. */
@@ -1043,9 +1227,9 @@ export class MetalyceumWorld extends DurableObject {
       for (const [otherWs, otherSession] of this.sessions.entries()) {
         if (!otherSession.visiblePlayerIds.has(session.id)) continue;
         otherSession.visiblePlayerIds.delete(session.id);
-        this.send(otherWs, { type: "leave", id: session.id });
+        this.send(otherWs, { type: 'leave', id: session.id });
       }
-      logEvent("player_left", { id: session.id, username: session.username });
+      logEvent('player_left', { id: session.id, username: session.username });
     }
 
     if (this.ctx.getWebSockets().length === 0) {
@@ -1054,7 +1238,7 @@ export class MetalyceumWorld extends DurableObject {
       try {
         void this.ctx.storage.deleteAlarm();
       } catch (error) {
-        logEvent("delete_alarm_failed", {
+        logEvent('delete_alarm_failed', {
           error: error instanceof Error ? error.message : String(error),
         });
       }

@@ -6,52 +6,71 @@ function bindGlobalHandlers() {
   if (globalHandlersBound) return;
   globalHandlersBound = true;
 
-  document.addEventListener('pointerdown', (event) => {
-    const modal = getTopModal();
-    if (!modal || !modal.closeOnOutside) return;
-    const target = event.target;
-    if (!(target instanceof Node)) return;
-    if (modal.surface.contains(target)) return;
-    if (modal.ignoreElements.some((element) => element && element.contains(target))) return;
-    closeModal(modal.id);
-  }, true);
-
-  window.addEventListener('keydown', (event) => {
-    const modal = getTopModal();
-    if (!modal) return;
-
-    if (event.key === 'Escape' && modal.closeOnEscape) {
-      event.preventDefault();
-      event.stopPropagation();
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const modal = getTopModal();
+      if (!modal || !modal.closeOnOutside) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (modal.surface.contains(target)) return;
+      if (
+        modal.ignoreElements.some(
+          (element) => element && element.contains(target),
+        )
+      )
+        return;
       closeModal(modal.id);
-      return;
-    }
+    },
+    true,
+  );
 
-    if (event.key !== 'Tab') return;
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      const modal = getTopModal();
+      if (!modal) return;
 
-    const focusable = getFocusableElements(modal.surface);
-    if (!focusable.length) {
-      ensureFocusable(modal.surface);
-      modal.surface.focus();
-      event.preventDefault();
-      return;
-    }
+      if (event.key === 'Escape' && modal.closeOnEscape) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeModal(modal.id);
+        return;
+      }
 
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
+      if (event.key !== 'Tab') return;
 
-    if (event.shiftKey && (active === first || !modal.surface.contains(active))) {
-      last.focus();
-      event.preventDefault();
-      return;
-    }
+      const focusable = getFocusableElements(modal.surface);
+      if (!focusable.length) {
+        ensureFocusable(modal.surface);
+        modal.surface.focus();
+        event.preventDefault();
+        return;
+      }
 
-    if (!event.shiftKey && (active === last || !modal.surface.contains(active))) {
-      first.focus();
-      event.preventDefault();
-    }
-  }, true);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (
+        event.shiftKey &&
+        (active === first || !modal.surface.contains(active))
+      ) {
+        last.focus();
+        event.preventDefault();
+        return;
+      }
+
+      if (
+        !event.shiftKey &&
+        (active === last || !modal.surface.contains(active))
+      ) {
+        first.focus();
+        event.preventDefault();
+      }
+    },
+    true,
+  );
 }
 
 function resolveElement(reference) {
@@ -68,9 +87,11 @@ function ensureFocusable(element) {
 
 function getFocusableElements(container) {
   if (!(container instanceof HTMLElement)) return [];
-  return [...container.querySelectorAll(
-    'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-  )].filter((element) => {
+  return [
+    ...container.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ].filter((element) => {
     if (!(element instanceof HTMLElement)) return false;
     if (element.getAttribute('aria-hidden') === 'true') return false;
     const style = window.getComputedStyle(element);
@@ -85,9 +106,10 @@ function focusModal(modal, preferredSelector) {
       ? modal.surface.querySelector(modal.initialFocusSelector)
       : null;
 
-  const nextFocus = preferred instanceof HTMLElement
-    ? preferred
-    : getFocusableElements(modal.surface)[0] || modal.surface;
+  const nextFocus =
+    preferred instanceof HTMLElement
+      ? preferred
+      : getFocusableElements(modal.surface)[0] || modal.surface;
 
   ensureFocusable(modal.surface);
   if (nextFocus instanceof HTMLElement) nextFocus.focus();
@@ -117,13 +139,16 @@ export function registerModal({
   closeOnEscape = true,
   ignoreElements = [],
   onOpen = null,
-  onClose = null
+  onClose = null,
 }) {
   bindGlobalHandlers();
 
   const rootElement = resolveElement(root);
   const surfaceElement = resolveElement(surface) || rootElement;
-  if (!(rootElement instanceof HTMLElement) || !(surfaceElement instanceof HTMLElement)) {
+  if (
+    !(rootElement instanceof HTMLElement) ||
+    !(surfaceElement instanceof HTMLElement)
+  ) {
     throw new Error(`Modal ${id} is missing a valid root or surface element.`);
   }
 
@@ -138,7 +163,7 @@ export function registerModal({
     ignoreElements: ignoreElements.map(resolveElement).filter(Boolean),
     onOpen,
     onClose,
-    restoreFocusElement: null
+    restoreFocusElement: null,
   };
 
   closeSelectors.forEach((selector) => {
@@ -150,13 +175,18 @@ export function registerModal({
     });
   });
 
-  rootElement.setAttribute('aria-hidden', rootElement.classList.contains(openClass) ? 'false' : 'true');
+  rootElement.setAttribute(
+    'aria-hidden',
+    rootElement.classList.contains(openClass) ? 'false' : 'true',
+  );
   modalRegistry.set(id, modal);
   return modal;
 }
 
 export function isModalOpen(id) {
-  return getModalRecord(id).root.classList.contains(getModalRecord(id).openClass);
+  return getModalRecord(id).root.classList.contains(
+    getModalRecord(id).openClass,
+  );
 }
 
 export function isModalRegistered(id) {
@@ -175,7 +205,10 @@ export function isNodeInsideOpenModal(node) {
 export function openModal(id, options = {}) {
   const modal = getModalRecord(id);
   if (!isModalOpen(id)) {
-    modal.restoreFocusElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modal.restoreFocusElement =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     modal.root.classList.add(modal.openClass);
     modal.root.setAttribute('aria-hidden', 'false');
   } else {
@@ -200,7 +233,10 @@ export function closeModal(id, options = {}) {
   if (typeof modal.onClose === 'function') modal.onClose(options);
 
   if (options.restoreFocus === false) return;
-  if (modal.restoreFocusElement instanceof HTMLElement && modal.restoreFocusElement.isConnected) {
+  if (
+    modal.restoreFocusElement instanceof HTMLElement &&
+    modal.restoreFocusElement.isConnected
+  ) {
     modal.restoreFocusElement.focus();
   }
 }

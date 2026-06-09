@@ -72,8 +72,8 @@ export const state = {
     rightLeg: null,
     leftArm: null,
     rightArm: null,
-    username: "Guest",
-    color: "#3b82f6",
+    username: 'Guest',
+    color: '#3b82f6',
     x: 0,
     y: 0,
     z: 44, // Start outside the building, clear of the front plaza props
@@ -83,14 +83,28 @@ export const state = {
     displayVelocity: null, // post-collision XZ velocity for animation/rotation only
     isGrounded: true,
     flying: false,
-    currentRoom: -1
+    currentRoom: -1,
   },
   remotePlayers: new Map(), // id -> player metadata + mesh
   npcs: [], // Ambient simulated NPCs
 
   // --- Input States ---
-  keys: { w: false, a: false, s: false, d: false, space: false, shift: false, t: false, y: false },
-  cameraKeys: { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false },
+  keys: {
+    w: false,
+    a: false,
+    s: false,
+    d: false,
+    space: false,
+    shift: false,
+    t: false,
+    y: false,
+  },
+  cameraKeys: {
+    ArrowLeft: false,
+    ArrowRight: false,
+    ArrowUp: false,
+    ArrowDown: false,
+  },
   cameraRig: {
     followYaw: Math.PI,
     desiredYaw: Math.PI,
@@ -99,7 +113,7 @@ export const state = {
     lastPlayerMoving: false,
     movementStartedAt: 0,
     wasUnderRoof: false,
-    exitWatchUntil: 0
+    exitWatchUntil: 0,
   },
 
   // --- Audio Context & Synth State ---
@@ -118,12 +132,12 @@ export const state = {
     sendScope: 'global',
     filter: 'all',
     renderedMessageIds: new Set(),
-    renderedMessageOrder: []
+    renderedMessageOrder: [],
   },
   ytPlayer: null,
   boardYtPlayer: null, // YouTube player for classroom blackboard
   ytApiReady: false,
-  activeRoomVideoId: "",
+  activeRoomVideoId: '',
   _theaterMovedIframeSource: null, // container ID of iframe moved into theater modal
   roomMediaState: {
     pendingSyncTimer: null,
@@ -134,18 +148,22 @@ export const state = {
     roomPanelLoadTimer: null,
     roomPanelLoadToken: 0,
     boardLoadTimer: null,
-    boardLoadToken: 0
+    boardLoadToken: 0,
   },
   lastSentPosition: { x: 0, y: 0, z: 0, ry: 0, isMoving: false },
   animationLoopRunning: false,
 
   // --- Room Sign Scheduling State ---
-  roomSignState: { scheduledRefresh: null, pendingSpriteUpdates: [], spriteRefreshScheduled: false },
+  roomSignState: {
+    scheduledRefresh: null,
+    pendingSpriteUpdates: [],
+    spriteRefreshScheduled: false,
+  },
 
   // --- Room UI Scheduling State ---
   roomUiState: {
     eventBoardScheduled: false,
-    roomPlayersScheduled: false
+    roomPlayersScheduled: false,
   },
 
   // --- UI Elements & Debug Panel ---
@@ -177,7 +195,7 @@ export const state = {
     enabled: false,
     lastFpsSampleAt: 0,
     framesSinceSample: 0,
-    fps: 0
+    fps: 0,
   },
   errorLog: [], // ring buffer: { ts, type, msg, stack? }
 
@@ -201,7 +219,7 @@ export const state = {
     pendingStartDelaySeconds: 0,
     pendingFadeInSeconds: 0.7,
     lookAheadSeconds: 0.28,
-    schedulerIntervalMs: 90
+    schedulerIntervalMs: 90,
   },
 
   // --- Editor State ---
@@ -214,63 +232,167 @@ export const state = {
     mode: 'move', // 'move' | 'rotate' | 'scale'
     draftAssets: [],
     transformControls: null,
-    transformDragging: false
+    transformDragging: false,
   },
 
   // --- Room Definitions ---
   ROOMS: [
-    { id: 0, name: "North Hall", x: -17, z: -30, width: 24, depth: 20, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 1, name: "East Studio", x: -14, z: -10, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 2, name: "Open Workshop", x: -11, z: 8, width: 12, depth: 12, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 3, name: "Broadcast Room", x: -14, z: 26, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 4, name: "South Lounge", x: 14, z: -30, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 5, name: "Crit Room", x: 11, z: -12, width: 12, depth: 12, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 6, name: "Screening Room", x: 17, z: 8, width: 24, depth: 20, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
-    { id: 7, name: "Commons", x: 14, z: 28, width: 18, depth: 16, video: "", sourceValue: "", sourceType: "none", startTime: null, durationMinutes: 0, updatedAt: 0 },
+    {
+      id: 0,
+      name: 'North Hall',
+      x: -17,
+      z: -30,
+      width: 24,
+      depth: 20,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 1,
+      name: 'East Studio',
+      x: -14,
+      z: -10,
+      width: 18,
+      depth: 16,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 2,
+      name: 'Open Workshop',
+      x: -11,
+      z: 8,
+      width: 12,
+      depth: 12,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 3,
+      name: 'Broadcast Room',
+      x: -14,
+      z: 26,
+      width: 18,
+      depth: 16,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 4,
+      name: 'South Lounge',
+      x: 14,
+      z: -30,
+      width: 18,
+      depth: 16,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 5,
+      name: 'Crit Room',
+      x: 11,
+      z: -12,
+      width: 12,
+      depth: 12,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 6,
+      name: 'Screening Room',
+      x: 17,
+      z: 8,
+      width: 24,
+      depth: 20,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
+    {
+      id: 7,
+      name: 'Commons',
+      x: 14,
+      z: 28,
+      width: 18,
+      depth: 16,
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
+      startTime: null,
+      durationMinutes: 0,
+      updatedAt: 0,
+    },
     {
       id: 8,
-      name: "Outdoor Amphitheater",
+      name: 'Outdoor Amphitheater',
       x: 65,
       z: 150,
       width: 40,
       depth: 36,
       bounds: { minX: 39, maxX: 91, minZ: 131, maxZ: 171 },
-      video: "",
-      sourceValue: "",
-      sourceType: "none",
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
       startTime: null,
       durationMinutes: 0,
-      updatedAt: 0
+      updatedAt: 0,
     },
     {
       id: 9,
-      name: "Concert Venue",
+      name: 'Concert Venue',
       x: -85,
       z: 140,
       width: 46,
       depth: 34,
       bounds: { minX: -108.5, maxX: -60.5, minZ: 122, maxZ: 158 },
-      video: "",
-      sourceValue: "",
-      sourceType: "none",
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
       startTime: null,
       durationMinutes: 0,
-      updatedAt: 0
+      updatedAt: 0,
     },
     {
       id: 10,
-      name: "Upper Gallery",
+      name: 'Upper Gallery',
       x: 17.5,
       z: 8,
       width: 25,
       depth: 30,
       floor: 2,
-      video: "",
-      sourceValue: "",
-      sourceType: "none",
+      video: '',
+      sourceValue: '',
+      sourceType: 'none',
       startTime: null,
       durationMinutes: 0,
-      updatedAt: 0
-    }
-  ]
+      updatedAt: 0,
+    },
+  ],
 };

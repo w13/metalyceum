@@ -1,8 +1,9 @@
 // physics-engine.js — Cannon-es XZ collision proxy for Metalyceum.
 // Cannon owns XZ wall/asset collision resolution. Y is fully manual (terrain-follow,
 // jump, gravity in engine/movement.js). This file must never modify state.localPlayer.y.
-import { state } from './state.js';
+
 import { getTerrainHeight } from './physics.js';
+import { state } from './state.js';
 
 const CANNON_CDN = 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/+esm';
 const PLAYER_RADIUS = 0.4;
@@ -106,7 +107,8 @@ function createPlayerBody() {
   playerBody.allowSleep = false; // direct velocity writes don't wake sleeping bodies
   playerBody.updateMassProperties();
 
-  const startY = getTerrainHeight(state.localPlayer.x, state.localPlayer.z) + PLAYER_RADIUS;
+  const startY =
+    getTerrainHeight(state.localPlayer.x, state.localPlayer.z) + PLAYER_RADIUS;
   playerBody.position.set(state.localPlayer.x, startY, state.localPlayer.z);
   world.addBody(playerBody);
 }
@@ -186,15 +188,17 @@ export function updateElevatorDoorCollider(min, max) {
 // ── Rebuild asset colliders (after editor saves new assets) ───────────────────
 export function rebuildAssetColliders() {
   if (!initialized || !world) return;
-  const toRemove = world.bodies.filter(b => b.mass === 0 && b.userData?.type === 'asset');
-  toRemove.forEach(b => world.removeBody(b));
+  const toRemove = world.bodies.filter(
+    (b) => b.mass === 0 && b.userData?.type === 'asset',
+  );
+  toRemove.forEach((b) => world.removeBody(b));
   buildAssetColliders();
 }
 
 // ── Full reset (reinitialization / tests) ─────────────────────────────────────
 export function resetCannon() {
   if (world) {
-    world.bodies.slice().forEach(b => world.removeBody(b));
+    world.bodies.slice().forEach((b) => world.removeBody(b));
   }
   world = null;
   playerBody = null;

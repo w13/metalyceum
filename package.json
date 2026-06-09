@@ -11,9 +11,12 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:trace": "playwright test --trace on",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "lint": "biome check .",
+    "format": "biome check --write ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@cloudflare/workers-types": "^4.20240405.0",
     "@playwright/test": "^1.55.1",
     "@types/three": "^0.128.0",
