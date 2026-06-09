@@ -5,24 +5,47 @@
 [![Database](https://img.shields.io/badge/Database-SQLite_in_Durable_Objects-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Tests](https://img.shields.io/badge/Tests-Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev/)
 
-**Metalyceum** is a real-time, browser-based 3D social event world featuring room-specific YouTube Live streams and Google Meet collaboration sessions. Players customize their avatars, move freely through the three-dimensional virtual world, chat with proximity-aware or room-scoped focus, and interactively construct their surroundings using an integrated real-time World Editor.
+**Metalyceum** is a real-time, browser-based 3D social event world with room-specific YouTube Live streams and Google Meet collaboration sessions. Players customize their avatars, navigate a Three.js-powered open world, chat with proximity-aware or room-scoped focus, and interactively construct their surroundings using the integrated World Editor.
 
-The entire backend infrastructure is powered by a single, high-performance Cloudflare Worker backed by Durable Objects with a built-in SQLite database to handle synchronization, state persistence, and low-latency WebSocket communication.
+The entire backend infrastructure runs on a single Cloudflare Worker backed by two Durable Objects — `MetalyceumWorld` (real-time game state) and `AdminDO` (user accounts, auth, audit logs) — each with a built-in SQLite database for persistence.
+
+---
+
+## 🖼️ Screenshots
+
+| Login Panel | World Overview | Building Entrance |
+|:---:|:---:|:---:|
+| ![Login panel](screenshots/02-login-panel.png) | ![World overview](screenshots/04-debug-panel.png) | ![Building entrance](screenshots/05-building-front.png) |
+
+| Lobby Interior | Hallway View | Room Screen |
+|:---:|:---:|:---:|
+| ![Lobby interior](screenshots/06-lobby-interior.png) | ![Hallway view](screenshots/07-hallway-view.png) | ![Room screens](screenshots/08-room-screens.png) |
 
 ---
 
 ## 🌟 Key Features
 
-*   **Interactive 3D Scene**: Custom rendering with Three.js (r184 ESM) containing a physical lobby, outdoor venues, bounds/physics, dynamic camera controls (first/third-person orbit controls), and avatar customization (shirt colors and display names).
-*   **Real-time Multiplayer**: Powered by WebSockets via Cloudflare Durable Objects (`MetalyceumWorld`). Implements player proximity relevance calculations, location-scoped chat, and network profile adjustment (8–50 Hz position updates).
-*   **Virtual Rooms & Event Streams**:
-    *   **10 Synchronized Rooms**: North Hall, East Studio, Open Workshop, Broadcast Room, South Lounge, Crit Room, Screening Room, Commons, Outdoor Amphitheater, and Concert Venue.
-    *   **Live Stream/Conference Integrations**: Embedded room sidebars featuring YouTube Live watch streams or Google Meet conference URLs.
-    *   **Theater Mode**: A distraction-free, maximized widescreen viewport overlay for media consumption and virtual collaboration.
-*   **Collaborative World Editor**: An admin-locked in-world layout editor utilizing Three.js `TransformControls` for placing, moving, scaling, rotating, duplicating, and deleting custom geometry meshes in real-time.
-*   **SQLite Persistence**: Durable storage for world asset placements, room metadata configuration, and the last 100 chat messages directly in SQLite tables inside the Durable Object.
-*   **Graceful Reconnections**: A 15-second grace window resolves transient connection losses without spamming join/leave logs, maintaining the player's session identity seamlessly.
-*   **MIDI Soundtrack Board**: Integrated client-side MIDI synth overlay playing background ambient soundscapes with playlist transport control.
+*   **Interactive 3D World**: Custom Three.js r184 ESM rendering with a Greek museum-style main building, lobby, hallway with Doric columns, 8 interactive rooms, a second-floor mezzanine gallery, and a working elevator. Outdoor landmarks include an amphitheater, concert venue, castle, airport with runway and control tower, underground city, meandering river with waterfall and bridge, fountain plaza, and forested hills with ponds.
+
+*   **Real-time Multiplayer**: WebSocket-based via Cloudflare Durable Objects (`MetalyceumWorld`). Implements player proximity relevance calculations, location-scoped chat, network profile adjustment (8–50 Hz position updates), and graceful reconnection with a 15-second grace window.
+
+*   **12 Virtual Rooms & Event Streams**: North Hall, East Studio, Open Workshop, Broadcast Room, South Lounge, Crit Room, Screening Room, Commons, Outdoor Amphitheater, Concert Venue, Upper Gallery (second floor), and Underground City. Each room supports embedded YouTube Live or Google Meet sessions with a dedicated room-sidebar panel and theater mode.
+
+*   **NPC Characters**: 12 wandering NPCs populate the world — Alex, Riley, and Quinn in indoor rooms; Jay, River, and Parker in the lobby; Ember and Vale at the amphitheater; Lyric and Echo at the concert venue. NPCs walk randomly, display emoji thought-bubbles during idle moments, and avoid collision with walls.
+
+*   **Animated Fountain & Environment**: A multi-tiered fountain with vertex-displaced water surfaces, rising bubbles, cascade streams, ripple rings, a glowing water apple, and orbiting fish. A meandering river with custom-shader water and waterfall completes the outdoor scene.
+
+*   **Elevator**: A fully functional elevator at the north end of the lobby with swinging mahogany doors, brass trim, marble floor, crown molding, chandelier, and gold pediment. Rides between ground floor and mezzanine with smooth camera transitions and second-floor environment fade.
+
+*   **Collaborative World Editor**: Admin-locked in-world layout editor using Three.js `TransformControls` for placing, moving, scaling, rotating, duplicating, and deleting custom meshes in real-time. Changes persist via WebSocket to SQLite.
+
+*   **Comprehensive Fade System**: A zone-based opacity transition system handles smooth indoor/outdoor lighting blends, roof/wall fade when entering buildings, mezzanine floor fade during elevator rides, and ground-floor object dimming when viewing from above.
+
+*   **SQLite Persistence**: Durable Object SQLite stores world asset placements, room event metadata, chat history (last 100 messages), and internal configuration versions.
+
+*   **MIDI Soundtrack Board**: Integrated client-side MIDI synthesizer with 10 ambient soundtracks, play/pause/skip controls, and per-track instrument volume mixing.
+
+*   **Performance Optimized**: Shadow map 1024², reduced pixel ratio, Cineon tone mapping, disabled MSAA, linear fog, Cannon physics throttled to 30fps, NPC distance culling, throttled torch flicker and vertex animations, scene root count minimized.
 
 ---
 
@@ -30,62 +53,156 @@ The entire backend infrastructure is powered by a single, high-performance Cloud
 
 | Component | Technology | Description / Usage |
 | :--- | :--- | :--- |
-| **Server Runtime** | **Cloudflare Workers** | Scalable serverless edge handlers. |
-| **Real-time State** | **Durable Objects** | Single-isolate target mapping WebSockets and managing SQLite instances. |
-| **Database** | **DO SQLite** | Durable storage for assets, chat histories, and rooms (`ctx.storage.sql`). |
-| **Client Core** | **Vanilla ES6 Javascript** | Client-side game loop, coordinator modules, and WebSocket handlers. |
-| **Graphics Engine** | **Three.js (r184)** | Render loop, OrbitControls, and TransformControls loaded via ESM import map. |
-| **Type Check** | **TypeScript** | Static typing across server-side code and shared contracts. |
-| **Physics Proxy** | **cannon-es** | XZ-only wall and asset collision resolution while terrain-follow and jump remain manual. |
-| **Test Runners** | **Vitest + Playwright** | Unit/client tests plus browser/e2e coverage. |
+| **Server Runtime** | **Cloudflare Workers** | Scalable serverless edge handler. |
+| **Real-time State** | **Durable Objects** | `MetalyceumWorld` (game state, WebSockets) + `AdminDO` (auth, audit). |
+| **Database** | **DO SQLite** | Durable storage for assets, chat, rooms, and config (`ctx.storage.sql`). |
+| **Client Core** | **Vanilla ES6 JavaScript** | Module-based architecture with coordinator pattern. |
+| **3D Engine** | **Three.js (r184)** | ESM import map, scene graph, WebGL renderer, OrbitControls, TransformControls. |
+| **Type Check** | **TypeScript** | Static typing for server code and shared contracts (client is plain JS). |
+| **Physics Proxy** | **cannon-es** | XZ-only wall and asset collision; terrain-follow and jump remain manual. |
+| **Test Runners** | **Vitest + Playwright** | 111 unit/client tests + browser/e2e tests with Playwright. |
 
 ---
 
 ## 📁 Repository Layout
 
-The project separates server logic (`src/`) from static client-side resources (`public/`):
+```
+├── src/                          # Server / Worker code (TypeScript)
+│   ├── index.ts                  # Worker entry — routing, CORS, security headers
+│   ├── durable_object.ts         # MetalyceumWorld Durable Object
+│   ├── validation.ts             # Pure input sanitization (testable outside Workers)
+│   ├── realtime.ts               # Proximity relevance & chat scoping
+│   ├── session_source.ts         # Request origin classification
+│   ├── constants.ts              # Limits, types, default rooms
+│   ├── admin/                    # AdminDO + schemas + pagination
+│   ├── http/                     # Request ID, JSON parsing, error envelopes
+│   └── internal/                 # Cross-DO communication contracts
+│
+├── public/                       # Client SPA (static assets)
+│   ├── index.html                # HTML shell, CSP, import map
+│   ├── styles.css                # Glassmorphic styling, HUD overlays
+│   ├── app.js                    # Application boot coordinator
+│   ├── _headers                  # Edge security headers (static assets)
+│   ├── js/
+│   │   ├── engine.js             # Render loop, camera, fog, shadow, fade zones
+│   │   ├── engine/
+│   │   │   ├── movement.js       # Local player kinematics, collision, jetpack
+│   │   │   └── camera.js         # Orbit controls, exit watch, auto-align
+│   │   ├── building.js           # Main building geometry (~825 lines, 8 sections)
+│   │   ├── building/
+│   │   │   ├── roof.js           # Gabled terracotta roof with pediments
+│   │   │   ├── doors.js          # Door frame geometry
+│   │   │   ├── torches.js        # Wall torch geometry + lights
+│   │   │   └── interiors.js      # Classroom furniture sets
+│   │   ├── scenery.js            # Barrel file for all scenery modules
+│   │   ├── scenery/
+│   │   │   ├── plaza.js          # Fountain plaza, room indicators, banners
+│   │   │   ├── amphitheater.js   # Open-air amphitheater with stage
+│   │   │   ├── concert-venue.js  # Concert hall with dome + giant screen
+│   │   │   ├── castle.js         # Medieval castle with towers + dungeon
+│   │   │   ├── airport.js        # Runway, control tower, hangar, helipad
+│   │   │   ├── underground-city.js # Cave entrance + subterranean city
+│   │   │   ├── river.js          # Meandering river with waterfall + bridge
+│   │   │   ├── roads.js          # Terrain-following roads + bridge
+│   │   │   ├── foliage.js        # Bushes, ornamental trees, flower clusters
+│   │   │   ├── world-details.js  # Trees, ponds, wildflowers, grass patches
+│   │   │   ├── assets.js         # Shared geometries, sprites, boulders
+│   │   │   ├── utils.js          # Terrain deformation, floor helper
+│   │   │   └── visibility.js     # Frustum/distance culling
+│   │   ├── fade-system.js        # Zone-based opacity transition system
+│   │   ├── multiplayer.js        # WebSocket connection, reconnection
+│   │   ├── physics.js            # Terrain height, collision, room lookup
+│   │   ├── physics-engine.js     # Cannon-es XZ collision proxy
+│   │   ├── characters.js         # Player/NPC avatars, animation
+│   │   ├── audio.js              # MIDI soundtrack synth
+│   │   ├── chat.js               # Chat log, bubbles, scope
+│   │   ├── room-panel.js         # Room sidebar coordinator
+│   │   ├── room-panel/
+│   │   │   ├── event-board.js    # Room status board
+│   │   │   ├── media.js          # YouTube/Meet iframe sync
+│   │   │   └── player-list.js    # Room player avatars
+│   │   ├── room-animation.js     # Fountain, water, indicator animations
+│   │   ├── editor.js             # World editor (TransformControls)
+│   │   ├── dev-tools.js          # Runtime inspection, audit, debug
+│   │   ├── minimap.js            # 2D overhead minimap
+│   │   ├── theater.js            # Fullscreen media overlay
+│   │   ├── textures.js           # Procedural canvas textures
+│   │   ├── lighting.js           # Torch flicker updates
+│   │   ├── environment.js        # HDRI environment loader
+│   │   ├── config.js             # Client configuration constants
+│   │   ├── state.js              # Shared mutable state
+│   │   ├── math.js               # Math utilities (HALF_PI, FLAT, lerp)
+│   │   ├── utils.js              # Shared helpers
+│   │   ├── ui.js                 # HUD panels coordinator
+│   │   └── ui/
+│   │       ├── debug-panel.js    # FPS, position, scene stats
+│   │       ├── elevator.js       # Elevator state machine + UI
+│   │       ├── login.js          # Login form, avatar color picker
+│   │       └── soundtrack-panel.js # Music player UI
+│   │
+│   └── midi/                     # MIDI soundtracks (8 instrument tracks)
+│
+├── test/                         # Tests
+│   ├── client/                   # Client unit/integration tests
+│   │   ├── physics.test.ts
+│   │   ├── dev-tools.test.ts
+│   │   ├── cannon-integration.test.ts
+│   │   └── engine.browser.test.ts  # Browser + WebGL perf budget
+│   └── ...
+│
+├── screenshots/                  # README screenshots
+├── wrangler.jsonc                # Cloudflare Workers config
+├── tsconfig.json                 # TypeScript config
+├── vitest.config.ts              # Vitest config
+└── package.json                  # Dependencies + scripts
+```
 
-### 📂 Server-Side Components (`src/`)
-*   [src/index.ts](src/index.ts): Main Worker entry point. Directly handles routes `/ws`, `/debug`, and proxies admin endpoints, serving static assets for everything else.
-*   [src/durable_object.ts](src/durable_object.ts): Defines `MetalyceumWorld`. Manages WebSocket attachments, serializes player state on hibernation, boots/seeds database, and handles WebSocket messages.
-*   [src/realtime.ts](src/realtime.ts): Pure utility math determining proximity relevance, chat scoping, and visibility. Free of Cloudflare context, enabling local unit tests.
-*   [src/validation.ts](src/validation.ts): Pure validators for asset coordinates, colors, usernames, and chat limits.
-*   [src/constants.ts](src/constants.ts): Holds game state limits (e.g., `MAX_PLAYERS = 10`, `WORLD_LIMIT = 80`), default room configurations, and types.
-*   [src/admin/do.ts](src/admin/do.ts): Defines `AdminDO`. Oversees administration metrics, audits, and configuration synchronizations.
-*   [src/admin/schemas.ts](src/admin/schemas.ts): Validation schemas, crypto helpers, rate limit constants, and admin domain types.
+### World Landmarks (5)
 
-### 📂 Client-Side Components (`public/`)
-*   [public/index.html](public/index.html): HTML UI HUD, overlays, login panels, controls, CSP, and the Three.js/lil-gui import map.
-*   [public/styles.css](public/styles.css): Complete style sheet containing glassmorphic styling, responsive layout, controls, and visual effects.
-*   [public/app.js](public/app.js): Application boot coordinator that manages system hooks, timing, and setup logic.
-*   [public/js/engine.js](public/js/engine.js): Manages Three.js WebGL rendering, camera orbits, Cannon initialization, and game loops.
-*   [public/js/multiplayer.js](public/js/multiplayer.js): Orchestrates WebSocket connections, data frame messaging, and client serialization.
-*   [public/js/physics.js](public/js/physics.js): Terrain height sampling, collision checks, room lookup, and roof detection.
-*   [public/js/physics-engine.js](public/js/physics-engine.js): Cannon-es XZ collision proxy for walls and placed assets.
-*   [public/js/editor.js](public/js/editor.js): UI and manipulation code for placing and altering objects in the 3D grid.
-*   [public/js/dev-tools.js](public/js/dev-tools.js): Runtime scene and object inspection tools.
-*   [public/js/state.js](public/js/state.js): Shared mutable state accessible by all front-end subcomponents.
+| Landmark | Coordinates | Radius | File |
+|----------|-------------|--------|------|
+| 🏰 Castle | (130, -80) | 40 | `scenery/castle.js` |
+| 🛩️ Airport | (160, 220) | 50 | `scenery/airport.js` |
+| 🏛️ Amphitheater | (65, 150) | 22 | `scenery/amphitheater.js` |
+| 🎵 Concert Venue | (-85, 140) | 23 | `scenery/concert-venue.js` |
+| 🕳️ Underground City | (120, 80) | 20 | `scenery/underground-city.js` |
+
+### Interactive Rooms (12)
+
+| ID | Name | Floor | Type | Location |
+|:--:|------|:-----:|------|----------|
+| 0 | North Hall | Ground | Room | West wing |
+| 1 | East Studio | Ground | Room | West wing |
+| 2 | Open Workshop | Ground | Room | West wing |
+| 3 | Broadcast Room | Ground | Room | West wing |
+| 4 | South Lounge | Ground | Room | East wing |
+| 5 | Crit Room | Ground | Room | East wing |
+| 6 | Screening Room | Ground | Room | East wing |
+| 7 | Commons | Ground | Room | East wing |
+| 8 | Outdoor Amphitheater | Ground | Venue | Northeast |
+| 9 | Concert Venue | Ground | Venue | Northwest |
+| 10 | Upper Gallery | Second | Room | East wing (mezzanine) |
+| 12 | Underground City | Subterranean | Venue | Southeast |
 
 ---
 
 ## 💾 SQLite Database Schema
 
-Inside `MetalyceumWorld`, local storage is backed by Cloudflare SQLite database capabilities. The following tables are managed dynamically:
+Inside `MetalyceumWorld`, Durable Object SQLite stores the following tables:
 
 ### `room_events`
-Stores metadata and source URLs for the 10 virtual rooms:
 ```sql
 CREATE TABLE IF NOT EXISTS room_events (
   room_id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   source_value TEXT NOT NULL,
   start_time TEXT,
-  duration_minutes INTEGER NOT NULL DEFAULT 0
+  duration_minutes INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
 )
 ```
 
 ### `world_assets`
-Stores placement definitions for customized meshes created via the World Editor:
 ```sql
 CREATE TABLE IF NOT EXISTS world_assets (
   id TEXT PRIMARY KEY,
@@ -100,7 +217,6 @@ CREATE TABLE IF NOT EXISTS world_assets (
 ```
 
 ### `chat_messages`
-Caches global and room messages to reconstruct client log buffers upon joining:
 ```sql
 CREATE TABLE IF NOT EXISTS chat_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +231,6 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 ```
 
 ### `meta`
-Tracks internal key-value configuration values (e.g., database schema and rooms versions):
 ```sql
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY, 
@@ -128,49 +243,67 @@ CREATE TABLE IF NOT EXISTS meta (
 ## 🚀 Running & Developing Locally
 
 ### 1. Installation
-Install the necessary dependencies via `npm`:
 ```bash
 npm install
+npx playwright install chromium   # for e2e tests
 ```
 
-### 2. Start Local Environment
-Run a simulated Cloudflare Workers & Durable Objects local instance using Wrangler:
+### 2. Start Local Server
 ```bash
 npm run dev
 ```
-Open [http://localhost:8787](http://localhost:8787) in your browser.
+Open [http://localhost:8787](http://localhost:8787) in your browser. Enter a username, pick an avatar color, and click **Join** to explore.
 
-### 3. Verify System Tests
-Execute unit tests validating validation, coordinates routing, and client physics behavior:
+### 3. Run Tests
 ```bash
-npm run test
-```
-
-For browser/e2e coverage, run:
-```bash
-npm run test:e2e
+npm run test          # 111 unit + client tests
+npm run test:e2e      # Playwright browser/e2e tests
 ```
 
 ### 4. Type Check
-Validate Worker and test TypeScript:
 ```bash
-npm run typecheck
-npm run typecheck:test
+npm run typecheck           # Worker TypeScript
+npm run typecheck:test      # Test TypeScript
 ```
 
 ### 5. Deploy to Cloudflare
-Deploy the application to the edge. This automatically validates typechecking prior to deploying a minified production bundle:
 ```bash
 npm run deploy
 ```
 
 ---
 
-## 🔒 Configuration & Administration
+## 🎮 Controls
 
-*   **World Editor Authorization**: World modification tools require a valid `WORLD_EDITOR_TOKEN` to be specified inside the server bindings. Setting the `ADMIN_INIT_TOKEN` environment variable bootstraps authorization controls.
-*   **Static Resource Caches**: Custom cache and security headers on static asset responses (avoiding Workers execution costs) are configured via [public/_headers](public/_headers).
-*   **Additional Project Contexts**:
-    *   Refer to [CLAUDE.md](CLAUDE.md) for development requirements and guidelines.
-    *   Refer to [REASONIX.md](REASONIX.md) for tech stack constraints and conventions.
-    *   Refer to [scenery-physics-lighting-comparison.md](docs/scenery-physics-lighting-comparison.md) for a detailed history/comparison of the 3D, physics, and lighting changes between current and older versions.
+| Key | Action |
+|:---:|--------|
+| **W/A/S/D** | Walk forward/left/backward/right |
+| **Space** | Jump |
+| **Shift** | Sprint (ground) / descend (flight) |
+| **T** | Toggle jetpack takeoff |
+| **Y** | Toggle jetpack landing |
+| **Arrow Keys** | Orbit camera |
+| **Backtick (`)** | Toggle debug panel |
+| **Click on screen** | Open room media / interact |
+| **E** | Open elevator panel (near elevator) |
+
+---
+
+## 🔒 Configuration
+
+### World Editor Authorization
+World modification tools require a valid `WORLD_EDITOR_TOKEN` in the Worker bindings. Set `ADMIN_INIT_TOKEN` to bootstrap the initial admin owner account via `POST /api/v1/auth/init`.
+
+### Static Resource Caching
+Custom cache and security headers for static assets are configured in [`public/_headers`](public/_headers) — applied at the edge without invoking the Worker.
+
+### Security Headers
+Worker responses include `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-Frame-Options: DENY` via [`src/index.ts`](src/index.ts). CSP is delivered via `<meta>` tag in `index.html`.
+
+---
+
+## 📚 Further Reading
+
+- **[CLAUDE.md](CLAUDE.md)** — Development guidelines, architecture details, and LLM dev tool documentation
+- **[REASONIX.md](REASONIX.md)** — Tech stack constraints, conventions, and project context
+- **[docs/scenery-physics-lighting-comparison.md](docs/scenery-physics-lighting-comparison.md)** — Historical comparison of 3D, physics, and lighting changes

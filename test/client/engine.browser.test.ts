@@ -69,8 +69,8 @@ describe('Client Engine & WebGL Renderer', () => {
     resetHdriLoader();
   });
 
-  it('procedurally constructs the campus world scene graph', () => {
-    initEngine();
+  it('procedurally constructs the campus world scene graph', async () => {
+    await initEngine();
 
     expect(state.scene).toBeInstanceOf(THREE.Scene);
     expect(state.renderer).toBeInstanceOf(THREE.WebGLRenderer);
@@ -87,8 +87,8 @@ describe('Client Engine & WebGL Renderer', () => {
     expect(lightsCount).toBeGreaterThanOrEqual(3); // Ambient + Hemisphere + Directional Sun
   });
 
-  it('runs initial render and asserts performance budget constraints', () => {
-    initEngine();
+  it('runs initial render and asserts performance budget constraints', async () => {
+    await initEngine();
 
     // Trigger an initial render to populate renderer info
     state.renderer.render(state.scene, state.camera);

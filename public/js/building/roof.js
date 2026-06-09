@@ -58,8 +58,9 @@ export function buildRoof(batcher, materials, config) {
   const ridgeMat = new THREE.MeshStandardMaterial({ color: '#8a3a20', roughness: 0.7 });
   const trimMat = new THREE.MeshStandardMaterial({ color: '#e7dfd2', roughness: 0.65 });
 
-  function addRoofMesh(mesh) {
-    mesh.castShadow = true;
+  // decorative=true skips shadow casting for trim/caps that don't contribute meaningful shadows
+  function addRoofMesh(mesh, decorative = false) {
+    mesh.castShadow = !decorative;
     mesh.receiveShadow = true;
     if (registerRoofMesh) registerRoofMesh(mesh);
     else state.roofMeshes.push(mesh);
@@ -99,7 +100,7 @@ export function buildRoof(batcher, materials, config) {
       trimMat
     );
     eaveTrim.position.set(eaveX, roofBaseY + 0.03, 0);
-    addRoofMesh(eaveTrim);
+    addRoofMesh(eaveTrim, true);
 
     // Tile caps as a single InstancedMesh instead of individual meshes
     const capZs = buildCapPositions(-roofHalfD + 2.2, roofHalfD - 1.4, 3.15);
@@ -112,7 +113,7 @@ export function buildRoof(batcher, materials, config) {
       tileCapInst.setMatrixAt(i, _capObj.matrix);
     });
     tileCapInst.instanceMatrix.needsUpdate = true;
-    addRoofMesh(tileCapInst);
+    addRoofMesh(tileCapInst, true);
   }
 
   buildRoofSlope(-1);
@@ -138,7 +139,7 @@ export function buildRoof(batcher, materials, config) {
     ridgeCapInst.setMatrixAt(i, _capObj.matrix);
   });
   ridgeCapInst.instanceMatrix.needsUpdate = true;
-  addRoofMesh(ridgeCapInst);
+  addRoofMesh(ridgeCapInst, true);
 
   // ── Pediments (triangular gable ends on north/south facades) ────────────
   function buildPediment(zSign) {
@@ -166,7 +167,7 @@ export function buildRoof(batcher, materials, config) {
     );
     leftRake.position.set(-roofHalfW / 2, roofBaseY + roofRise / 2, rakeZ);
     leftRake.rotation.z = rakeAngle;
-    addRoofMesh(leftRake);
+    addRoofMesh(leftRake, true);
 
     const rightRake = new THREE.Mesh(
       new THREE.BoxGeometry(rakeLen, 0.18, 0.22),
@@ -174,14 +175,14 @@ export function buildRoof(batcher, materials, config) {
     );
     rightRake.position.set(roofHalfW / 2, roofBaseY + roofRise / 2, rakeZ);
     rightRake.rotation.z = -rakeAngle;
-    addRoofMesh(rightRake);
+    addRoofMesh(rightRake, true);
 
     const baseCornice = new THREE.Mesh(
       new THREE.BoxGeometry(halfBldgW * 2 + 0.2, 0.18, 0.28),
       trimMat
     );
     baseCornice.position.set(0, roofBaseY - 0.03, zSign * (roofHalfD + 0.14));
-    addRoofMesh(baseCornice);
+    addRoofMesh(baseCornice, true);
 
     // Apex finial
     const apexFinial = new THREE.Mesh(
@@ -189,7 +190,7 @@ export function buildRoof(batcher, materials, config) {
       ridgeMat
     );
     apexFinial.position.set(0, roofRidgeY + 0.28, zSign * (roofHalfD + 0.12));
-    addRoofMesh(apexFinial);
+    addRoofMesh(apexFinial, true);
   }
 
   buildPediment(1);   // south facade

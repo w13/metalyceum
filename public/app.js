@@ -124,9 +124,9 @@ if (location.search.includes('debug') || location.search.includes('diag')) {
   });
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  // Start building the 3D world immediately (visible behind the translucent login overlay)
-  initEngine();
+window.addEventListener('DOMContentLoaded', async () => {
+  // Build the 3D world — async so yields allow loading-screen text to update without freezing the tab
+  await initEngine();
   initMinimap();
   initDevTools();
   initDebugPanel();

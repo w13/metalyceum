@@ -42,8 +42,18 @@ export const state = {
   fadeZones: [],
   /** Second-floor meshes — faded only when player is on the ground floor. */
   upperFloor: [],
-  /** Ground-floor items that should hide when the player is on the second floor (room indicators, screens, etc.) */
-  groundFloorItems: [],
+  elevator: {
+    isRiding: false,
+    rideProgress: 0,
+    tick: null,
+    car: null,
+    doorPivots: null,
+    halfHeight: 0,
+    cabinLight: null,
+    cabinGlowMat: null,
+    doorCollider: null,
+    doorBox: null,
+  },
   /** @type {any[]} */
   WALLS: [],
   /** @type {any[]} */
@@ -115,7 +125,6 @@ export const state = {
   ytApiReady: false,
   activeRoomVideoId: "",
   _theaterMovedIframeSource: null, // container ID of iframe moved into theater modal
-  roomStatusTimer: null,
   roomMediaState: {
     pendingSyncTimer: null,
     pendingRoomId: -2,

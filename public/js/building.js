@@ -35,11 +35,13 @@ import {
   buildWorldDetails,
 } from './scenery.js';
 import {
-  createGrassTexture, createBrickTexture,
-  createStoneTexture, createWoodTexture, createSignBoardTexture,
-  createMarbleTileTexture, createDarkWoodTexture
+  createGrassTexture, createSignBoardTexture,
+  createMarbleTileTexture
 } from './textures.js';
+import { createMainBuildingMaterials } from './building/materials.js';
+import { buildElevator } from './building/elevator.js';
 
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createDoorFrame } from './building/doors.js';
 import { buildClassroomAssets } from './building/interiors.js';
 import { createWallTorch } from './building/torches.js';
@@ -107,7 +109,7 @@ function buildRoomScreen(room, frameMat, screenMat, screenY, wallOffset = 0.22, 
   return screenGroup;
 }
 
-export function buildMap() {
+export async function buildMap(onProgress) {
   // Guard against double-build — if reinitialized, the old scene would leak
   // geometries, materials, and textures. Currently only called once from initEngine.
   if (state._mapBuilt) return;
@@ -115,7 +117,6 @@ export function buildMap() {
   resetFadeZones();
   state.upperWalls = [];
   state.upperFloor = [];
-  state.groundFloorItems = [];
   state.roofMeshes = [];
   state.ceilingMat = null;
   state.ceilingMesh = null;
@@ -301,8 +302,16 @@ export function buildMap() {
   }
   state.scene.add(grassInstances);
 
+  onProgress?.('Building the plaza…');
+  await new Promise(r => setTimeout(r, 0));
   buildExteriorPlaza();
+
+  onProgress?.('Constructing the building…');
+  await new Promise(r => setTimeout(r, 0));
   buildBuilding();
+
+  onProgress?.('Populating the world…');
+  await new Promise(r => setTimeout(r, 0));
   buildOutdoorVenues();
   buildWorldDetails();
 }
@@ -362,44 +371,39 @@ function createBatcher(onUpperWall = null) {
 }
 
 export function buildBuilding() {
-  const stoneTex = createStoneTexture();
-  const brickTex = createBrickTexture();
-  const woodTex = createWoodTexture();
-  const darkWoodTex = createDarkWoodTexture();
-  
-  const wallMat = new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 });
-  state.upperWallMat = makeFadeMaterial(new THREE.MeshStandardMaterial({ map: brickTex, roughness: 0.85 }));
-  const limestoneMat = state.sharedScenery.limestoneMat;
-  const limestoneShadowMat = new THREE.MeshStandardMaterial({ color: '#cabfaa', roughness: 0.8 });
-  const bronzeMat = state.sharedScenery.bronzeMat;
-  const slateGlassMat = new THREE.MeshStandardMaterial({
-    color: '#162235',
-    roughness: 0.18,
-    metalness: 0.08,
-    transparent: true,
-    opacity: 0.96
-  });
-  const bannerMat = new THREE.MeshStandardMaterial({
-    color: WORLD_CONFIG.exteriorAccent,
-    roughness: 0.65,
-    metalness: 0.08,
-    side: THREE.DoubleSide
-  });
-  
-  const woodFloorMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.35, metalness: 0.08, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const darkWoodFloorMat = new THREE.MeshStandardMaterial({ map: darkWoodTex, roughness: 0.35, metalness: 0.08, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const stoneFloorMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const frameMat = state.sharedScenery.frameMat;
-  const screenMat = state.sharedScenery.screenMat;
-  const { pushRoof, pushUpperWall, pushUpperFloor, pushGroundFloor, consumeGroundFloorItems } =
+  const materials = createMainBuildingMaterials(state.sharedScenery);
+  const {
+    stoneTex,
+    brickTex,
+    woodTex,
+    darkWoodTex,
+    wallMat,
+    sharedBaseboardMat,
+    limestoneMat,
+    limestoneShadowMat,
+    bronzeMat,
+    slateGlassMat,
+    bannerMat,
+    woodFloorMat,
+    darkWoodFloorMat,
+    stoneFloorMat,
+    frameMat,
+    screenMat
+  } = materials;
+  state.upperWallMat = materials.upperWallMat;
+
+  // Merge buffers: lower wall slabs + their baseboards are collected here and flushed to two merged meshes
+  const _lowerMerge = { slabs: [], boards: [] };
+
+  const { pushRoof, pushUpperWall, pushUpperFloor, pushGroundFloor } =
     createBuildingFadeZone({
       id: 'main-building',
       proximity: { x: 0, z: 0, r: 68 },
       bounds: COVERED_BOUNDS,
       upperLevelThresholdY: MAIN_BUILDING_UPPER_LEVEL_THRESHOLD_Y,
       upperWallMat: state.upperWallMat,
-      getRideProgress: () => state._elevatorIsRiding ? (state.elevatorRideProgress || 0) : 0,
-      isRideActive: () => !!state._elevatorIsRiding
+      getRideProgress: () => state.elevator.isRiding ? (state.elevator.rideProgress || 0) : 0,
+      isRideActive: () => !!state.elevator.isRiding
     });
 
   const batcher = createBatcher(pushUpperWall);
@@ -500,7 +504,9 @@ export function buildBuilding() {
   // Shared wall slab builder — used by both addWallSegment and addUpperWallSegment.
   // baseY: Y position of the bottom of the slab.
   // stateArr: optional debug collection array to append the mesh into.
-  function _addWallSlabAt(xStart, zStart, xEnd, zEnd, baseY, height, thickness, material, baseboardMat, stateArr, castShadow = true) {
+  // mergeTarget: if provided, geometry is collected world-space into mergeTarget.slabs / .boards
+  //              instead of adding the mesh to the scene (physics Box3 is still computed).
+  function _addWallSlabAt(xStart, zStart, xEnd, zEnd, baseY, height, thickness, material, baseboardMat, stateArr, castShadow = true, mergeTarget = null) {
     const { len, angle } = vec2LengthAngle(xStart, zStart, xEnd, zEnd);
     if (len < 0.01) return;
     const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(len, height, thickness), material);
@@ -508,7 +514,8 @@ export function buildBuilding() {
     wallMesh.rotation.y = -angle;
     wallMesh.castShadow = castShadow;
     wallMesh.receiveShadow = castShadow;
-    state.scene.add(wallMesh);
+
+    if (!mergeTarget) state.scene.add(wallMesh);
     if (stateArr) stateArr.push(wallMesh);
 
     const bbH = 0.3, bbT = 0.07;
@@ -521,6 +528,24 @@ export function buildBuilding() {
 
     wallMesh.updateWorldMatrix(true, false);
     state.WALLS.push(new THREE.Box3().setFromObject(wallMesh));
+
+    if (mergeTarget) {
+      // Collect world-space geometry; mesh stays out of the scene
+      const slabGeo = wallMesh.geometry.clone();
+      slabGeo.applyMatrix4(wallMesh.matrixWorld);
+      mergeTarget.slabs.push(slabGeo);
+
+      wallMesh.children.forEach(child => {
+        if (!child.isMesh) return;
+        child.updateMatrix();
+        const bbWorldGeo = child.geometry.clone();
+        bbWorldGeo.applyMatrix4(
+          new THREE.Matrix4().multiplyMatrices(wallMesh.matrixWorld, child.matrix)
+        );
+        mergeTarget.boards.push(bbWorldGeo);
+      });
+    }
+
     return wallMesh;
   }
 
@@ -531,14 +556,13 @@ export function buildBuilding() {
     const thickness = 0.5;
     const lowerHeight = 3.5;
     const upperHeight = height - lowerHeight;
-    const baseboardMat = new THREE.MeshStandardMaterial({ color: '#2d1e18', roughness: 0.9 });
 
-    // Lower wall (always opaque, always visible)
-    const lowerWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, 0, lowerHeight, thickness, wallMat, baseboardMat, null);
+    // Lower wall — collected into _lowerMerge, flushed to one merged mesh after all segments
+    _addWallSlabAt(xStart, zStart, xEnd, zEnd, 0, lowerHeight, thickness, wallMat, sharedBaseboardMat, null, true, _lowerMerge);
 
-    // Upper wall (transparent for indoor/outdoor fade)
+    // Upper wall — added to scene individually (fade-system controlled via shared upperWallMat)
     if (upperHeight > 0.05) {
-      const upperWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, lowerHeight, upperHeight, thickness, state.upperWallMat, baseboardMat, null);
+      const upperWall = _addWallSlabAt(xStart, zStart, xEnd, zEnd, lowerHeight, upperHeight, thickness, state.upperWallMat, sharedBaseboardMat, null);
       pushUpperWall(upperWall);
     }
   }
@@ -570,6 +594,23 @@ export function buildBuilding() {
   addWallSegment(-5, -40, 5, -40);
   addWallSegment(-5, 40, -2, 40);
   addWallSegment(2, 40, 5, 40);
+
+  // Flush lower walls: merge collected geometries into two draw calls (slabs + baseboards)
+  if (_lowerMerge.slabs.length) {
+    const m = new THREE.Mesh(mergeGeometries(_lowerMerge.slabs), wallMat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    state.scene.add(m);
+    _lowerMerge.slabs.forEach(g => g.dispose());
+    _lowerMerge.slabs.length = 0;
+  }
+  if (_lowerMerge.boards.length) {
+    const m = new THREE.Mesh(mergeGeometries(_lowerMerge.boards), sharedBaseboardMat);
+    m.receiveShadow = true;
+    state.scene.add(m);
+    _lowerMerge.boards.forEach(g => g.dispose());
+    _lowerMerge.boards.length = 0;
+  }
 
   state.ROOMS.forEach((room) => {
     createDoorFrame(room.x < 0 ? -5 : 5, room.z, 'V', 4);
@@ -660,7 +701,7 @@ export function buildBuilding() {
     const torchRy = room.x < 0 ? Math.PI / 2 : -Math.PI / 2;
     createWallTorch(torchX, 2.5, room.z - 4, torchRy, room.id, true);
     createWallTorch(torchX, 2.5, room.z + 4, torchRy, room.id, false);
-    createRoomIndicator(room);
+    createRoomIndicator(room, pushGroundFloor);
   });
 
   // ════════════════════════════════════════════════════════════════
@@ -796,153 +837,15 @@ export function buildBuilding() {
   // SECTION 7: Elevator car, doors, and collision
   // ════════════════════════════════════════════════════════════════
   // ── Animated Opulent Elevator (north end of lobby) ─────────────────────
-  const eZ = MAIN_BUILDING_ELEVATOR_Z;
-  const eW = MAIN_BUILDING_ELEVATOR_W;
-  const eD = MAIN_BUILDING_ELEVATOR_D;
-  const eH = MAIN_BUILDING_ELEVATOR_H;
-  const eFrontZ = MAIN_BUILDING_ELEVATOR_FRONT_Z;
-  const goldMat = new THREE.MeshStandardMaterial({ color: '#b8860b', roughness: 0.2, metalness: 0.8 });
-  const brassMat = new THREE.MeshStandardMaterial({ color: '#cd7f32', roughness: 0.25, metalness: 0.7 });
-  const mahoganyMat = new THREE.MeshStandardMaterial({ color: '#3a1508', roughness: 0.35, metalness: 0.1 });
-
-  const elevatorCar = new THREE.Group();
-  elevatorCar.position.set(0, MAIN_BUILDING_ELEVATOR_GROUND_Y, eZ);
-
-  const eMarble = new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.1, metalness: 0.05 });
-  const eDarkMarble = new THREE.MeshStandardMaterial({ color: '#2a1a0a', roughness: 0.15, metalness: 0.12 });
-
-  // Back wall (z = -eD/2) and side walls
-  const backWallZ = -(eD / 2 - 0.1);
-  const backWall = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.2, eH - 0.5, 0.08), mahoganyMat);
-  backWall.position.set(0, (eH - 0.5) / 2, backWallZ);
-  elevatorCar.add(backWall);
-
-  const backTopTrim = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.1, 0.04, 0.1), goldMat);
-  backTopTrim.position.set(0, eH - 0.3, backWallZ);
-  elevatorCar.add(backTopTrim);
-
-  const backBottomTrim = new THREE.Mesh(new THREE.BoxGeometry(eW - 0.1, 0.04, 0.1), goldMat);
-  backBottomTrim.position.set(0, 0.15, backWallZ);
-  elevatorCar.add(backBottomTrim);
-  [-eW / 2 + 0.1, eW / 2 - 0.1].forEach(xOff => {
-    const p = new THREE.Mesh(new THREE.BoxGeometry(0.08, eH - 0.5, eD - 0.2), mahoganyMat);
-    p.position.set(xOff, (eH - 0.5) / 2, 0);
-    elevatorCar.add(p);
-  });
-
-  // Marble floor
-  const ef = createFloor(eW - 0.1, eD - 0.1, eMarble, 0, 0.015, 0);
-  elevatorCar.add(ef);
-  const eb = new THREE.Mesh(new THREE.RingGeometry(eW / 2 - 0.25, eW / 2 - 0.05, 24), eDarkMarble);
-  eb.rotation.x = FLAT;
-  eb.position.set(0, 0.017, 0);
-  elevatorCar.add(eb);
-
-  // Ceiling + crown molding + chandelier
-  elevatorCar.add(createFloor(eW - 0.1, eD - 0.1, eMarble, 0, eH, 0, false));
-  const cr = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.03, 8, 16), goldMat);
-  cr.position.set(0, eH - 0.01, 0);
-  cr.rotation.x = HALF_PI;
-  elevatorCar.add(cr);
-
-  const chMat = new THREE.MeshStandardMaterial({ color: '#fef08a', emissive: '#fef08a', emissiveIntensity: 0.4 });
-  const ch = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), chMat);
-  ch.position.set(0, eH - 0.15, 0);
-  elevatorCar.add(ch);
-  const cabinLight = new THREE.PointLight('#fef3c7', 0, 6.5, 2.2);
-  cabinLight.position.set(0, eH - 0.2, 0);
-  elevatorCar.add(cabinLight);
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI * 2 * i) / 6;
-    const d = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6),
-      new THREE.MeshStandardMaterial({ color: '#e0f2fe', transparent: true, opacity: 0.6 }));
-    d.position.set(Math.cos(a) * 0.2, eH - 0.35, Math.sin(a) * 0.2);
-    elevatorCar.add(d);
-  }
-  state.scene.add(elevatorCar);
-
-  // ── Swing doors (hinged at outer edges, children of car) ──────────────
-  const halfDoorW = (eW - 0.3) / 2; // each door panel width
-  const doorPivots = [];
-  for (let side = -1; side <= 1; side += 2) {
-    // Pivot group at the hinge edge
-    const pivot = new THREE.Group();
-    pivot.position.set(side * (eW / 2 - 0.04), 0, eD / 2);
-    elevatorCar.add(pivot);
-
-    // Door panel
-    const door = new THREE.Mesh(
-      new THREE.BoxGeometry(halfDoorW, eH - 0.7, 0.06),
-      mahoganyMat
-    );
-    door.position.set(-side * halfDoorW / 2, (eH - 0.7) / 2, 0);
-    pivot.add(door);
-
-    // Gold inlay stripe
-    const inlay = new THREE.Mesh(
-      new THREE.BoxGeometry(halfDoorW - 0.2, eH - 1.0, 0.07),
-      goldMat
-    );
-    inlay.position.set(-side * halfDoorW / 2, (eH - 0.7) / 2, 0.035);
-    pivot.add(inlay);
-
-    // Handle (brass pull)
-    const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.015, 0.02, 0.18, 6),
-      brassMat
-    );
-    handle.rotation.x = HALF_PI;
-    handle.position.set(-side * halfDoorW / 3, 1.3, 0.05);
-    pivot.add(handle);
-
-    pivot.userData._side = side;
-    doorPivots.push(pivot);
-  }
-
-  // Door frame (brass pillars + pediment — static in scene, not on car)
-  [-0.9, 0.9].forEach(xOff => {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(0.08, eH + 0.2, 0.06), brassMat);
-    f.position.set(xOff, (eH + 0.2) / 2 - 0.1, eFrontZ + 0.01);
-    state.scene.add(f);
-  });
-  const ft = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 0.08), brassMat);
-  ft.position.set(0, eH + 0.05, eFrontZ + 0.01);
-  state.scene.add(ft);
-  const ps = new THREE.Shape();
-  ps.moveTo(-0.9, 0);
-  ps.lineTo(0.9, 0);
-  ps.lineTo(0, 0.25);
-  ps.closePath();
-  const pd = new THREE.Mesh(new THREE.ExtrudeGeometry(ps, { depth: 0.08, bevelEnabled: false }), goldMat);
-  pd.position.set(0, eH + 0.1, eFrontZ + 0.01);
-  state.scene.add(pd);
-
-  // Indicator light (static in scene)
-  const ib = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.02), brassMat);
-  ib.position.set(0, eH + 0.5, eFrontZ + 0.03);
-  state.scene.add(ib);
-  const il = new THREE.Mesh(new THREE.CircleGeometry(0.04, 8), new THREE.MeshBasicMaterial({ color: '#22c55e' }));
-  il.position.set(0, eH + 0.5, eFrontZ + 0.04);
-  state.scene.add(il);
-  const cb = new THREE.Mesh(new THREE.CircleGeometry(0.04, 8), brassMat);
-  cb.position.set(0.3, 1.3, eFrontZ + 0.04);
-  state.scene.add(cb);
-  const cl = new THREE.Mesh(new THREE.CircleGeometry(0.02, 6), new THREE.MeshBasicMaterial({ color: '#ef4444' }));
-  cl.position.set(0.3, 1.3, eFrontZ + 0.05);
-  state.scene.add(cl);
-
-  // State refs for elevator.js
-  state._elevatorCar = elevatorCar;
-  state._elevatorDoorPivots = doorPivots;
-  state._elevatorHalfHeight = eH / 2; // needed by engine.js to center the door collider
-  state._elevatorCabinLight = cabinLight;
-  state._elevatorCabinGlowMat = chMat;
+  state.elevator = buildElevator(state.scene, materials);
+  state.WALLS.push(state.elevator.doorBox);
 
   // ── Elevator collision ────────────────────────────────────────────────
   // Room interior walls (3 sides — back, left, right)
-  const collHalfW = eW / 2 - 0.2;
-  const collHalfD = eD / 2 - 0.2;
-  const collH = eH;
+  const collHalfW = MAIN_BUILDING_ELEVATOR_W / 2 - 0.2;
+  const collHalfD = MAIN_BUILDING_ELEVATOR_D / 2 - 0.2;
+  const collH = MAIN_BUILDING_ELEVATOR_H;
+  const eZ = MAIN_BUILDING_ELEVATOR_Z;
   // These walls are always active — they define the elevator room boundaries
   // Back wall
   state.WALLS.push(new THREE.Box3(
@@ -959,19 +862,6 @@ export function buildBuilding() {
     new THREE.Vector3(collHalfW - 0.05, 0, eZ - collHalfD),
     new THREE.Vector3(collHalfW + 0.05, collH, eZ + collHalfD)
   ));
-
-  // Door collision wall (active when closed, disabled when open)
-  const doorCollider = new THREE.Mesh(
-    new THREE.BoxGeometry(eW - 0.3, eH, 0.1),
-    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
-  );
-  doorCollider.position.set(0, eH / 2, eFrontZ + 0.05);
-  doorCollider.visible = false;
-  state.scene.add(doorCollider);
-  state._elevatorDoorCollider = doorCollider;
-  state._elevatorDoorBox = new THREE.Box3().setFromObject(doorCollider);
-  state._elevatorDoorBox.userData = { _isElevatorDoor: true };
-  state.WALLS.push(state._elevatorDoorBox);
   // ════════════════════════════════════════════════════════════════
   // SECTION 8: Second floor construction
   // ════════════════════════════════════════════════════════════════
@@ -1197,7 +1087,7 @@ export function buildBuilding() {
     const r10Group = buildRoomScreen(room10, frameMat, screenMat, r10ScreenY, 0.22, pushUpperFloor);
     // Override position: buildRoomScreen placed it at room.x+room.width/2−0.22 ≈ 29.78; correct to 29.3
     r10Group.position.set(29.3, r10ScreenY, 8);
-    createRoomIndicator(room10);
+    createRoomIndicator(room10, pushUpperFloor);
     // Torches flanking the screen
     pushUpperFloor(createWallTorch(29.3, mezzY + 2.2, 8 - 4, -Math.PI / 2, 10, true));
     pushUpperFloor(createWallTorch(29.3, mezzY + 2.2, 8 + 4, -Math.PI / 2, 10, false));
@@ -1215,8 +1105,6 @@ export function buildBuilding() {
   buildRoof(batcher, { limestoneMat, bronzeMat, limestoneShadowMat }, { entablatureY, registerRoofMesh: pushRoof });
 
   buildUpperFloorFurnishings(pushUpperFloor);
-
-  consumeGroundFloorItems();
 }
 
 export { createDoorFrame } from './building/doors.js';

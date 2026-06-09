@@ -238,7 +238,12 @@ export function animate() {
 
   // ── Smooth indoor/outdoor lighting transition (RuneScape-style) ─────
   const targetMix = isInside ? 1 : 0;
-  state._indoorMix += (targetMix - state._indoorMix) * Math.min(1, 2.2 * dt);
+  // Gate the exponential lerp on convergence — skip when within 0.001 of target
+  if (Math.abs(targetMix - state._indoorMix) > 0.001) {
+    state._indoorMix += (targetMix - state._indoorMix) * Math.min(1, 2.2 * dt);
+  } else {
+    state._indoorMix = targetMix; // snap
+  }
   const mix = state._indoorMix;
 
   if (state.sceneSunLight) {
@@ -284,26 +289,26 @@ export function animate() {
 
   try {
     // ── Elevator door collider sync ───────────────────────────────────────
-    if (state._elevatorDoorCollider) {
-      const dc = state._elevatorDoorCollider;
-      if (state._elevatorCar) {
+    if (state.elevator.doorCollider) {
+      const dc = state.elevator.doorCollider;
+      if (state.elevator.car) {
         // Offset by half the car height so the collider spans floor→ceiling, not underground→mid
-        dc.position.y = state._elevatorCar.position.y + (state._elevatorHalfHeight ?? 2.75);
+        dc.position.y = state.elevator.car.position.y + (state.elevator.halfHeight ?? 2.75);
       }
       // Sync the physics Box3 so WALLS collision follows the car.
       // When visible=false (doors open or riding), collapse the Box3 to zero
       // so the player can walk through.
-      if (state._elevatorDoorBox) {
+      if (state.elevator.doorBox) {
         if (dc.visible) {
           // Reuse pre-allocated scratch — avoids allocating a new Box3 every frame
-          state._elevatorDoorBox.copy(_elevatorBox3Scratch.setFromObject(dc));
+          state.elevator.doorBox.copy(_elevatorBox3Scratch.setFromObject(dc));
         } else {
-          state._elevatorDoorBox.min.set(0, 0, 0);
-          state._elevatorDoorBox.max.set(0, 0, 0);
+          state.elevator.doorBox.min.set(0, 0, 0);
+          state.elevator.doorBox.max.set(0, 0, 0);
         }
         // Sync the Cannon dynamic body for the elevator door — Cannon uses its
         // own body since its buildWallColliders skips tagged dynamic boxes.
-        updateElevatorDoorCollider(state._elevatorDoorBox.min, state._elevatorDoorBox.max);
+        updateElevatorDoorCollider(state.elevator.doorBox.min, state.elevator.doorBox.max);
       }
     }
 
@@ -322,7 +327,7 @@ export function animate() {
     refreshStaticSceneryVisibility();
     renderMinimap();
   }
-  if (state._elevatorTick) state._elevatorTick(dt);
+  if (state.elevator.tick) state.elevator.tick(dt);
 }
 
 // Log startup diagnostics
@@ -397,7 +402,7 @@ export function onWindowResize() {
   state.renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-export function initEngine() {
+export async function initEngine() {
   state.scene = new THREE.Scene();
   state.scene.background = new THREE.Color('#030712');
   state.scene.fog = new THREE.Fog('#030712', 200, 600);
@@ -409,6 +414,7 @@ export function initEngine() {
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFShadowMap;
+  state.renderer.shadowMap.autoUpdate = true;
   state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
   state.renderer.sortObjects = false;
@@ -439,8 +445,8 @@ export function initEngine() {
   state.sceneSunLight = new THREE.DirectionalLight('#fffbeb', 0.92);
   state.sceneSunLight.position.set(24, 48, 12);
   state.sceneSunLight.castShadow = true;
-  state.sceneSunLight.shadow.mapSize.width = 1024;
-  state.sceneSunLight.shadow.mapSize.height = 1024;
+  state.sceneSunLight.shadow.mapSize.width = 512;
+  state.sceneSunLight.shadow.mapSize.height = 512;
   state.sceneSunLight.shadow.camera.near = 0.5;
   state.sceneSunLight.shadow.camera.far = 120;
   const d = 18;
@@ -496,7 +502,10 @@ export function initEngine() {
   );
   state.scene.add(state.skyDome);
   
-  buildMap();
+  const _loadingText = document.querySelector('#loading-screen p');
+  await buildMap((msg) => { if (_loadingText) _loadingText.textContent = msg; });
+  // Pre-compile all shaders before the first render frame to avoid compile-stutter on scene entry.
+  state.renderer.compile(state.scene, state.camera);
   initCannon(); // async, non-blocking — fallback collision runs until CDN resolves
   refreshStaticSceneryVisibility();
   

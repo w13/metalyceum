@@ -3,14 +3,7 @@ import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
 import { HALF_PI, FLAT } from '../math.js';
-import {
-  addFadeObjects,
-  createBoundsFadePredicate,
-  createFadeLayer,
-  createInsideOutsideTarget,
-  makeObjectFadeable,
-  registerFadeZone
-} from '../fade-system.js';
+import { createLandmarkFadeZone } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 import { createFloor } from './utils.js';
 
@@ -139,28 +132,16 @@ export function buildAirport() {
   // ── Large Hangar with open overhead door ────────────────────────────
   const hangW = 42, hangD = 32, hangH = 14;
   const hx = ax - 30, hz = az + 32;
-  const hangarRoofLayer = createFadeLayer({
-    id: 'roof',
-    getTargetOpacity: createInsideOutsideTarget({})
-  });
-  registerFadeZone({
+  const { pushRoof } = createLandmarkFadeZone({
     id: 'airport-hangar',
     proximity: { x: hx, z: hz, r: 40 },
-    containsPlayer: createBoundsFadePredicate({
+    bounds: {
       minX: hx - hangW / 2,
       maxX: hx + hangW / 2,
       minZ: hz - hangD / 2,
       maxZ: hz + hangD / 2
-    }),
-    layers: [hangarRoofLayer]
+    }
   });
-
-  function pushHangarRoof(...objects) {
-    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
-    state.roofMeshes.push(...flat);
-    addFadeObjects(hangarRoofLayer, ...flat);
-    return flat.length === 1 ? flat[0] : flat;
-  }
 
   // Floor
   g.add(createFloor(hangW, hangD, concMat, hx, baseY + 0.02, hz));
@@ -186,7 +167,7 @@ export function buildAirport() {
   hRoof.castShadow = true;
   hRoof.receiveShadow = true;
   g.add(hRoof);
-  pushHangarRoof(hRoof);
+  pushRoof(hRoof);
 
   // Entrance frame with rolled-up overhead door
   const frameMat = new THREE.MeshStandardMaterial({ color: '#4b5563', roughness: 0.7, metalness: 0.15 });

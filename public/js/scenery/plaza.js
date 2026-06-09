@@ -63,7 +63,7 @@ export function createBannerStand(x, z, rotationY, color, texture) {
   state.scene.add(group);
 }
 
-export function createRoomIndicator(room) {
+export function createRoomIndicator(room, registerFn = null) {
   const layout = ROOM_LAYOUTS[room.id] || { themeColor: WORLD_CONFIG.signAccent, label: 'Room' };
   const group = new THREE.Group();
   
@@ -128,8 +128,8 @@ export function createRoomIndicator(room) {
 
   registerStaticScenery(group, { kind: 'outdoor', distance: 120 });
   state.scene.add(group);
-  // Push to groundFloorItems so the fade layer hides this on the second floor
-  if (state.groundFloorItems) state.groundFloorItems.push(group);
+  // Call registerFn if provided to register for fade layers
+  if (typeof registerFn === 'function') registerFn(group);
 }
 
 export function buildExteriorPlaza() {

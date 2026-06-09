@@ -34,6 +34,11 @@ const _camRight = new THREE.Vector3();
 const _targetDir = new THREE.Vector3();
 const _delta = new THREE.Vector3();
 const _desiredCameraPos = new THREE.Vector3();
+
+// Cache for foot-anchored height — skips 4 redundant terrain samples when
+// the player hasn't moved measurably (common during idle/chatting).
+let _lastFootX = -99999, _lastFootZ = -99999;
+let _cachedFootHeight = 0;
 const _desiredCameraTarget = new THREE.Vector3();
 
 const _FOOT_SPREAD = FOOT_SPREAD;
@@ -41,13 +46,20 @@ const _TERRAIN_FOLLOW_RATE = TERRAIN_FOLLOW_RATE;
 const _WATER_BOUNDS = WATER_BOUNDS;
 
 function getFootAnchoredHeight(x, z, precise = true) {
+  if (!precise) return getTerrainHeight(x, z); // single sample for airborne/swimming
+  // Cache: skip all 4 foot-spread calls when player hasn't moved measurably
+  const dx = x - _lastFootX;
+  const dz = z - _lastFootZ;
+  if (dx * dx + dz * dz < 0.0001) return _cachedFootHeight;
+  _lastFootX = x;
+  _lastFootZ = z;
   const h = getTerrainHeight(x, z);
-  if (!precise) return h; // single sample is fine when airborne or swimming
   const hL = getTerrainHeight(x - _FOOT_SPREAD, z);
   const hR = getTerrainHeight(x + _FOOT_SPREAD, z);
   const hF = getTerrainHeight(x, z + _FOOT_SPREAD * 0.6);
   const hB = getTerrainHeight(x, z - _FOOT_SPREAD * 0.6);
-  return Math.max(h, hL, hR, hF, hB);
+  _cachedFootHeight = Math.max(h, hL, hR, hF, hB);
+  return _cachedFootHeight;
 }
 
 export function updateLocalPlayer(dt, now) {
@@ -61,7 +73,7 @@ export function updateLocalPlayer(dt, now) {
   }
 
   // Lock XZ movement while riding the elevator — car + player Y are animated by elevator.js
-  if (state._elevatorIsRiding) {
+  if (state.elevator.isRiding) {
     state.localPlayer.velocity.x = 0;
     state.localPlayer.velocity.z = 0;
     state.localPlayer.isMoving = false;

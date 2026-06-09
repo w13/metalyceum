@@ -1,14 +1,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
-import {
-  addFadeObjects,
-  createBoundsFadePredicate,
-  createFadeLayer,
-  createInsideOutsideTarget,
-  makeObjectFadeable,
-  registerFadeZone
-} from '../fade-system.js';
+import { createLandmarkFadeZone } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 import { HALF_PI, FLAT } from '../math.js';
 
@@ -235,28 +228,16 @@ export function buildCastle() {
   const keepDoorX = KEEP_X + KEEP_W / 2 + 0.08 * S;
   const hallInnerW = KEEP_W - KEEP_WALL_T * 2.4;
   const hallInnerD = KEEP_D - KEEP_WALL_T * 2.4;
-  const castleRoofLayer = createFadeLayer({
-    id: 'roof',
-    getTargetOpacity: createInsideOutsideTarget({})
-  });
-  registerFadeZone({
+  const { pushRoof } = createLandmarkFadeZone({
     id: 'castle',
     proximity: { x: CX, z: CZ, r: 58 },
-    containsPlayer: createBoundsFadePredicate({
+    bounds: {
       minX: KEEP_X - hallInnerW / 2,
       maxX: KEEP_X + hallInnerW / 2,
       minZ: CZ - hallInnerD / 2,
       maxZ: CZ + hallInnerD / 2
-    }),
-    layers: [castleRoofLayer]
+    }
   });
-
-  function pushCastleRoof(...objects) {
-    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
-    state.roofMeshes.push(...flat);
-    addFadeObjects(castleRoofLayer, ...flat);
-    return flat.length === 1 ? flat[0] : flat;
-  }
 
   // Courtyard and approaches
   addBox(group, darkStoneMat, OUTER_W + 2 * S, 0.42 * S, OUTER_D + 2 * S, CX, baseY - 0.2 * S, CZ);
@@ -562,7 +543,7 @@ export function buildCastle() {
   if (roomIndex === -1) state.ROOMS.push(keepRoom);
   else state.ROOMS[roomIndex] = keepRoom;
 
-  pushCastleRoof(fadeables);
+  pushRoof(fadeables);
 
   state.scene.add(group);
   state.landmarkGroups.set('castle', group);

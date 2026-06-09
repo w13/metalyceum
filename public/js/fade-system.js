@@ -275,14 +275,22 @@ export function createBuildingFadeZone({
       const flat = flattenObjects(objects);
       addFadeObjects(groundFloorLayer, ...flat);
       return flat.length === 1 ? flat[0] : flat;
-    },
-    consumeGroundFloorItems() {
-      if (state.groundFloorItems) {
-        for (const item of state.groundFloorItems) addFadeObjects(groundFloorLayer, item);
-        state.groundFloorItems = [];
-      }
     }
   };
+}
+
+/**
+ * Creates a simplified fade zone for scenery landmarks (single-floor/subterranean/hangar)
+ * and returns push helpers. Standardizes them under createBuildingFadeZone.
+ */
+export function createLandmarkFadeZone({ id, proximity, bounds, upperWallMat = null }) {
+  return createBuildingFadeZone({
+    id,
+    proximity,
+    bounds,
+    upperLevelThresholdY: Infinity,
+    upperWallMat
+  });
 }
 
 export function updateFadeZones(dt) {

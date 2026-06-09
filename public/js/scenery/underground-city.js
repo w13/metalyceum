@@ -2,14 +2,7 @@
 import * as THREE from 'three';
 import { state } from '../state.js';
 import { getTerrainHeight } from '../physics.js';
-import {
-  addFadeObjects,
-  createBoundsFadePredicate,
-  createFadeLayer,
-  createInsideOutsideTarget,
-  makeObjectFadeable,
-  registerFadeZone
-} from '../fade-system.js';
+import { createLandmarkFadeZone } from '../fade-system.js';
 import { registerStaticScenery } from './visibility.js';
 import { HALF_PI, FLAT } from '../math.js';
 import { createFloor } from './utils.js';
@@ -28,29 +21,17 @@ export function buildCaveAndUndergroundCity() {
 
   const UG_Y = -8;
   const UGW = 26, UGD = 36, UGH = 5.5;
-  const undergroundRoofLayer = createFadeLayer({
-    id: 'roof',
-    getTargetOpacity: createInsideOutsideTarget({})
-  });
-  registerFadeZone({
+  const { pushRoof } = createLandmarkFadeZone({
     id: 'underground-city',
     proximity: { x: cx, z: cz + 18, r: 32 },
-    containsPlayer: createBoundsFadePredicate({
+    bounds: {
       minX: cx - UGW / 2,
       maxX: cx + UGW / 2,
       minZ: cz + 18 - UGD / 2,
       maxZ: cz + 18 + UGD / 2,
       maxY: -1
-    }),
-    layers: [undergroundRoofLayer]
+    }
   });
-
-  function pushUndergroundRoof(...objects) {
-    const flat = objects.flat().filter(Boolean).map((object3d) => makeObjectFadeable(object3d));
-    state.roofMeshes.push(...flat);
-    addFadeObjects(undergroundRoofLayer, ...flat);
-    return flat.length === 1 ? flat[0] : flat;
-  }
 
   // ── Cave entrance ──────────────────────────────────────────────────
   // Grand archway at the mouth
@@ -131,7 +112,7 @@ export function buildCaveAndUndergroundCity() {
   // Ceiling
   const ugCeiling = createFloor(UGW, UGD, ceilingMat, ugX, UG_Y + UGH, ugZ);
   group.add(ugCeiling);
-  pushUndergroundRoof(ugCeiling);
+  pushRoof(ugCeiling);
 
   // Chamber walls
   const backW = new THREE.Mesh(new THREE.BoxGeometry(UGW, UGH, 0.4), stoneMat);

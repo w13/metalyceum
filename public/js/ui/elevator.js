@@ -28,12 +28,12 @@ let floorNum = 'L';
 let panel = null;
 let floorDisplay = null;
 let cabinLightLevel = 0;
-state._elevatorIsRiding = false;
+state.elevator.isRiding = false;
 
 function animateDoors(openRatio) {
   // Fold/swing each door pivot: 0=closed (0°), 1=open (~82°)
   const angle = openRatio * DOOR_SWING_ANGLE;
-  const pivots = state._elevatorDoorPivots;
+  const pivots = state.elevator.doorPivots;
   if (!pivots) return;
   pivots.forEach((pivot) => {
     const side = pivot.userData._side || 1;
@@ -56,9 +56,9 @@ function startRide(targetY, floor) {
   if (floorDisplay) floorDisplay.textContent = floor;
   phase = 'closing';
   doorTarget = 0;
-  state.elevatorRideProgress = 0;
+  state.elevator.rideProgress = 0;
   // Disable the door collider, enable the door blocker
-  if (state._elevatorDoorCollider) state._elevatorDoorCollider.visible = false;
+  if (state.elevator.doorCollider) state.elevator.doorCollider.visible = false;
 }
 
 function updateCabinLight(dt, isInsideElevator) {
@@ -66,8 +66,8 @@ function updateCabinLight(dt, isInsideElevator) {
   const target = shouldBeOn ? 1 : 0;
   cabinLightLevel += (target - cabinLightLevel) * Math.min(1, CABIN_LIGHT_FADE_RATE * dt);
 
-  const light = state._elevatorCabinLight;
-  const glowMat = state._elevatorCabinGlowMat;
+  const light = state.elevator.cabinLight;
+  const glowMat = state.elevator.cabinGlowMat;
   if (!light && !glowMat) return;
 
   const transitionAmount = Math.abs(target - cabinLightLevel);
@@ -99,7 +99,7 @@ export function initElevatorUI() {
   });
 
   // ── Per-frame tick ─────────────────────────────────────────────────────
-  state._elevatorTick = (dt) => {
+  state.elevator.tick = (dt) => {
     const insideElevator = !!state.localPlayer && isPlayerInsideElevator();
     updateCabinLight(dt, insideElevator);
 
@@ -113,8 +113,8 @@ export function initElevatorUI() {
     }
 
     // Door collider blocks only when idle with closed doors, not during a ride
-    if (state._elevatorDoorCollider) {
-      state._elevatorDoorCollider.visible = phase === 'idle';
+    if (state.elevator.doorCollider) {
+      state.elevator.doorCollider.visible = phase === 'idle';
     }
 
     // ── Ride state machine ────────────────────────────────────────────────
@@ -123,18 +123,18 @@ export function initElevatorUI() {
       if (doorProgress < 0.005) {
         phase = 'riding';
         rideProgress = 0;
-        state.elevatorRideProgress = 0;
+        state.elevator.rideProgress = 0;
       }
     } else if (phase === 'riding') {
       rideProgress += dt / RIDE_DURATION;
-      state._elevatorIsRiding = true;
+      state.elevator.isRiding = true;
       const t = Math.min(rideProgress, 1);
       // Smooth ease-in-out
       const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       const currentY = rideStartY + (rideEndY - rideStartY) * ease;
 
       // Move the car
-      const car = state._elevatorCar;
+      const car = state.elevator.car;
       if (car) car.position.y = currentY;
 
       // Move the player with the car
@@ -147,12 +147,12 @@ export function initElevatorUI() {
 
       // Set ride progress for 2nd floor fade (used in engine.js)
       // Going up: 0→1, going down: 1→0
-      state.elevatorRideProgress = rideEndY > rideStartY ? ease : 1 - ease;
+      state.elevator.rideProgress = rideEndY > rideStartY ? ease : 1 - ease;
 
       if (t >= 1) {
         phase = 'arrival';
-        state._elevatorIsRiding = false;
-        state.elevatorRideProgress = 0;
+        state.elevator.isRiding = false;
+        state.elevator.rideProgress = 0;
         doorTarget = 1; // start opening doors
         // Snap player to final position
         if (state.localPlayer) {
@@ -169,9 +169,9 @@ export function initElevatorUI() {
     } else if (phase === 'arrival') {
       if (doorProgress > 0.995) {
         phase = 'open';
-        state.elevatorRideProgress = 0;
+        state.elevator.rideProgress = 0;
         // Re-enable the door collider for the new floor level
-        const dc = state._elevatorDoorCollider;
+        const dc = state.elevator.doorCollider;
         if (dc) {
           dc.position.y = rideEndY;
           dc.visible = false;
