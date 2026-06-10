@@ -289,5 +289,5 @@ export function buildAmphitheater() {
 
   state.scene.add(group);
   state.landmarkGroups.set('amphitheater', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 200 });
+  registerStaticScenery(group, { kind: 'outdoor', distance: 150, center: { x: 65, z: 150 } });
 }

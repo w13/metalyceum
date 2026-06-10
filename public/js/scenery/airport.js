@@ -717,6 +717,5 @@ export function buildAirport() {
 
   state.scene.add(g);
   state.landmarkGroups.set('airport', g);
-  registerStaticScenery(runway, { kind: 'outdoor', distance: 180 });
-  registerStaticScenery(troof, { kind: 'outdoor', distance: 150 });
+  registerStaticScenery(g, { kind: 'outdoor', distance: 170, center: { x: 160, z: 220 } });
 }

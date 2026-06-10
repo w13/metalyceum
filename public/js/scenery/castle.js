@@ -2098,5 +2098,5 @@ export function buildCastle() {
 
   state.scene.add(group);
   state.landmarkGroups.set('castle', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 200 });
+  registerStaticScenery(group, { kind: 'outdoor', distance: 140, center: { x: 130, z: -80 } });
 }

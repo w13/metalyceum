@@ -582,5 +582,5 @@ export function buildConcertVenue() {
 
   state.scene.add(group);
   state.landmarkGroups.set('concertVenue', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 220 });
+  registerStaticScenery(group, { kind: 'outdoor', distance: 150, center: { x: -85, z: 140 } });
 }

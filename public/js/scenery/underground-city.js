@@ -521,5 +521,5 @@ export function buildCaveAndUndergroundCity() {
 
   state.scene.add(group);
   state.landmarkGroups.set('undergroundCity', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 100 });
+  registerStaticScenery(group, { kind: 'outdoor', distance: 110, center: { x: 120, z: 80 } });
 }
