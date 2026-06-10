@@ -513,10 +513,148 @@ Worker responses include `X-Content-Type-Options: nosniff`, `Referrer-Policy: st
 
 ---
 
+## 🗺️ Future Development Roadmap
+
+The following roadmap was shaped by five architectural questions posed to the project lead, then refined by a detailed performance audit and a committed design document ([`docs/superpowers/plans/2026-06-09-performance-and-roadmap-plan.md`](docs/superpowers/plans/2026-06-09-performance-and-roadmap-plan.md)). The plan below reflects the verified live-app measurements and the senior dev's recommendations.
+
+### Design Principles
+
+| Question | Answer | Guiding Principle |
+|----------|--------|-------------------|
+| Core gameplay? | **Social world with mini-games** (card games, etc.) | Every feature should create a reason for people to be together — shared activities, not just shared space |
+| World shape? | **RuneScape-style expansion** — walkable in all directions, large 2D map | New content loads as you explore; the minimap becomes a navigation tool; fast-travel connects distant zones |
+| Scale target? | **Several hundred concurrent users** | Start with the cheap fixes (tick-based flush, rate falloff, impostors) before the expensive one (zone DOs) |
+| Asset pipeline? | **Procedural is fine** (LLM-generated code). Hybrid model importer later. | Keep the zero-build pipeline; add a `.glb` loader alongside procedural factories when needed |
+| Sustainability? | **In-game currency + player economy** | Authoritative server-side wallet (`CurrencyDO`), shop UI, economy sinks (cosmetics, furniture) |
+
+### Verified baseline (2026-06-09, live app)
+
+| Location | FPS | Draw calls | Triangles | Geometries | Textures |
+|---|---|---|---|---|---|
+| Spawn (before lazy venues) | 60.3 | **62** | 116K | 129 | 11 |
+| At castle (lazy venues loaded) | 60.0 | **825** | 136K | 777 | 37 |
+| Back at plaza (far from landmarks) | 57.6 | **824** | 136K | 777 | 37 |
+| CI perf test (vitest browser) | — | **32** | 1,050 | 25 | 4 |
+| **Budget** | — | **< 420** | **< 850K** | **< 460** | **< 15** |
+
+**Key findings:**
+- Lazy-loaded landmarks (castle, airport, underground city) are never registered with the distance-culling system — 97% of the scene's 2,612 meshes bypass visibility checks. Draw calls jump 62 → 825 and stay there everywhere in the world.
+- The CI budget test renders a near-empty scene (32 calls vs. 825 live), so the regression shipped invisibly.
+- Server `MAX_PLAYERS = 10` — no scaling assumption has ever been tested. The `flushMovementBatch()` call runs on every `move` message and scans all sessions × all sessions, producing ~160M relevance checks/second at 200 players.
+
+### Phase 0 — Instrument, measure, and quick wins (do first)
+
+**Goal:** Know precisely where frame time and DO CPU go; land the cheap structural fixes.
+
+| # | Item | Detail | Exit criterion |
+|---|---|---|---|
+| **0.0a** | **Cull the lazy-loaded landmarks** | Register each lazy venue's root group with `registerStaticScenery()` at appropriate distance. Fix the baked-vertex/origin-position pattern where it blocks per-mesh culling in eager venues too. | Draw calls at plaza return to ~150 or less with all venues loaded; calls vary by location |
+| **0.0b** | **Make the CI perf budget real** | Replace the vitest budget assertion with a Playwright e2e step that joins the live dev server, teleports to hotspots, and asserts `renderer.info` there. | CI fails if live-app draw calls exceed budget at any probe point |
+| **0.1** | Frame-time instrumentation | Extend the debug panel with per-section timings via `performance.now()` deltas plus `renderer.info` live readout. Dev-gated, zero production cost. | Panel shows ms per subsystem |
+| **0.2** | Bot load harness | Headless Node script opening N WebSocket connections to `/ws`, each sending `move` at configurable Hz. Add `?bots=N` local spawn mode for client-side crowd tests. | Can simulate 200 synthetic players locally |
+| **0.3** | Fix per-move flush | `flushMovementBatch()` moves from per-`move`-message to a fixed server tick (12 Hz) driven while sessions exist. | DO CPU per player-update measured before/after |
+| **0.4** | Shadow on-demand | `shadowMap.autoUpdate = false`; set `needsUpdate = true` only when sun frustum re-targets, an avatar moves within shadow range, or fade state changes. | Visually identical; shadow pass absent from static frames |
+| **0.5** | Lower default send rate | Default network profile `normal` (20 Hz) → `efficient` (12 Hz). Profiles already exist; one-line change. | No perceptible motion degradation |
+| **0.6** | Async world build | Split `buildMap()` into chunks yielded via `requestIdleCallback` behind the loading screen; compile shaders progressively. | Time-to-first-frame measured before/after |
+| **0.7** | Reconcile docs with code | Fix README/CLAUDE.md renderer claims (pixel ratio, tone mapping, shadow type, fog) to match `engine.js`. | Docs match code |
+
+**Measurement gate:** After 0.1–0.2, profile with 50/100/200 bots. Phase 1 decisions (especially zone sharding) use these numbers.
+
+### Phase 1 — Scalability foundation
+
+**Goal:** 200+ concurrent users without degrading the experience.
+
+| # | Item | Detail |
+|---|---|---|
+| **1.1** | Raise `MAX_PLAYERS` progressively | 10 → 50 → 100 → 200, each step validated with the bot harness. |
+| **1.2** | Tiered relevance + rate falloff | Extend `arePlayersRelevant` to graded tiers: < 40u full rate, 40–120u reduced rate (every 2nd–4th tick), > 200u culled. Builds on existing dirty-set batching. |
+| **1.3** | Remote player impostors | Beyond ~80u render remote players as billboarded sprites (reuse the name-tag sprite pipeline). Full avatar pool capped (~30 nearest); avatar meshes pooled and recycled. |
+| **1.4** | Name tag culling | Render name tags only for ~20 nearest players (already distance-gated at 42u; add count cap). |
+| **1.5** | Spatial hashing in the DO | Replace the all-pairs scan in `flushMovementBatch` with a coarse grid (cell ≈ relevance distance) — only if bot tests show the tick flush still saturating. |
+| **1.6** | Zone DO go/no-go | Only if 200-bot tests still exceed DO CPU limits after 1.1–1.5: shard by region (museum, plaza, each landmark). This requires a design doc and is a multi-week project — do not start here. |
+
+**Exit criterion:** 200 bots connected, walking, chatting; client holds ≥ 30 fps in a 50-avatar crowd on mid-tier hardware; DO wall-clock per tick within Cloudflare limits.
+
+### Phase 2 — In-Game Economy
+
+**Goal:** Establish a server-authoritative currency system. Can run in parallel with Phase 0/1 (no renderer dependencies).
+
+| Item | Detail |
+|------|--------|
+| **`CurrencyDO`** | New Durable Object following `AdminDO` patterns: SQLite, audit log, internal endpoint contracts in `src/internal/`. All mutations server-side via `credit`/`debit`/`transfer` with idempotency keys. |
+| **Wallet UI** | Balance display in the HUD, transaction history panel. |
+| **Admin tools** | Grant/revoke currency, set shop prices, view transaction logs — in the existing admin API surface. |
+| **Cosmetic shop** | First sink: name color changes, chat badge styles. |
+| **Furniture shop** | Purchasable World Editor assets via in-game currency instead of admin tokens. |
+| **Dependency** | Phase 2 is server + UI work, independent of the renderer. Can start as soon as Phase 0 lands. |
+
+### Phase 3 — Mini-Games (Card Games)
+
+**Goal:** Add a game framework for turn-based card games. Depends on Phase 2 (chips = currency).
+
+| Item | Detail |
+|------|--------|
+| **Game-session DOs** | One Durable Object per active game. World/zone DO relays `game_action` messages. |
+| **Deck rendering** | Procedural 52-card deck via Canvas2D textures — baked into a single atlas texture to stay within the 15-texture budget. |
+| **Poker skeleton** | Texas Hold'em: deal, bet, fold, call, raise, showdown, chip management. Validates the game framework. |
+| **Table UI** | 3D table surface in rooms + 2D hand overlay in the existing room panel. |
+| **Dependency** | Phase 2 (currency) — chips are needed before card games can function. |
+
+### Phase 4 — World Expansion
+
+**Goal:** New explorable zones beyond 600×600. Depends on Phase 1 (zone/interest decisions — expanding before distance-tiered broadcasting multiplies irrelevant updates).
+
+| Item | Detail |
+|------|--------|
+| **Second continent** | New landmass at approximately (-500, -500) on its own heightmap + `VENUE_REGISTRY` entries (the lazy-venue system already supports this pattern). |
+| **Fast-travel** | Clickable teleport points on an expanded minimap (RuneScape-style lodestone network). |
+| **Expanded minimap** | Pan/zoom, named regions, discovery fog-of-war, route lines. |
+| **Zone discovery** | First visit triggers a notification and reveals the zone on the map. |
+
+### Phase 5 — Asset Pipeline (Hybrid)
+
+**Goal:** Support imported 3D models alongside procedural generation. Lowest priority — procedural content is currently sufficient.
+
+| Item | Detail |
+|------|--------|
+| **glTF loader** | `GLTFLoader` path in `createPlacedAssetModel` — when `modelUrl` is set, load `.glb` instead of procedural geometry. |
+| **Texture loader** | Image URL fallback for `CanvasTexture` calls. |
+| **Asset catalog extension** | `WORLD_ASSET_CATALOG` entries gain optional `modelUrl`/`textureUrl` fields; procedural fallback when absent. |
+| **CDN hosting** | Uploaded `.glb`/`.png` files served through the existing `ASSETS` binding. |
+
+### Sequencing
+
+```
+Phase 0 (perf measurement + quick wins)  ──► Phase 1 (scale to 200)  ──► Phase 4 (expansion)
+        └─────────────► Phase 2 (economy) ──► Phase 3 (card games)
+Phase 5 (asset pipeline) — anytime after Phase 0, lowest priority
+```
+
+Phases 0/1 and Phase 2 can run as parallel tracks (renderer+DO work vs. new-DO+UI work) with low merge conflict risk.
+
+### Verification per phase
+
+- **Phase 0/1:** Bot harness runs at 50/100/200; CI perf budgets stay green; frame-time panel numbers recorded in `docs/`.
+- **Phase 2:** Unit tests for `CurrencyDO` (balance invariants, idempotency, no negative balances) in the pure-module style of `src/admin/schemas.ts`.
+- **Phase 3:** Game-logic DOs unit-tested headlessly (deal/bet/showdown state machine).
+- **All phases:** `npm run typecheck && npm run test` green; `metalyceumDev.buildAudit()` CLEAN after any scenery change.
+
+### Key deviations from the earlier draft
+
+| Earlier README | Committed plan | Reason |
+|---|---|---|
+| Zone DO sharding was Phase 1, step 1 | Zone DOs are step 1.6, behind a measured go/no-go gate | The O(N³) flush bug would throttle each zone from the inside; cheaper fixes (tick flush, rate falloff, impostors) may push the single-DO ceiling well past 100 players |
+| Economy, mini-games, world expansion sequenced after Phase 1 | Phase 2 (economy) runs in parallel with Phase 0/1; Phase 3 depends on Phase 2; Phase 4 depends on Phase 1 | Economy server+UI work doesn't touch the renderer; card games need currency; world expansion needs distance-tiered broadcasting first |
+| Performance budget tested in vitest browser | Must move to Playwright e2e probing the live dev server | Vitest browser scene is near-empty (32 calls vs 825 live) — budgets enforce nothing |
+| No mention of bot harness or instrumentation | Phase 0.1–0.2 are the first deliverables | Without measurement, every scaling decision is speculative |
+
+---
+
 ## 📚 Further Reading
 
 - **[CLAUDE.md](CLAUDE.md)** — Development guidelines, architecture deep-dive, LLM dev tool documentation
 - **[REASONIX.md](REASONIX.md)** — Tech stack constraints, conventions, project context
+- **[docs/superpowers/plans/2026-06-09-performance-and-roadmap-plan.md](docs/superpowers/plans/2026-06-09-performance-and-roadmap-plan.md)** — The full committed roadmap plan with all measurements, risks, and exit criteria
 - **[docs/scenery-physics-lighting-comparison.md](docs/scenery-physics-lighting-comparison.md)** — Full historical comparison of 3D, physics, and lighting changes across 3 major refactors
 - **[docs/superpowers/](docs/superpowers/)** — Design specifications for cannon-es integration, dev-tools architecture, and upstairs furnishings
 - **[MIGRATE-THREEJS.md](MIGRATE-THREEJS.md)** — Migration notes for Three.js version updates

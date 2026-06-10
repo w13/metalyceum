@@ -16,6 +16,21 @@ npm run deploy     # Deploy the worker and static assets
 
 There is no dedicated lint script in this repository.
 
+## Recent refactoring (June 2026)
+
+Major DRY refinements were applied. Key structural changes:
+
+- **dev-tools.js** (2476→1634 lines): LLM API (`window.metalyceumDev`) extracted to `ui/dev-api.js`. Shared state (`devState`, `devTeleport`) extracted to `ui/dev-state.js`.
+- **config.js** (925→396 lines): Soundtrack library (10 tracks, 531 lines) extracted to `midi/soundtrack-data.js`.
+- **plaza.js** (819→600 lines): Animated fountain water (big apple, ripples, spray, bubbles, fish) extracted to `scenery/fountain-water.js`.
+- **multiplayer.js** (571→~480 lines): 14-case switch replaced with `MSG_HANDLERS` registry object.
+- **interiors.js** (161→46 lines): Inline north/south bench duplication and corner plant replaced with shared factories from `scenery/furniture.js`.
+- **Shared furniture**: `scenery/furniture.js` provides `createBench`, `createPlant`, `createCircleTable`, `createChair`, `createBookshelf`, `placeTableWithChairs`.
+- **Barrel files**: `physics/index.js`, `engine/index.js`, `ui/index.js` — import via directory path for combined exports.
+- **Editor asset rendering**: `createPlacedAssetModel` switched from 11-branch if/else to `ASSET_FACTORIES` registry.
+- **Venue loading**: `VENUE_REGISTRY` in config.js drives both eager and lazy venue loading. Add a venue = one config entry + builder module.
+- **Rotation constants**: 66 hardcoded `-Math.PI/2` replaced with `FLAT`/`HALF_PI` across 10 files.
+
 ## High-level architecture
 
 Metalyceum is one Cloudflare Worker with static frontend assets. `src/index.ts` is a router layer: `/ws` and `/debug` go to one global world Durable Object (`MetalyceumWorld`), `/api/v1/*` goes to a separate admin/auth Durable Object (`AdminDO`), and everything else is served through the `ASSETS` binding.

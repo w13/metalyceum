@@ -19,6 +19,49 @@ npm run test:e2e        # playwright test — browser/e2e tests
 
 No lint or format scripts are configured.
 
+## Recent Refactoring (June 2026)
+
+The codebase underwent a major DRY/refactoring pass. Key outcomes:
+
+### File size reductions
+| File | Before | After | Change |
+|------|--------|-------|--------|
+| `dev-tools.js` | 2476 lines | 1634 lines | −842 (LLM API → `ui/dev-api.js`) |
+| `config.js` | 925 lines | 396 lines | −529 (soundtracks → `midi/soundtrack-data.js`) |
+| `plaza.js` | 819 lines | 600 lines | −219 (fountain water → `scenery/fountain-water.js`) |
+| `multiplayer.js` | 571 lines | ~480 lines | −91 (switch → handler registry) |
+| `interiors.js` | 161 lines | 46 lines | −115 (shared furniture factories) |
+
+### New shared modules created
+| Module | Location | Contents |
+|--------|----------|---------|
+| **furniture factories** | `scenery/furniture.js` | `createBench`, `createPlant`, `createCircleTable`, `createChair`, `createBookshelf`, `placeTableWithChairs` |
+| **fountain water** | `scenery/fountain-water.js` | Animated water surfaces, big apple column, water blob, pool ripples, spray jets, bubbles, orbiting fish |
+| **dev state** | `ui/dev-state.js` | `devState` + `devTeleport` — extracted from dev-tools.js monolith |
+| **dev API** | `ui/dev-api.js` | `window.metalyceumDev` — 25 inspection/audit/teleport methods |
+| **soundtrack data** | `midi/soundtrack-data.js` | 10 MIDI track definitions (was 531 inline lines in config.js) |
+| **physics barrel** | `physics/index.js` | Re-exports from physics.js + physics-engine.js — single import point |
+| **engine barrel** | `engine/index.js` | Re-exports from engine/camera.js, movement.js, jetpack.js |
+| **UI barrel** | `ui/index.js` | Re-exports from all ui/*.js sub-modules |
+
+### Pattern changes
+- **Handler registry**: `multiplayer.js` replaced a 180-line switch with `MSG_HANDLERS` object lookup
+- **Asset factories**: `editor.js` replaced an 11-branch if/else with `ASSET_FACTORIES` registry
+- **Venue registry**: `config.js` `VENUE_REGISTRY` drives both eager and lazy venue loading (add venue = one config entry)
+- **Barrel files**: `physics/`, `engine/`, `ui/` now have `index.js` — import via `'./physics/'` instead of `'./physics.js'` + `'./physics-engine.js'`
+- **Constant extraction**: 66 hardcoded `-Math.PI/2` replaced with `FLAT` / `HALF_PI` across 10 files
+- **River polyline**: was hardcoded in 4 files, now exported once from `config.js`
+- **Wood textures**: 2 nearly-identical functions collapsed into `_createWoodTexture(config)` helper
+
+### Remaining large files
+| File | Lines | Notes |
+|------|-------|-------|
+| `castle.js` | 1882 | Single 1551-line `buildCastle()` with merge-aware batching — high-risk to split |
+| `dev-tools.js` | 1634 | Still contains audit + map + init — `dev-audit.js` and `dev-map.js` are future splits |
+| `building.js` | 1113 | 60% sub-moduled into `building/*.js`; facade section (~476 lines) remains inline |
+| `audio.js` | 789 | Well-structured — not a priority |
+| `upstairs.js` | 772 | Furniture factories extracted; remaining is zone layout data |
+
 ## Architecture
 
 ### Server (`src/`) — TypeScript
