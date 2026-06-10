@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-const baseURL = 'http://127.0.0.1:8787';
+const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8787';
+const devPort = baseURL.match(/:(\d+)/)?.[1] ?? '8787';
 
 export default defineConfig({
   testDir: './e2e',
@@ -15,8 +16,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command:
-      'npm run dev -- --ip 127.0.0.1 --port 8787 --show-interactive-dev-session=false',
+    command: `npm run dev -- --ip 127.0.0.1 --port ${devPort} --show-interactive-dev-session=false`,
     url: baseURL,
     timeout: 180_000,
     reuseExistingServer: true,

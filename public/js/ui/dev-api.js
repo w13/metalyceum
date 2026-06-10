@@ -82,5 +82,16 @@ export function exposeLLMApi(ctx) {
     },
     logErrors: () => state.errorLog?.slice(-10),
     getMemoryUsage: () => performance?.memory ? { js: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB' } : null,
+    perfStats: () => {
+      const info = state.renderer?.info;
+      if (!info) return null;
+      return {
+        calls: info.render.calls,
+        triangles: info.render.triangles,
+        geometries: info.memory.geometries,
+        textures: info.memory.textures,
+        programs: info.programs?.length ?? 0,
+      };
+    },
   };
 }
