@@ -40,7 +40,7 @@ The entire backend infrastructure runs on a single Cloudflare Worker backed by t
 
 *   **Jetpack & Cascade-Fan Wings**: Toggle jetpack flight with `T`. Wings with 4 trapezoidal fan-segments per side cascade open sequentially on takeoff (0.12s stagger per segment) and fold on landing. Metallic sheen matches your avatar's shirt color. Bronze accent trim. Landing triggers a crash sequence with tumbling physics and rolling recovery.
 
-*   **RuneScape-Style Lighting**: Warm golden-hour atmosphere with a `#5070a0` to `#d4b888` sky gradient, warm sand fog (`#b8a888`, density 0.0028), and smooth indoor/outdoor lighting transitions via interpolated `_indoorMix` (0→1 over ~0.5s). Sun color `#f0c878` at position (38, 22, 12) for long dramatic shadows. Indoor ambient shifts from `#f5d4a0` to `#e8a040` with a warm point light at 0.4 intensity.
+*   **RuneScape-Style Lighting**: Warm golden-hour atmosphere with a `#5070a0` to `#d4b888` sky gradient, deep-night fog (`#030712`, linear near=200 far=600), and smooth indoor/outdoor lighting transitions via interpolated `_indoorMix` (0→1 over ~0.5s). Sun color `#f0c878` at position (38, 22, 12) for long dramatic shadows. Indoor ambient shifts from `#ffffff` to `#e8a040` with a warm point light at 0.4 intensity.
 
 *   **Lazy-Loaded Distant Scenery**: Landmarks far from spawn (airport, castle, underground city) are dynamically imported via `import()` only when the player approaches within 95-120 units. A registry-driven system reads from `VENUE_REGISTRY` in `config.js` — adding a new lazy venue is a single config entry. Saves ~30% of startup geometry and 3 CDN fetches.
 
@@ -52,7 +52,7 @@ The entire backend infrastructure runs on a single Cloudflare Worker backed by t
 
 *   **MIDI Soundtrack Board**: Integrated client-side MIDI synthesizer with 10 ambient soundtracks, play/pause/skip controls, and per-track instrument volume mixing. Uses native Web Audio API oscillators (`sine`, `sawtooth`, `square`, `triangle`). Soundtrack library data stored in `midi/soundtrack-data.js`.
 
-*   **Performance Optimized**: Shadow map 512², pixel ratio capped at 1.5, ACESFilmic tone mapping at exposure 1.3, disabled MSAA, FogExp2 linear fog, Cannon physics throttled to 30fps, NPC distance culling at 100u, torch flicker every 4th frame, draw call budget of 420 (tested in CI via `engine.browser.test.ts`).
+*   **Performance Optimized**: Shadow map 512² with on-demand updates (`shadowMap.autoUpdate=false`), pixel ratio capped at 1.0, CineonToneMapping at exposure 1.0, disabled MSAA, linear `THREE.Fog` for distance culling, Cannon physics throttled to 30fps, NPC distance culling at 100u, torch flicker every 4th frame, draw call budget of 420 (tested in CI via Playwright e2e at live-app hotspots). Default network profile `efficient` (12 Hz); server batches movement on a ~12 Hz alarm tick.
 
 *   **Dev-Tools Production Guard**: Runtime inspection, audit markers, and LLM API (`window.metalyceumDev`) only activate on `localhost`, `127.0.0.1`, or when `?debug` is in the URL. Zero overhead on production.
 
@@ -424,6 +424,13 @@ npm run deploy
 # 1. Add factory function to ASSET_FACTORIES in editor.js
 # 2. Add entry to WORLD_ASSET_CATALOG in config.js
 # 3. Done — no if/else chain to modify
+
+# E2E tests: set E2E_BASE_URL to override the default dev-server port (8787)
+# when that port is already taken (e.g. E2E_BASE_URL=http://localhost:8788 npm run test:e2e)
+
+# Bot load harness: simulate synthetic players against a running dev server
+# Requires MAX_PLAYERS to be set in .dev.vars
+# node scripts/bot-harness.mjs --bots 50 --hz 12
 ```
 
 ---
@@ -457,17 +464,17 @@ The `engine.browser.test.ts` test enforces these limits in CI:
 | **Triangles** | < 850,000 |
 | **Textures** | < 15 |
 | **Geometries** | < 460 |
-| **Shadow map** | 512 × 512 (PCFSoft) |
-| **Pixel ratio** | capped at 1.5 |
-| **Tone mapping** | ACESFilmic, exposure 1.3 |
+| **Shadow map** | 512 × 512 (PCFShadowMap, on-demand) |
+| **Pixel ratio** | capped at 1.0 |
+| **Tone mapping** | CineonToneMapping, exposure 1.0 |
 
 ### Optimization techniques used
 - InstancedMesh for trees, boulders, flowers, grass (thousands of objects → single-digit draw calls)
 - Geometry merging for contiguous wall slabs and baseboards
 - Dynamic CDN import for Three.js (649 KB) and cannon-es (~150 KB) — not on critical path
 - Throttled torch flicker (every 4th frame), NPC updates (100u cull), vertex animations (every 2nd frame)
-- FogExp2 for distance culling (linear, density 0.0028)
-- 512² shadow maps (intentionally modest)
+- Linear `THREE.Fog('#030712', 200, 600)` for distance culling
+- 512² shadow maps (intentionally modest); `shadowMap.autoUpdate=false` — renders only on-demand
 - Dev-tools gated behind `_isDev` check — zero runtime cost in production
 
 ---
@@ -554,7 +561,7 @@ The following roadmap was shaped by five architectural questions posed to the pr
 | **0.2** | Bot load harness | Headless Node script opening N WebSocket connections to `/ws`, each sending `move` at configurable Hz. Add `?bots=N` local spawn mode for client-side crowd tests. | Can simulate 200 synthetic players locally |
 | **0.3** | Fix per-move flush | `flushMovementBatch()` moves from per-`move`-message to a fixed server tick (12 Hz) driven while sessions exist. | DO CPU per player-update measured before/after |
 | **0.4** | Shadow on-demand | `shadowMap.autoUpdate = false`; set `needsUpdate = true` only when sun frustum re-targets, an avatar moves within shadow range, or fade state changes. | Visually identical; shadow pass absent from static frames |
-| **0.5** | Lower default send rate | Default network profile `normal` (20 Hz) → `efficient` (12 Hz). Profiles already exist; one-line change. | No perceptible motion degradation |
+| **0.5** | Lower default send rate | Default network profile changed from `normal` (20 Hz) to `efficient` (12 Hz). Server batches movement in `flushMovementBatch` on a ~12 Hz alarm tick (83 ms interval). **Done.** | No perceptible motion degradation |
 | **0.6** | Async world build | Split `buildMap()` into chunks yielded via `requestIdleCallback` behind the loading screen; compile shaders progressively. | Time-to-first-frame measured before/after |
 | **0.7** | Reconcile docs with code | Fix README/CLAUDE.md renderer claims (pixel ratio, tone mapping, shadow type, fog) to match `engine.js`. | Docs match code |
 
@@ -645,7 +652,7 @@ Phases 0/1 and Phase 2 can run as parallel tracks (renderer+DO work vs. new-DO+U
 |---|---|---|
 | Zone DO sharding was Phase 1, step 1 | Zone DOs are step 1.6, behind a measured go/no-go gate | The O(N³) flush bug would throttle each zone from the inside; cheaper fixes (tick flush, rate falloff, impostors) may push the single-DO ceiling well past 100 players |
 | Economy, mini-games, world expansion sequenced after Phase 1 | Phase 2 (economy) runs in parallel with Phase 0/1; Phase 3 depends on Phase 2; Phase 4 depends on Phase 1 | Economy server+UI work doesn't touch the renderer; card games need currency; world expansion needs distance-tiered broadcasting first |
-| Performance budget tested in vitest browser | Must move to Playwright e2e probing the live dev server | Vitest browser scene is near-empty (32 calls vs 825 live) — budgets enforce nothing |
+| Performance budget tested in vitest browser | Moved to Playwright e2e probing the live dev server at five hotspot probe points with measured+25% budgets | Vitest browser scene is near-empty (32 calls vs 825 live) — budgets enforce nothing |
 | No mention of bot harness or instrumentation | Phase 0.1–0.2 are the first deliverables | Without measurement, every scaling decision is speculative |
 
 ---
