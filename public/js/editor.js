@@ -279,6 +279,7 @@ export function renderPlacedAssets(assetDefs, options = {}) {
   } else {
     selectEditorAsset(null);
   }
+  state._shadowDirty = true; // placed asset geometry added/removed — refresh shadow map
 }
 
 export function serializePlacedAssetsFromMap() {
@@ -585,6 +586,7 @@ export function applyInspectorValues() {
   entry.group.position.set(entry.asset.x, entry.asset.y, entry.asset.z);
   entry.group.rotation.y = entry.asset.rotationY;
   entry.group.scale.setScalar(entry.asset.scale);
+  state._shadowDirty = true; // asset repositioned via inspector — refresh shadow map
   setEditorDirty(true);
   updateEditorInspector();
 }
@@ -721,7 +723,10 @@ export function initTransformControls() {
     if (state.controls) state.controls.enabled = !event.value;
   });
   controls.addEventListener('change', () => {
-    if (state.editor.selectedId) syncSelectedAssetFromObject();
+    if (state.editor.selectedId) {
+      syncSelectedAssetFromObject();
+      state._shadowDirty = true; // asset dragged — refresh shadow map (self-clears each frame)
+    }
   });
   state.scene.add(controls.getHelper());
   state.editor.transformControls = controls;

@@ -298,6 +298,7 @@ export function animate() {
         state.sceneSunLight.shadow.camera.top = d;
         state.sceneSunLight.shadow.camera.bottom = -d;
         state.sceneSunLight.shadow.camera.updateProjectionMatrix();
+        state.renderer.shadowMap.needsUpdate = true;
       }
     }
   }
@@ -366,6 +367,31 @@ export function animate() {
       state.skyDome.position.x = state.camera.position.x;
       state.skyDome.position.z = state.camera.position.z;
     }
+
+    // Shadow map on demand (autoUpdate=false set in initEngine).
+    // Immediate refresh when scenery changes (lazy venue load, editor mutation,
+    // sun re-target already sets needsUpdate at the frustum-rebuild site above).
+    // Throttled ~15Hz refresh (every 4th frame at 60fps) while any character moves.
+    if (state._shadowDirty) {
+      state.renderer.shadowMap.needsUpdate = true;
+      state._shadowDirty = false;
+    } else if (state.frameCount % 4 === 0) {
+      let moving =
+        (state.localPlayer?.isMoving) ||
+        (state.localPlayer?.flying);
+      if (!moving && state.remotePlayers) {
+        for (const p of state.remotePlayers.values()) {
+          if (p.isMoving) { moving = true; break; }
+        }
+      }
+      if (!moving && state.npcs) {
+        for (const npc of state.npcs) {
+          if (npc.isMoving) { moving = true; break; }
+        }
+      }
+      if (moving) state.renderer.shadowMap.needsUpdate = true;
+    }
+
     state.renderer.render(state.scene, state.camera);
   } catch (err) {
     console.error('[Metalyceum] Render error:', err);
@@ -480,7 +506,7 @@ export async function initEngine() {
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFShadowMap;
-  state.renderer.shadowMap.autoUpdate = true;
+  state.renderer.shadowMap.autoUpdate = false; // on-demand; set needsUpdate when sun re-targets
   state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
   state.renderer.sortObjects = false;
