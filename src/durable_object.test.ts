@@ -550,11 +550,49 @@ describe('MetalyceumWorld Durable Object', () => {
         }),
       );
 
+      // With tick-based flushing, the batch is not sent until the alarm fires
+      await world.alarm();
+
       // Bob should receive a state batch update with Alice's new coordinate
       const moveBatch = ws2.sent.find((m) => m.type === 'state_batch');
       expect(moveBatch).toBeDefined();
       expect(moveBatch.players[0].id).toBe('user-1');
       expect(moveBatch.players[0].x).toBe(1);
+    });
+
+    it('batches moves until the alarm tick flushes them', async () => {
+      // Both join lobby near origin
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'join', x: 0, y: 0, z: 0, room: -1 }),
+      );
+      world.webSocketMessage(
+        ws2 as any,
+        JSON.stringify({ type: 'join', x: 2, y: 0, z: 2, room: -1 }),
+      );
+
+      // Clear previous sends
+      ws2.sent.length = 0;
+
+      // Two rapid moves from Alice — must NOT flush per-message
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'move', x: 1, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'move', x: 2, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      expect(ws2.sent.filter((m) => m.type === 'state_batch')).toHaveLength(0);
+
+      // A near-term alarm must be scheduled (~83ms, far less than STALE_SESSION_MS)
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // Alarm tick flushes exactly one batch carrying the latest position
+      await world.alarm();
+      const batches = ws2.sent.filter((m) => m.type === 'state_batch');
+      expect(batches).toHaveLength(1);
+      expect(batches[0].players[0].x).toBe(2);
     });
 
     it('isolates movement logs/batches between far-apart players', async () => {
