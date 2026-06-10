@@ -371,7 +371,9 @@ export function animate() {
     // Shadow map on demand (autoUpdate=false set in initEngine).
     // Immediate refresh when scenery changes (lazy venue load, editor mutation,
     // sun re-target already sets needsUpdate at the frustum-rebuild site above).
-    // Throttled ~15Hz refresh (every 4th frame at 60fps) while any character moves.
+    // Throttled ~15Hz refresh (every 4th frame at 60fps) while any character
+    // moves — walk shadows lag motion slightly, a deliberate tradeoff vs.
+    // re-adding the per-frame shadow pass this feature removes.
     if (state._shadowDirty) {
       state.renderer.shadowMap.needsUpdate = true;
       state._shadowDirty = false;
@@ -604,6 +606,9 @@ export async function initEngine() {
   });
   // Pre-compile all shaders before the first render frame to avoid compile-stutter on scene entry.
   state.renderer.compile(state.scene, state.camera);
+  // With shadowMap.autoUpdate=false the first shadow render must be explicit —
+  // don't rely on the sun re-target sentinel (_shadowLastPx=-99999) firing.
+  state.renderer.shadowMap.needsUpdate = true;
   initCannon(); // async, non-blocking — fallback collision runs until CDN resolves
   refreshStaticSceneryVisibility();
 
