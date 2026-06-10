@@ -19,6 +19,8 @@ export function initDebugPanel() {
   state.debugPlayersValEl = document.getElementById('debug-players-val');
   state.debugPropsValEl = document.getElementById('debug-props-val');
   state.debugRoomsValEl = document.getElementById('debug-rooms-val');
+  state.debugFrameTimingsEl = document.getElementById('debug-frame-timings');
+  state.debugRendererInfoEl = document.getElementById('debug-renderer-info');
   state.debugErrorEl = document.getElementById('debug-errors');
 
   // Wire up Copy button
@@ -440,6 +442,20 @@ export function updateDebugPanel(now) {
     state.debugRoomsValEl.textContent = String(
       state.DEBUG_STATE.liveRooms ?? 0,
     );
+
+  // Per-subsystem frame timings (only populated when panel is open)
+  if (state.framePerf && state.debugFrameTimingsEl) {
+    const p = state.framePerf;
+    state.debugFrameTimingsEl.textContent =
+      `mov ${p.movement?.toFixed(2) ?? '—'} · chr ${p.characters?.toFixed(2) ?? '—'} · ` +
+      `fade ${p.fade?.toFixed(2) ?? '—'} · gpu ${p.render?.toFixed(2) ?? '—'}`;
+  }
+  if (state.renderer && state.debugRendererInfoEl) {
+    const i = state.renderer.info;
+    state.debugRendererInfoEl.textContent =
+      `${i.render.calls} calls · ${(i.render.triangles / 1000).toFixed(0)}k tri · ` +
+      `${i.memory.geometries} geo · ${i.memory.textures} tex`;
+  }
 
   // Show recent errors in the debug panel
   const errEl = state.debugErrorEl;

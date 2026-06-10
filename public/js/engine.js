@@ -184,6 +184,8 @@ export function animate() {
   const dt = Math.min((_now - state.lastTime) / 1000, 0.1);
   state.lastTime = _now;
   state.frameCount = (state.frameCount || 0) + 1;
+  const _perf = state.framePerfEnabled ? (state.framePerf ??= {}) : null;
+  let _t0 = 0;
 
   const camInputX =
     (state.cameraKeys.ArrowRight ? 1 : 0) -
@@ -213,10 +215,13 @@ export function animate() {
   }
 
   updateTorches(_now);
+  if (_perf) _t0 = performance.now();
   updateLocalPlayer(dt, _now);
   detectRoomEntry();
+  if (_perf) _perf.movement = (_perf.movement ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
   // syncPosition is now driven by setInterval in multiplayer.js \u2014 removed from render loop
 
+  if (_perf) _t0 = performance.now();
   updateNpcs(dt);
   updateJetpack(dt, _now);
   state.remotePlayers.forEach((p) => {
@@ -224,6 +229,7 @@ export function animate() {
   });
 
   updateRoomIndicatorAnimations(_now);
+  if (_perf) _perf.characters = (_perf.characters ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
 
   const isInside = isLocalPlayerUnderRoof();
   if (state.cameraRig.wasUnderRoof && !isInside) {
@@ -242,6 +248,7 @@ export function animate() {
     const exitTargetLerp = 1 - CAMERA_TARGET_DECAY ** dt;
     state.controls.target.lerp(_desiredCameraTarget, exitTargetLerp);
   }
+  if (_perf) _t0 = performance.now();
   updateFadeZones(dt);
 
   // Safety net: ensure ground-floor ceiling and wall opacity follow
@@ -326,6 +333,7 @@ export function animate() {
     state.sceneAmbientLight.intensity = THREE.MathUtils.lerp(0.15, 0.08, mix);
     state.sceneAmbientLight.color.lerpColors(_ambOutColor, _ambInColor, mix);
   }
+  if (_perf) _perf.fade = (_perf.fade ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
 
   state.controls.update();
   updateCameraFollow(dt, _now);
@@ -374,6 +382,7 @@ export function animate() {
     // Throttled ~15Hz refresh (every 4th frame at 60fps) while any character
     // moves — walk shadows lag motion slightly, a deliberate tradeoff vs.
     // re-adding the per-frame shadow pass this feature removes.
+    if (_perf) _t0 = performance.now();
     if (state._shadowDirty) {
       state.renderer.shadowMap.needsUpdate = true;
       state._shadowDirty = false;
@@ -395,6 +404,7 @@ export function animate() {
     }
 
     state.renderer.render(state.scene, state.camera);
+    if (_perf) _perf.render = (_perf.render ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
   } catch (err) {
     console.error('[Metalyceum] Render error:', err);
   }
