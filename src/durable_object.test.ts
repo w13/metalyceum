@@ -1,4 +1,40 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Node's undici Response rejects status 101; the Workers runtime allows it
+// for WebSocket upgrades (durable_object.ts returns `new Response(null,
+// { status: 101, webSocket })`). Shim the constructor so upgrade paths are
+// testable outside the Workers runtime.
+const NativeResponse = globalThis.Response;
+
+class UpgradeResponse extends NativeResponse {
+  private readonly _upgradeStatus: number | null;
+  readonly webSocket: unknown;
+
+  constructor(
+    body: BodyInit | null,
+    init?: ResponseInit & { webSocket?: unknown },
+  ) {
+    if (init && init.status === 101) {
+      super(body, { ...init, status: 200 });
+      this._upgradeStatus = 101;
+    } else {
+      super(body, init);
+      this._upgradeStatus = null;
+    }
+    this.webSocket = init?.webSocket ?? null;
+  }
+
+  override get status(): number {
+    return this._upgradeStatus ?? super.status;
+  }
+}
+
+beforeAll(() => {
+  globalThis.Response = UpgradeResponse as unknown as typeof Response;
+});
+afterAll(() => {
+  globalThis.Response = NativeResponse;
+});
 import {
   DEFAULT_ROOMS,
   ROOM_COUNT,
