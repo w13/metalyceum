@@ -110,6 +110,7 @@ export type Session = {
 export type Bindings = {
   METALYCEUM_WORLD: DurableObjectNamespace;
   ADMIN_DO: DurableObjectNamespace;
+  CURRENCY_DO: DurableObjectNamespace;
   ASSETS: {
     fetch: typeof fetch;
   };

@@ -1,12 +1,13 @@
 // Metalyceum Server Router and Entry Point
 
 import { AdminDO } from './admin/do';
+import { CurrencyDO } from './currency/do';
 import type { Bindings } from './constants';
 import { logEvent, MetalyceumWorld } from './durable_object';
 import { errorEnvelope } from './http/errors';
 import { getOrCreateRequestId, withRequestId } from './http/request_id';
 
-export { AdminDO, MetalyceumWorld };
+export { AdminDO, CurrencyDO, MetalyceumWorld };
 
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Frame-Options': 'SAMEORIGIN',
@@ -59,6 +60,16 @@ export async function handleFetch(
       const id = env.ADMIN_DO.idFromName('admin');
       const stub = env.ADMIN_DO.get(id);
       const response = await stub.fetch(withRequestId(request, requestId));
+    } else if (pathname.startsWith('/api/v2/currency/')) {
+      const currencyId = env.CURRENCY_DO.idFromName('currency');
+      const currencyStub = env.CURRENCY_DO.get(currencyId);
+      const response = await currencyStub.fetch(withRequestId(request, requestId));
+      const headers = new Headers(response.headers);
+      headers.set('X-Request-Id', requestId);
+      for (const [key, value] of Object.entries(corsHeaders(origin))) {
+        headers.set(key, value);
+      }
+      return new Response(response.body, { status: response.status, headers });
 
       // Add CORS headers to response
       const headers = new Headers(response.headers);

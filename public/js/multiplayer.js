@@ -12,6 +12,7 @@ import {
   updateEditorStatus,
 } from './editor.js';
 import { closeModal } from './modals.js';
+import { CURRENCY_HANDLERS } from './currency.js';
 import {
   scheduleEventBoardRender,
   scheduleRoomPlayersListRefresh,
@@ -327,6 +328,12 @@ export function connectMultiplayer() {
     console.error('Realtime connection error.');
   });
 
+  // ── Currency/trade message dispatcher ──────────────────────────────────
+  function handleWalletMessage(type, data) {
+    const handler = CURRENCY_HANDLERS[type];
+    if (handler) handler(data);
+  }
+
   // ── Message handler registry ──────────────────────────────────────────
   // Register a new handler here + add the message type on the server side.
   // Each handler receives (data, ws) and should return early if conditions aren't met.
@@ -398,6 +405,15 @@ export function connectMultiplayer() {
     },
 
     heartbeat_ack: () => { state.lastHeartbeatAck = Date.now(); },
+
+    // ── Currency / Trade ────────────────────────────────────────────
+    wallet_balance: (data) => { handleWalletMessage('wallet_balance', data); },
+    trade_request: (data) => { handleWalletMessage('trade_request', data); },
+    trade_opened: (data) => { handleWalletMessage('trade_opened', data); },
+    trade_update: (data) => { handleWalletMessage('trade_update', data); },
+    trade_completed: (data) => { handleWalletMessage('trade_completed', data); },
+    trade_cancelled: (data) => { handleWalletMessage('trade_cancelled', data); },
+    trade_declined: (data) => { handleWalletMessage('trade_declined', data); },
 
     leave: (data) => {
       state.disconnectedPlayerIds.delete(data.id);
