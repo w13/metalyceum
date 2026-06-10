@@ -298,6 +298,7 @@ export function animate() {
         state.sceneSunLight.shadow.camera.top = d;
         state.sceneSunLight.shadow.camera.bottom = -d;
         state.sceneSunLight.shadow.camera.updateProjectionMatrix();
+        state.renderer.shadowMap.needsUpdate = true;
       }
     }
   }
@@ -480,7 +481,7 @@ export async function initEngine() {
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFShadowMap;
-  state.renderer.shadowMap.autoUpdate = true;
+  state.renderer.shadowMap.autoUpdate = false; // on-demand; set needsUpdate when sun re-targets
   state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
   state.renderer.sortObjects = false;

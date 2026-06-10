@@ -8,11 +8,11 @@ const NativeResponse = globalThis.Response;
 
 class UpgradeResponse extends NativeResponse {
   private readonly _upgradeStatus: number | null;
-  readonly webSocket: unknown;
+  override readonly webSocket: WebSocket | null;
 
   constructor(
     body: BodyInit | null,
-    init?: ResponseInit & { webSocket?: unknown },
+    init?: ResponseInit & { webSocket?: WebSocket },
   ) {
     if (init && init.status === 101) {
       super(body, { ...init, status: 200 });
