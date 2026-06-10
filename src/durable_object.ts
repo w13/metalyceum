@@ -883,9 +883,8 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
     const isWebSocket =
       request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
     if (url.pathname === '/ws' && isWebSocket) {
-      const maxPlayers = Number(this.env.MAX_PLAYERS) > 0
-        ? Number(this.env.MAX_PLAYERS)
-        : MAX_PLAYERS;
+      const envCap = Number(this.env.MAX_PLAYERS);
+      const maxPlayers = envCap > 0 ? envCap : MAX_PLAYERS;
       if (this.sessions.size >= maxPlayers) {
         return new Response('Room full', { status: 429 });
       }

@@ -14,3 +14,9 @@ ADMIN_INIT_TOKEN=change-me-to-a-random-string
 # Required to authenticate the in-game editor with the server.
 # CHANGE THIS to a strong random string before deploying to production.
 WORLD_EDITOR_TOKEN=change-me-to-another-random-string
+
+# ─── Player cap override (local load testing only) ─────────────────────────
+# Raises MAX_PLAYERS (default 10) so the bot harness can connect many players:
+#   node scripts/bot-harness.mjs --bots 50 --hz 12
+# Do NOT set this in production.
+MAX_PLAYERS=250

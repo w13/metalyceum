@@ -20,6 +20,12 @@ const URL_BASE = args.url ?? 'ws://127.0.0.1:8788/ws';
 const AREA = 60;
 const SPEED = 4; // units/sec, walking pace
 
+// Unique per-run suffix: reconnecting with a username whose previous session
+// is still inside the server's 15s disconnect-grace window (DISCONNECT_GRACE_MS)
+// triggers session *revival*, not a fresh join — dead sessions also still count
+// toward the player cap. Unique names make back-to-back runs safe.
+const RUN_ID = Date.now().toString(36).slice(-4);
+
 // Heartbeat interval matching the client (15 s). Must send or the server evicts
 // the session after STALE_SESSION_MS (45 s).
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -43,17 +49,23 @@ function stepToward(bot, dist) {
 }
 
 function startBot(i) {
-  const ws = new WebSocket(`${URL_BASE}?username=bot${i}`);
+  const ws = new WebSocket(`${URL_BASE}?username=bot${i}-${RUN_ID}`);
   const bot = { x: (Math.random() - 0.5) * AREA, z: (Math.random() - 0.5) * AREA + 30, tx: 0, tz: 0 };
   pickWaypoint(bot);
 
   let moveInterval = null;
   let heartbeatInterval = null;
+  let opened = false; // counter integrity: a rejected handshake fires error (and
+  // possibly close) without open — only decrement connected if we incremented.
 
   ws.addEventListener('open', () => {
+    opened = true;
     connected++;
     ws.send(JSON.stringify({ type: 'join', x: bot.x, y: 0, z: bot.z, room: -1 }));
 
+    // isMoving is always true and bots never idle — deliberate worst-case load
+    // (every bot dirty on every tick, maximal relevance churn). Real traffic
+    // idles often; treat these numbers as a ceiling, not typical.
     moveInterval = setInterval(() => {
       if (ws.readyState !== WebSocket.OPEN) return clearInterval(moveInterval);
       stepToward(bot, SPEED / SEND_HZ);
@@ -80,7 +92,10 @@ function startBot(i) {
   });
 
   ws.addEventListener('close', () => {
-    connected--;
+    if (opened) {
+      connected--;
+      opened = false;
+    }
     if (moveInterval) clearInterval(moveInterval);
     if (heartbeatInterval) clearInterval(heartbeatInterval);
   });
