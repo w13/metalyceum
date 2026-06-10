@@ -448,7 +448,9 @@ export function updateDebugPanel(now) {
     const p = state.framePerf;
     state.debugFrameTimingsEl.textContent =
       `mov ${p.movement?.toFixed(2) ?? '—'} · chr ${p.characters?.toFixed(2) ?? '—'} · ` +
-      `fade ${p.fade?.toFixed(2) ?? '—'} · gpu ${p.render?.toFixed(2) ?? '—'}`;
+      // 'draw' is CPU draw-call submit time (renderer.render), not GPU time —
+      // the GPU executes asynchronously and isn't measurable from here.
+      `fade ${p.fade?.toFixed(2) ?? '—'} · draw ${p.render?.toFixed(2) ?? '—'}`;
   }
   if (state.renderer && state.debugRendererInfoEl) {
     const i = state.renderer.info;

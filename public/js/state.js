@@ -25,6 +25,10 @@ export const state = {
   sceneSunLight: null,
   sceneIndoorLight: null,
   lastTime: 0,
+  // Debug-panel frame profiling (Task 0.1): sampling runs only while the
+  // panel is open. framePerf holds EMA ms per subsystem; see engine.animate().
+  framePerfEnabled: false,
+  framePerf: null,
 
   // --- Scenery & Assets Cache ---
   sharedScenery: {},

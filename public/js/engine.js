@@ -184,6 +184,10 @@ export function animate() {
   const dt = Math.min((_now - state.lastTime) / 1000, 0.1);
   state.lastTime = _now;
   state.frameCount = (state.frameCount || 0) + 1;
+  // Frame profiling (debug panel open only). Buckets are deliberately
+  // non-exhaustive — camera, devtools, elevator sync, and minimap are
+  // unmeasured, so the four values don't sum to frame time. EMA (0.9/0.1)
+  // warms up from 0 over ~1s after the panel opens.
   const _perf = state.framePerfEnabled ? (state.framePerf ??= {}) : null;
   let _t0 = 0;
 
