@@ -10,8 +10,7 @@ import { createFloor } from './utils.js';
 import { registerStaticScenery } from './visibility.js';
 
 export function buildCaveAndUndergroundCity() {
-  const cx = 120,
-    cz = 80;
+  const [cx, cz] = LANDMARK_REGISTRY.undergroundCity.approxCenter;
   const baseY = getTerrainHeight(cx, cz);
   const group = new THREE.Group();
 
@@ -522,6 +521,5 @@ export function buildCaveAndUndergroundCity() {
 
   state.scene.add(group);
   state.landmarkGroups.set('undergroundCity', group);
-  const [cx, cz] = LANDMARK_REGISTRY.undergroundCity.approxCenter;
   registerStaticScenery(group, { kind: 'outdoor', distance: 110, center: { x: cx, z: cz } });
 }

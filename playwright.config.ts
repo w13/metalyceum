@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
+// E2E_BASE_URL overrides the local dev-server port (e.g. when 8787 is already
+// occupied). Remote URLs are not supported: webServer always starts a local
+// wrangler dev instance regardless of this override.
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8787';
 const devPort = baseURL.match(/:(\d+)/)?.[1] ?? '8787';
 
