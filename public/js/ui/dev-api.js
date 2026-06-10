@@ -10,11 +10,18 @@ export function exposeLLMApi(ctx) {
     teleport: (x, z) => devTeleport(x, z),
     teleportTo: (name) => {
       const def = LANDMARK_REGISTRY[name];
-      if (!def) { console.warn(`[metalyceumDev] Unknown landmark: "${name}". Try: ${Object.keys(LANDMARK_REGISTRY).join(', ')}`); return; }
+      if (!def) {
+        console.warn(`[metalyceumDev] Unknown landmark: "${name}". Try: ${Object.keys(LANDMARK_REGISTRY).join(', ')}`);
+        return;
+      }
+      // Venue groups sit at origin with placement baked into vertices (and lazy
+      // venues have no group before load) — use the registry's world center plus
+      // any editor-applied group offset.
+      const [baseX, baseZ] = def.approxCenter;
       const lmGroup = state.landmarkGroups.get(name);
       const offX = lmGroup ? lmGroup.position.x : 0;
       const offZ = lmGroup ? lmGroup.position.z : 0;
-      devTeleport(offX, offZ);
+      devTeleport(baseX + offX, baseZ + offZ);
     },
     getState: () => devState,
     getPosition: () => state.localPlayer ? { x: state.localPlayer.x, y: state.localPlayer.y, z: state.localPlayer.z } : null,

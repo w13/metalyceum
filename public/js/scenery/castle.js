@@ -47,6 +47,11 @@ function addMesh(
   return mesh;
 }
 
+// Stable module-level reference used by addMeshLocal inside buildCastle so that
+// the local `const addMesh = addMeshLocal` alias (which enables batching) doesn't
+// create a TDZ error or infinite recursion via the closure.
+const _addMeshBase = addMesh;
+
 function addBox(parent, material, w, h, d, x, y, z, options = {}) {
   return addMesh(
     parent,
@@ -431,7 +436,9 @@ export function buildCastle() {
       mergedGeometriesByMaterial.get(material).push(geometry);
       return null;
     }
-    return addMesh(parent, geometry, material, x, y, z, options);
+    // Use module-level _addMeshBase to avoid infinite recursion through the
+    // local `const addMesh = addMeshLocal` alias defined later in this function.
+    return _addMeshBase(parent, geometry, material, x, y, z, options);
   }
 
   function addBoxLocal(parent, material, w, h, d, x, y, z, options = {}) {
