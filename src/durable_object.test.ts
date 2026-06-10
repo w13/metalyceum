@@ -639,6 +639,44 @@ describe('MetalyceumWorld Durable Object', () => {
       expect(batches[0].players[0].x).toBe(1);
     });
 
+    it('re-arms only the slow prune alarm when nothing is dirty after a flush', async () => {
+      // Setup: two connected players via fetch() so ctx.getWebSockets() is
+      // populated — required for the alarm-reschedule path to stay alive.
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=Alice', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=Bob', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      const [aliceWs, bobWs] = ctx.getWebSockets() as any[];
+      world.webSocketMessage(
+        aliceWs,
+        JSON.stringify({ type: 'join', x: 0, y: 0, z: 0, room: -1 }),
+      );
+      world.webSocketMessage(
+        bobWs,
+        JSON.stringify({ type: 'join', x: 2, y: 0, z: 2, room: -1 }),
+      );
+
+      // 1. Alice moves — fast flush alarm must be armed (< 1 s away)
+      world.webSocketMessage(
+        aliceWs,
+        JSON.stringify({ type: 'move', x: 1, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // 2. Alarm fires — dirty set is flushed, no further moves submitted
+      await world.alarm();
+
+      // 3. The rescheduled alarm must be the slow prune cadence, NOT another
+      //    83ms tick — idle worlds should hibernate rather than spin at 12 Hz.
+      expect(ctx.getAlarmTimestamp()).toBeGreaterThan(Date.now() + 1000);
+    });
+
     it('isolates movement logs/batches between far-apart players', async () => {
       // Alice joins at origin, Bob joins very far away
       world.webSocketMessage(

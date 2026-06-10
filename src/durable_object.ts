@@ -1264,15 +1264,18 @@ export class MetalyceumWorld extends DurableObject {
   }
 
   /**
-   * Alarm handler: periodically prune stale sessions even when players are
-   * idle and no WebSocket messages are arriving.  Reschedules itself as long
-   * as at least one session is open.
+   * Single DO alarm serving two roles: flushes dirty movement batches
+   * (~12 Hz, armed on demand by scheduleMoveFlush) and prunes stale
+   * sessions on a 15 s cadence.  Re-arms only the slow prune alarm while
+   * sockets remain, so idle worlds hibernate instead of ticking at 12 Hz.
    */
   async alarm(): Promise<void> {
     this.rebuildSessionsIfNeeded(); // sessions may be empty after hibernation
     const now = Date.now();
     this.moveFlushScheduled = false;
 
+    // dirtyPlayerIds is in-memory: a flush armed before hibernation wakes to an
+    // empty set and no-ops — the dropped frame self-heals on the next move tick.
     if (this.dirtyPlayerIds.size > 0) this.flushMovementBatch();
 
     if (now - this.lastPruneAt >= MetalyceumWorld.PRUNE_INTERVAL_MS) {
