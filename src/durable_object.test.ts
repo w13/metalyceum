@@ -595,6 +595,50 @@ describe('MetalyceumWorld Durable Object', () => {
       expect(batches[0].players[0].x).toBe(2);
     });
 
+    it('a join does not clobber a pending movement-flush alarm', async () => {
+      // Alice and Bob join the lobby near each other
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'join', x: 0, y: 0, z: 0, room: -1 }),
+      );
+      world.webSocketMessage(
+        ws2 as any,
+        JSON.stringify({ type: 'join', x: 2, y: 0, z: 2, room: -1 }),
+      );
+
+      // 1. Alice moves — fast flush alarm must be armed (< 1 s away)
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'move', x: 1, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // 2. Carol connects and sends a join message
+      //    fetch() calls ctx.acceptWebSocket(server), making the server end
+      //    available via ctx.getWebSockets()[0].
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=Carol', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      const carolWs = ctx.getWebSockets()[0] as any;
+      world.webSocketMessage(
+        carolWs,
+        JSON.stringify({ type: 'join', x: 1, y: 0, z: 1, room: -1 }),
+      );
+
+      // 3. The alarm must STILL be near-term — the join must NOT have pushed it
+      //    out to STALE_SESSION_MS (~45 s).
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // 4. Alarm fires — Bob receives Alice's move in a state_batch
+      ws2.sent.length = 0;
+      await world.alarm();
+      const batches = ws2.sent.filter((m) => m.type === 'state_batch');
+      expect(batches).toHaveLength(1);
+      expect(batches[0].players[0].x).toBe(1);
+    });
+
     it('isolates movement logs/batches between far-apart players', async () => {
       // Alice joins at origin, Bob joins very far away
       world.webSocketMessage(

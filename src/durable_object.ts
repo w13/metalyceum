@@ -1100,8 +1100,12 @@ export class MetalyceumWorld extends DurableObject {
       );
       logEvent('player_joined', { id: session.id, username: session.username });
       this.serializeSession(ws, session); // persist so it survives hibernation
-      // Ensure the prune alarm is scheduled while sessions exist.
-      void this.ctx.storage.setAlarm(Date.now() + STALE_SESSION_MS);
+      // Ensure the prune alarm is scheduled while sessions exist — but never
+      // clobber a pending movement-flush alarm (a DO has only one alarm slot;
+      // alarm() re-arms the prune schedule itself after each flush).
+      if (!this.moveFlushScheduled) {
+        void this.ctx.storage.setAlarm(Date.now() + STALE_SESSION_MS);
+      }
     },
 
     move: (ws, msg, session) => {
