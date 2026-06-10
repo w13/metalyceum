@@ -369,7 +369,6 @@ describe('MetalyceumWorld Durable Object', () => {
   describe('WebSocket Client Lifecycles', () => {
     it('handles first-time normal websocket upgrades', async () => {
       const world = await createWorld();
-      const ws = new MockWebSocket();
 
       const req = new Request(
         'http://metalyceum.test/ws?username=Alice&color=%23ff0000',
@@ -379,9 +378,14 @@ describe('MetalyceumWorld Durable Object', () => {
       );
       const response = await world.fetch(req);
 
+      // The server end of the WebSocketPair (pair[1]) is what the DO stores in
+      // this.sessions after calling ctx.acceptWebSocket(server).  Retrieve it
+      // through the mock ctx so we're asserting on the correct socket handle.
+      const serverWs = ctx.getWebSockets()[0];
+
       expect(response.status).toBe(101);
-      expect(world.sessions.has(ws as any)).toBe(true);
-      const session = world.sessions.get(ws as any);
+      expect(world.sessions.has(serverWs as any)).toBe(true);
+      const session = world.sessions.get(serverWs as any);
       expect(session?.username).toBe('Alice');
       expect(session?.color).toBe('#ff0000');
     });
