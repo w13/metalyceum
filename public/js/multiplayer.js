@@ -80,7 +80,10 @@ const NETWORK_PROFILE = (() => {
     const stored = localStorage.getItem('metalyceum:netProfile');
     if (stored && NETWORK_PROFILES[stored]) return stored;
   } catch (e) {}
-  return 'normal';
+  // Default lowered from 'normal' (20 Hz): remote players are interpolated,
+  // so 12 Hz reads the same while cutting bandwidth and DO active time; the
+  // server movement-flush tick (~12 Hz) matches this rate.
+  return 'efficient';
 })();
 
 const ACTIVE_NETWORK_PROFILE =
