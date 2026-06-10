@@ -115,6 +115,8 @@ export type Bindings = {
   };
   WORLD_EDITOR_TOKEN?: string;
   ADMIN_INIT_TOKEN?: string; // bootstrap: POST /api/v1/auth/init with this token creates first owner
+  /** Optional override for MAX_PLAYERS (local load testing). Parsed as int. */
+  MAX_PLAYERS?: string;
 };
 
 // For AdminDO — same shape but clearer intent

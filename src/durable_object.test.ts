@@ -405,6 +405,34 @@ describe('MetalyceumWorld Durable Object', () => {
       await expect(response.text()).resolves.toBe('Room full');
     });
 
+    it('respects MAX_PLAYERS env override — 3rd join rejected when MAX_PLAYERS=2', async () => {
+      // Build a world with a custom env that overrides the cap to 2.
+      const customEnv: any = {
+        ADMIN_DO: {} as any,
+        METALYCEUM_WORLD: {} as any,
+        ASSETS: {} as any,
+        MAX_PLAYERS: '2',
+      };
+      const world = new MetalyceumWorld(ctx as any, customEnv);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const wsReq = (name: string) =>
+        new Request(`http://metalyceum.test/ws?username=${name}`, {
+          headers: { Upgrade: 'websocket' },
+        });
+
+      // First two connections must succeed (101).
+      const r1 = await world.fetch(wsReq('bot1'));
+      expect(r1.status).toBe(101);
+      const r2 = await world.fetch(wsReq('bot2'));
+      expect(r2.status).toBe(101);
+
+      // Third must be rejected with 429 Room full.
+      const r3 = await world.fetch(wsReq('bot3'));
+      expect(r3.status).toBe(429);
+      await expect(r3.text()).resolves.toBe('Room full');
+    });
+
     it('processes client join message and initializes data payload', async () => {
       const world = await createWorld();
       const ws = new MockWebSocket();

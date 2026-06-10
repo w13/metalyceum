@@ -102,7 +102,7 @@ function firstCursorRow<T>(cursor: { toArray(): unknown[] }): T | null {
   return (row as T | undefined) ?? null;
 }
 
-export class MetalyceumWorld extends DurableObject {
+export class MetalyceumWorld extends DurableObject<Bindings> {
   sessions: Map<WebSocket, Session> = new Map();
   rooms: RoomEvent[] = [];
   worldAssets: WorldAssetDefinition[] = [];
@@ -883,7 +883,10 @@ export class MetalyceumWorld extends DurableObject {
     const isWebSocket =
       request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
     if (url.pathname === '/ws' && isWebSocket) {
-      if (this.sessions.size >= MAX_PLAYERS) {
+      const maxPlayers = Number(this.env.MAX_PLAYERS) > 0
+        ? Number(this.env.MAX_PLAYERS)
+        : MAX_PLAYERS;
+      if (this.sessions.size >= maxPlayers) {
         return new Response('Room full', { status: 429 });
       }
 
