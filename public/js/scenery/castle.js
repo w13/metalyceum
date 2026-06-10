@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createLandmarkFadeZone } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
 import { getTerrainHeight } from '../physics.js';
@@ -407,6 +408,185 @@ export function buildCastle() {
     roughness: 0.32,
     metalness: 0.55,
   });
+
+  const mergedGeometriesByMaterial = new Map();
+  const wallBattementTransforms = [];
+  const towerCrenellationTransforms = [];
+
+  function addMeshLocal(parent, geometry, material, x, y, z, options = {}) {
+    if (mergedGeometriesByMaterial.has(material) && !options.noMerge) {
+      const rx = options.rx || 0;
+      const ry = options.ry || 0;
+      const rz = options.rz || 0;
+      const sx = options.sx || 1;
+      const sy = options.sy || 1;
+      const sz = options.sz || 1;
+
+      const matrix = new THREE.Matrix4().compose(
+        new THREE.Vector3(x, y, z),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)),
+        new THREE.Vector3(sx, sy, sz)
+      );
+      geometry.applyMatrix4(matrix);
+      mergedGeometriesByMaterial.get(material).push(geometry);
+      return null;
+    }
+    return addMesh(parent, geometry, material, x, y, z, options);
+  }
+
+  function addBoxLocal(parent, material, w, h, d, x, y, z, options = {}) {
+    return addMeshLocal(
+      parent,
+      new THREE.BoxGeometry(w, h, d),
+      material,
+      x,
+      y,
+      z,
+      options,
+    );
+  }
+
+  function addPlaneLocal(parent, material, w, d, x, y, z, options = {}) {
+    return addMeshLocal(parent, new THREE.PlaneGeometry(w, d), material, x, y, z, {
+      rx: FLAT,
+      ...options,
+    });
+  }
+
+  function addFloorSlabLocal(
+    parent,
+    material,
+    w,
+    d,
+    x,
+    y,
+    z,
+    thickness = 0.12 * S,
+    options = {},
+  ) {
+    return addBoxLocal(parent, material, w, thickness, d, x, y + thickness / 2, z, {
+      castShadow: false,
+      ...options,
+    });
+  }
+
+  function addWallBattlements(parent, battMat, start, end, fixed, y, axis = 'x') {
+    const step = 1.4 * S;
+    for (let t = start; t <= end; t += step) {
+      const matrix = new THREE.Matrix4().compose(
+        axis === 'x' ? new THREE.Vector3(t, y, fixed) : new THREE.Vector3(fixed, y, t),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, axis === 'x' ? 0 : Math.PI / 2, 0)),
+        new THREE.Vector3(1, 1, 1)
+      );
+      wallBattementTransforms.push(matrix);
+    }
+    return [];
+  }
+
+  function addTowerCrenellations(parent, battMat, tx, ty, tz, radius) {
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8;
+      const matrix = new THREE.Matrix4().compose(
+        new THREE.Vector3(
+          tx + Math.cos(a) * radius * 0.82,
+          ty,
+          tz + Math.sin(a) * radius * 0.82
+        ),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, a, 0)),
+        new THREE.Vector3(1, 1, 1)
+      );
+      towerCrenellationTransforms.push(matrix);
+    }
+    return [];
+  }
+
+  function addQuoinsLocal(parent, blockMat, cx, cz, width, depth, baseY, height) {
+    const blockW = 0.52 * S;
+    const blockH = 0.52 * S;
+    const blockD = 0.78 * S;
+    const corners = [
+      { x: cx - width / 2, z: cz - depth / 2, sx: -1, sz: -1 },
+      { x: cx + width / 2, z: cz - depth / 2, sx: 1, sz: -1 },
+      { x: cx - width / 2, z: cz + depth / 2, sx: -1, sz: 1 },
+      { x: cx + width / 2, z: cz + depth / 2, sx: 1, sz: 1 },
+    ];
+
+    for (const corner of corners) {
+      for (
+        let y = baseY + blockH / 2;
+        y < baseY + height - blockH / 2;
+        y += blockH * 1.05
+      ) {
+        addBoxLocal(
+          parent,
+          blockMat,
+          blockW,
+          blockH,
+          blockD,
+          corner.x + corner.sx * 0.12 * S,
+          y,
+          corner.z + corner.sz * 0.16 * S,
+        );
+        addBoxLocal(
+          parent,
+          blockMat,
+          blockD,
+          blockH,
+          blockW,
+          corner.x + corner.sx * 0.16 * S,
+          y,
+          corner.z + corner.sz * 0.12 * S,
+        );
+      }
+    }
+  }
+
+  function addArrowSlitsLocal(
+    parent,
+    x,
+    z,
+    baseY,
+    height,
+    count,
+    orientation,
+    material,
+  ) {
+    const step = count > 1 ? height / (count - 1) : 0;
+    for (let i = 0; i < count; i++) {
+      const y = baseY + i * step;
+      if (orientation === 'x') {
+        addBoxLocal(parent, material, 0.1 * S, 0.68 * S, 0.28 * S, x, y, z);
+      } else {
+        addBoxLocal(parent, material, 0.28 * S, 0.68 * S, 0.1 * S, x, y, z);
+      }
+    }
+  }
+
+  const addMesh = addMeshLocal;
+  const addBox = addBoxLocal;
+  const addPlane = addPlaneLocal;
+  const addFloorSlab = addFloorSlabLocal;
+  const addQuoins = addQuoinsLocal;
+  const addArrowSlits = addArrowSlitsLocal;
+
+  const materialsToMerge = [
+    stoneMat,
+    darkStoneMat,
+    lightStoneMat,
+    trimMat,
+    woodMat,
+    darkWoodMat,
+    ironMat,
+    floorMat,
+    borderMat,
+    carpetMat,
+    carpetAccentMat,
+    velvetMat,
+    goldMat,
+  ];
+  for (const mat of materialsToMerge) {
+    mergedGeometriesByMaterial.set(mat, []);
+  }
 
   const gateWallX = CX + OUTER_W / 2;
   const gatehouseX = gateWallX + GATE_PASSAGE_D / 2 - WALL_T / 2;
@@ -1873,6 +2053,46 @@ export function buildCastle() {
   const roomIndex = state.ROOMS.findIndex((room) => room.id === 11);
   if (roomIndex === -1) state.ROOMS.push(keepRoom);
   else state.ROOMS[roomIndex] = keepRoom;
+
+  // Flush all merged geometries
+  for (const [material, geoms] of mergedGeometriesByMaterial.entries()) {
+    if (geoms.length > 0) {
+      const mergedGeom = mergeGeometries(geoms);
+      const mesh = new THREE.Mesh(mergedGeom, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      geoms.forEach((g) => g.dispose());
+    }
+  }
+
+  // Wall Battlements InstancedMesh
+  if (wallBattementTransforms.length > 0) {
+    const wallBattGeo = new THREE.BoxGeometry(0.62 * S, 0.72 * S, 0.72 * S);
+    const wallBattInst = new THREE.InstancedMesh(wallBattGeo, battMat, wallBattementTransforms.length);
+    wallBattInst.castShadow = true;
+    wallBattInst.receiveShadow = true;
+    for (let i = 0; i < wallBattementTransforms.length; i++) {
+      wallBattInst.setMatrixAt(i, wallBattementTransforms[i]);
+    }
+    wallBattInst.instanceMatrix.needsUpdate = true;
+    group.add(wallBattInst);
+    fadeables.push(wallBattInst);
+  }
+
+  // Tower Crenellations InstancedMesh
+  if (towerCrenellationTransforms.length > 0) {
+    const towerCrenGeo = new THREE.BoxGeometry(0.46 * S, 0.7 * S, 0.46 * S);
+    const towerCrenInst = new THREE.InstancedMesh(towerCrenGeo, battMat, towerCrenellationTransforms.length);
+    towerCrenInst.castShadow = true;
+    towerCrenInst.receiveShadow = true;
+    for (let i = 0; i < towerCrenellationTransforms.length; i++) {
+      towerCrenInst.setMatrixAt(i, towerCrenellationTransforms[i]);
+    }
+    towerCrenInst.instanceMatrix.needsUpdate = true;
+    group.add(towerCrenInst);
+    fadeables.push(towerCrenInst);
+  }
 
   pushRoof(fadeables);
 

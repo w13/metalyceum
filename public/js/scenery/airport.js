@@ -1,5 +1,6 @@
 // Airport — runway, terminal, control tower, hangar, helicopters, and private jet
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createLandmarkFadeZone } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
 import { getTerrainHeight } from '../physics.js';
@@ -67,6 +68,7 @@ export function buildAirport() {
   const runwayW = 12,
     runwayL = 100;
   const runway = createFloor(runwayW, runwayL, concMat, ax, baseY + 0.04, az);
+  runway.userData.noMerge = true;
   g.add(runway);
 
   for (let i = -45; i <= 45; i += 10) {
@@ -147,6 +149,7 @@ export function buildAirport() {
   troof.position.set(tX, baseY + 6.125, tZ);
   troof.castShadow = true;
   troof.receiveShadow = true;
+  troof.userData.noMerge = true;
   g.add(troof);
 
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(10, 0.15, 2.5), roofMat);
@@ -603,6 +606,113 @@ export function buildAirport() {
       post.receiveShadow = true;
       g.add(post);
     }
+  }
+
+  // ── Geometry Merging & Instancing Post-Process ──
+  const mergedGeometriesByMaterial = new Map();
+  const materialsToMerge = [
+    concMat,
+    markingMat,
+    terminalMat,
+    glassMat,
+    roofMat,
+    hangarMat,
+    jetMat,
+    accentMat,
+    darkMat,
+    eqMat,
+    drumMat,
+  ];
+  for (const mat of materialsToMerge) {
+    mergedGeometriesByMaterial.set(mat, []);
+  }
+
+  const runwayLightMatrices = [];
+  const redLightMatrices = [];
+  const fencePostMatrices = [];
+  const meshesToRemove = [];
+
+  g.updateMatrixWorld(true);
+
+  g.traverse((child) => {
+    if (child.isMesh) {
+      if (child.userData.noMerge) {
+        return;
+      }
+      
+      // Check for runway lights
+      if (child.material === lightMat && child.geometry.type === 'CylinderGeometry') {
+        runwayLightMatrices.push(child.matrixWorld.clone());
+        meshesToRemove.push(child);
+      }
+      // Check for red lights
+      else if (child.material === redLightMat && child.geometry.type === 'CylinderGeometry') {
+        redLightMatrices.push(child.matrixWorld.clone());
+        meshesToRemove.push(child);
+      }
+      // Check for fence posts
+      else if (child.material === fenceMat && child.geometry.type === 'CylinderGeometry') {
+        fencePostMatrices.push(child.matrixWorld.clone());
+        meshesToRemove.push(child);
+      }
+      // Check for other static mergeable meshes
+      else if (mergedGeometriesByMaterial.has(child.material)) {
+        const geom = child.geometry.clone();
+        geom.applyMatrix4(child.matrixWorld);
+        mergedGeometriesByMaterial.get(child.material).push(geom);
+        meshesToRemove.push(child);
+      }
+    }
+  });
+
+  // Remove original meshes from their parent groups
+  for (const mesh of meshesToRemove) {
+    mesh.parent.remove(mesh);
+  }
+
+  // Create and add merged meshes to g
+  for (const [material, geoms] of mergedGeometriesByMaterial.entries()) {
+    if (geoms.length > 0) {
+      const mergedGeom = mergeGeometries(geoms);
+      const mesh = new THREE.Mesh(mergedGeom, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
+      geoms.forEach((geom) => geom.dispose());
+    }
+  }
+
+  // Create and add InstancedMeshes to g
+  if (runwayLightMatrices.length > 0) {
+    const lightGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.15, 6);
+    const inst = new THREE.InstancedMesh(lightGeo, lightMat, runwayLightMatrices.length);
+    for (let i = 0; i < runwayLightMatrices.length; i++) {
+      inst.setMatrixAt(i, runwayLightMatrices[i]);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    g.add(inst);
+  }
+
+  if (redLightMatrices.length > 0) {
+    const redLightGeo = new THREE.CylinderGeometry(0.12, 0.18, 0.18, 6);
+    const inst = new THREE.InstancedMesh(redLightGeo, redLightMat, redLightMatrices.length);
+    for (let i = 0; i < redLightMatrices.length; i++) {
+      inst.setMatrixAt(i, redLightMatrices[i]);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    g.add(inst);
+  }
+
+  if (fencePostMatrices.length > 0) {
+    const postGeo = new THREE.CylinderGeometry(0.04, 0.06, 0.8, 4);
+    const inst = new THREE.InstancedMesh(postGeo, fenceMat, fencePostMatrices.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    for (let i = 0; i < fencePostMatrices.length; i++) {
+      inst.setMatrixAt(i, fencePostMatrices[i]);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    g.add(inst);
   }
 
   state.scene.add(g);

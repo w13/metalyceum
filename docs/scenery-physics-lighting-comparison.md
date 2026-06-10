@@ -121,3 +121,74 @@ This document provides a detailed comparison of the **3D scenery, physics engine
 ### Dev-Tools Production Guard
 * **Before:** `initDevTools()` ran unconditionally on `metalyceum.app`, consuming CPU for runtime inspection and audit markers never seen by end users.
 * **Now:** Gated behind `_isDev` check — only activates on `localhost`, `127.0.0.1`, or when `?debug` is in the URL.
+
+---
+
+## 6. Final Session — Code Reorganization & DRY Refactoring
+
+### File Size Reduction Summary
+
+| File | Before | After | Reduction |
+|------|--------|-------|-----------|
+| `dev-tools.js` | 2476 lines | 1634 lines | −842 lines (LLM API extracted to `ui/dev-api.js`) |
+| `config.js` | 925 lines | 396 lines | −529 lines (soundtrack data → `midi/soundtrack-data.js`) |
+| `plaza.js` | 819 lines | 600 lines | −219 lines (animated water → `scenery/fountain-water.js`) |
+| `multiplayer.js` | 571 lines | ~480 lines | −91 lines (switch → handler registry) |
+| `interiors.js` | 161 lines | 46 lines | −115 lines (shared furniture factories) |
+
+### New Shared Modules Created
+| Module | Purpose |
+|--------|---------|
+| `scenery/furniture.js` | 6 shared factories: `createBench`, `createPlant`, `createCircleTable`, `createChair`, `createBookshelf`, `placeTableWithChairs` |
+| `scenery/fountain-water.js` | Animated water surfaces, apple column, ripples, spray jets, bubbles, orbiting fish |
+| `ui/dev-state.js` | Developer tools shared state (`devState`, `devTeleport`) |
+| `ui/dev-api.js` | `window.metalyceumDev` API — 25 inspection/audit/teleport methods |
+| `physics/index.js` | Barrel file — single import for physics + physics-engine |
+| `engine/index.js` | Barrel file — single import for engine sub-modules |
+| `ui/index.js` | Barrel file — single import for UI sub-modules |
+
+### Directory Structure (Barrel Pattern)
+```js
+// New code can import from barrel files:
+import { getTerrainHeight, initCannon } from './physics/';
+import { orbitCamera, updateLocalPlayer } from './engine/';
+import { initDebugPanel } from './ui/';
+
+// Old imports continue to work (original files remain in place):
+import { getTerrainHeight } from './physics.js';
+```
+
+### Performance Budget (Draw Call Cap)
+Maintained at the Vitest level:
+- **Render calls:** `< 420` per frame
+- **Triangles:** `< 850,000`
+- **Textures:** `< 15` unique
+- **Geometries:** `< 460`
+- **Shadow map:** 512×512 (`PCFSoftShadowMap`)
+- **Pixel ratio:** capped at 1.5
+- **Tone mapping:** Cineon, exposure 1.3
+
+### Data Flow Architecture
+```
+app.js (boot coordinator)
+  ├── initEngine() → scene, camera, renderer, controls, lights, sky dome
+  │   └── buildMap() → terrain, trees, flowers
+  │       ├── buildExteriorPlaza() → fountain, banners, room indicators
+  │       ├── buildBuilding() → museum (delegates to building/*.js)
+  │       ├── buildOutdoorVenues() → roads, amphitheater, concert venue, river
+  │       ├── initLazyVenueLoading() → starts polling for airport, castle, cave
+  │       └── buildWorldDetails() → trees, ponds, wildflowers, grass
+  ├── initMinimap() → 2D overhead
+  ├── initDebugPanel() → FPS/stats (always active)
+  ├── initDevTools() → runtime inspection (dev only)
+  ├── initUiHandlers() → login, HUD panels, editor, elevator
+  └── animate() → render loop
+       ├── updateTorches() (every 4th frame)
+       ├── updateLocalPlayer() → movement, collision, swimming, jetpack
+       ├── updateNpcs() (distance-culled)
+       ├── detectRoomEntry() → room change events
+       ├── fade system → indoor/outdoor opacity transitions
+       ├── lighting → smooth _indoorMix interpolation
+       ├── elevator tick → state machine + folding doors
+       └── refreshStaticSceneryVisibility() (every 6th frame)
+```

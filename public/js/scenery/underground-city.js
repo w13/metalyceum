@@ -1,5 +1,6 @@
 // Underground City — cave entrance descending to a subterranean settlement
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createLandmarkFadeZone } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
 import { getTerrainHeight } from '../physics.js';
@@ -41,6 +42,10 @@ export function buildCaveAndUndergroundCity() {
     color: '#d97706',
     emissive: '#d97706',
     emissiveIntensity: 0.12,
+  });
+  const shroomStemMat = new THREE.MeshStandardMaterial({
+    color: '#166534',
+    roughness: 0.9,
   });
 
   const UG_Y = -8;
@@ -170,6 +175,7 @@ export function buildCaveAndUndergroundCity() {
 
   // Ceiling
   const ugCeiling = createFloor(UGW, UGD, ceilingMat, ugX, UG_Y + UGH, ugZ);
+  ugCeiling.userData.noMerge = true;
   group.add(ugCeiling);
   pushRoof(ugCeiling);
 
@@ -386,12 +392,8 @@ export function buildCaveAndUndergroundCity() {
     // Stem
     const stem = new THREE.Mesh(
       new THREE.CylinderGeometry(0.04, 0.06, 0.3, 4),
-      shroomMat.clone(),
+      shroomStemMat,
     );
-    stem.material = new THREE.MeshStandardMaterial({
-      color: '#166534',
-      roughness: 0.9,
-    });
     stem.position.set(mx, UG_Y + 0.15, mz);
     group.add(stem);
     // Cap
@@ -452,6 +454,69 @@ export function buildCaveAndUndergroundCity() {
       durationMinutes: 0,
       updatedAt: 0,
     });
+  }
+
+  // ── Geometry Merging Post-Process ──
+  const mergedGeometriesByMaterial = new Map();
+  const materialsToMerge = [
+    stoneMat,
+    warmStoneMat,
+    floorMat,
+    warmLightMat,
+    dimLightMat,
+    archMat,
+    rampMat,
+    torchLightMat,
+    cobbleMat,
+    buildMat,
+    roofMat,
+    windowMat,
+    doorMat,
+    pillarMat2,
+    monMat,
+    chainMat,
+    stallMat,
+    canvasMat,
+    shroomMat,
+    shroomStemMat,
+  ];
+  for (const mat of materialsToMerge) {
+    mergedGeometriesByMaterial.set(mat, []);
+  }
+
+  const meshesToRemove = [];
+  group.updateMatrixWorld(true);
+
+  group.traverse((child) => {
+    if (child.isMesh) {
+      if (child.userData.noMerge) {
+        return;
+      }
+      
+      if (mergedGeometriesByMaterial.has(child.material)) {
+        const geom = child.geometry.clone();
+        geom.applyMatrix4(child.matrixWorld);
+        mergedGeometriesByMaterial.get(child.material).push(geom);
+        meshesToRemove.push(child);
+      }
+    }
+  });
+
+  // Remove original meshes
+  for (const mesh of meshesToRemove) {
+    mesh.parent.remove(mesh);
+  }
+
+  // Create and add merged meshes to group
+  for (const [material, geoms] of mergedGeometriesByMaterial.entries()) {
+    if (geoms.length > 0) {
+      const mergedGeom = mergeGeometries(geoms);
+      const mesh = new THREE.Mesh(mergedGeom, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      geoms.forEach((geom) => geom.dispose());
+    }
   }
 
   state.scene.add(group);
