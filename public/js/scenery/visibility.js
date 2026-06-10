@@ -16,7 +16,7 @@ export function registerStaticScenery(object3d, options = {}) {
   // Venue root groups often sit at origin with placement baked into child
   // vertices — pass options.center {x, z} so culling measures the real spot.
   const center = options.center
-    ? new THREE.Vector3(options.center.x, options.center.y ?? 0, options.center.z)
+    ? new THREE.Vector3(options.center.x, 0, options.center.z)
     : null;
   state.STATIC_SCENERY.push({
     object3d,

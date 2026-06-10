@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createLandmarkFadeZone } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
+import { LANDMARK_REGISTRY } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
 import { state } from '../state.js';
 import { registerStaticScenery } from './visibility.js';
@@ -2105,5 +2106,8 @@ export function buildCastle() {
 
   state.scene.add(group);
   state.landmarkGroups.set('castle', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 140, center: { x: 130, z: -80 } });
+  const [cx, cz] = LANDMARK_REGISTRY.castle.approxCenter;
+  // Cull distance ≈ venue radius + approach margin; generic outdoor scenery
+  // culls at 88u, so venue pop at 110-170u stays consistent with the world.
+  registerStaticScenery(group, { kind: 'outdoor', distance: 140, center: { x: cx, z: cz } });
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FLAT, HALF_PI } from '../math.js';
+import { LANDMARK_REGISTRY } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
 import { state } from '../state.js';
 import { registerStaticScenery } from './visibility.js';
@@ -289,5 +290,6 @@ export function buildAmphitheater() {
 
   state.scene.add(group);
   state.landmarkGroups.set('amphitheater', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 120, center: { x: 65, z: 150 } });
+  const [cx, cz] = LANDMARK_REGISTRY.amphitheater.approxCenter;
+  registerStaticScenery(group, { kind: 'outdoor', distance: 120, center: { x: cx, z: cz } });
 }

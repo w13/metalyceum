@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { createLandmarkFadeZone, makeFadeMaterial } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
+import { LANDMARK_REGISTRY } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
 import { state } from '../state.js';
 import {
@@ -582,5 +583,6 @@ export function buildConcertVenue() {
 
   state.scene.add(group);
   state.landmarkGroups.set('concertVenue', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 120, center: { x: -85, z: 140 } });
+  const [cx, cz] = LANDMARK_REGISTRY.concertVenue.approxCenter;
+  registerStaticScenery(group, { kind: 'outdoor', distance: 120, center: { x: cx, z: cz } });
 }
