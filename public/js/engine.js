@@ -615,9 +615,11 @@ export async function initEngine() {
   state.scene.add(state.skyDome);
 
   const _loadingText = document.querySelector('#loading-screen p');
+  const _buildStart = performance.now();
   await buildMap((msg) => {
     if (_loadingText) _loadingText.textContent = msg;
   });
+  console.log(`[engine] buildMap took ${(performance.now() - _buildStart).toFixed(0)}ms`);
   // Pre-compile all shaders before the first render frame to avoid compile-stutter on scene entry.
   state.renderer.compile(state.scene, state.camera);
   // With shadowMap.autoUpdate=false the first shadow render must be explicit —
