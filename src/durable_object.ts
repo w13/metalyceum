@@ -892,7 +892,10 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
       const pair = new WebSocketPair();
       const client = pair[0];
       const server = pair[1];
-      this.ctx.acceptWebSocket(server); // hibernation API — DO sleeps between messages
+      // NOTE: acceptWebSocket(server) is called exactly once per request — either
+      // inside the grace-revival branch or at the normal first-connect path below.
+      // Calling it here unconditionally and then again inside the revival branch
+      // caused "already accepted" errors on grace-period reconnects.
 
       const username =
         sanitizeText(url.searchParams.get('username'), MAX_USERNAME_LEN) ||
@@ -916,9 +919,20 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
             oldSession.lastSeenAt = Date.now();
             oldSession.source = source;
 
+            // Precondition: oldWs already closed client-side (revival only
+            // runs for disconnectedAt sessions, set by closeHandler), so
+            // workerd has evicted it from getWebSockets() — the alarm and
+            // capacity logic count real sockets. close() is a defensive
+            // no-op on an already-closed socket; it protects this invariant
+            // if a future change reaches revival with a live oldWs.
+            try {
+              oldWs.close(1000, 'session revived on a new connection');
+            } catch {
+              // already closed — expected
+            }
             this.sessions.delete(oldWs);
             this.sessions.set(server, oldSession);
-            this.ctx.acceptWebSocket(server); // hibernation API
+            this.ctx.acceptWebSocket(server); // hibernation API — accept only the NEW socket, once
             this.serializeSession(server, oldSession);
 
             // Re-init with existing player data — no broadcast of "join"
@@ -950,6 +964,7 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
       }
 
       // Normal first-time connection — no prior session to revive
+      this.ctx.acceptWebSocket(server); // hibernation API — DO sleeps between messages
       const id = crypto.randomUUID();
       const session: Session = {
         id,

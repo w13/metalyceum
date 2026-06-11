@@ -2,21 +2,26 @@ import { expect, test } from '@playwright/test';
 
 // Live-app render budget. The vitest browser test builds a near-empty scene,
 // so this e2e is the real enforcement point (Phase 0 plan, item 0.0b).
-// TODO(ratchet): budgets are measured+25% as of 2026-06-10 (re-measured after
-// fixing a SyntaxError that made the underground city silently fail to load —
-// earlier numbers under-counted geometries/textures). The aspirational budget
-// is <420 calls; tighten these as the base-world draw-call reduction task
-// lands (plaza ~650 calls are base geometry, not venues).
+// TODO(ratchet): budgets are measured+15% as of 2026-06-11, re-measured after
+// the flower-cluster merge (perf(scenery): merge flower-cluster soil/edging,
+// instance stems & blooms) which dropped spawn 685->653 and plazaFinal ~592->597
+// in the proper-culling e2e probe. Measured calls this run:
+//   spawn=653 castle=69 airport=781 undergroundCity=403 plazaFinal=597.
+// The aspirational budget is <420 calls; remaining plaza/spawn draw calls are
+// base-world geometry (animated fountain water, sprite-bearing room indicators,
+// animated banners, per-item-culled bushes/trees) that cannot be merged without
+// breaking animation/interaction/culling. Tighten further only if a safe merge
+// target is found.
 // Note: geometries/textures are cumulative scene memory, and all lazy venues
 // are pre-loaded before probing, so those columns are near-global; only
 // calls/triangles meaningfully vary per probe. spawn is sampled before the
 // lazy venues load, hence its lower geometry budget.
 const BUDGETS = {
-  spawn:           { calls: 860,    triangles: 196930, geometries: 620,  textures: 50 },
-  castle:          { calls: 90,     triangles: 130460, geometries: 1010, textures: 50 },
-  airport:         { calls: 1280,   triangles: 184660, geometries: 1010, textures: 50 },
-  undergroundCity: { calls: 490,    triangles: 155280, geometries: 1010, textures: 50 },
-  plazaFinal:      { calls: 740,    triangles: 174670, geometries: 1010, textures: 50 },
+  spawn:           { calls: 752,    triangles: 184600, geometries: 560,  textures: 45 },
+  castle:          { calls: 80,     triangles: 119330, geometries: 930,  textures: 45 },
+  airport:         { calls: 900,    triangles: 163240, geometries: 930,  textures: 45 },
+  undergroundCity: { calls: 464,    triangles: 144550, geometries: 930,  textures: 45 },
+  plazaFinal:      { calls: 687,    triangles: 165830, geometries: 930,  textures: 45 },
 };
 
 // Descriptor table for the five probe points.
