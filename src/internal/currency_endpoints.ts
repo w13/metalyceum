@@ -8,6 +8,9 @@ export const INTERNAL_CURRENCY_PATHS = {
   createTrade: '/internal/currency/create-trade',  // POST { aId, bId, aAmount, bAmount } → { tradeId }
   confirmTrade: '/internal/currency/confirm-trade', // POST { tradeId, playerId } → { status }
   cancelTrade: '/internal/currency/cancel-trade',   // POST { tradeId } → { status }
+  // updateTrade: set a participant's offer while pending; resets BOTH confirms to 0
+  // (anti-scam: changing an offer invalidates prior confirmations — RuneScape rule).
+  updateTrade: '/internal/currency/update-trade',   // POST { tradeId, playerId, amount } → { tradeId, amount }
   history: '/internal/currency/history',      // GET { playerId, limit } → { entries[] }
 } as const;
 
