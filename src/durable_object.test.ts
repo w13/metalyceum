@@ -295,6 +295,14 @@ function createMockCtx() {
     }),
     getWebSockets: vi.fn(() => websockets),
     acceptWebSocket: vi.fn((ws: any) => {
+      // Faithfully replicate workerd behaviour: re-accepting an already-accepted
+      // socket is illegal and throws. This guards against the grace-period
+      // double-accept regression (see: fix(server) commit).
+      if (websockets.includes(ws)) {
+        throw new Error(
+          'acceptWebSocket(): WebSocket already accepted (already accepted)',
+        );
+      }
       websockets.push(ws);
     }),
     // Helper state
@@ -499,6 +507,70 @@ describe('MetalyceumWorld Durable Object', () => {
       const newServerWs = ctx.getWebSockets()[1] as any;
       expect(world.sessions.has(newServerWs)).toBe(true);
       expect(world.sessions.get(newServerWs)?.disconnectedAt).toBeNull();
+    });
+
+    it('does NOT double-accept the new socket during grace-period revival', async () => {
+      // Regression test: the revival path previously called acceptWebSocket(server)
+      // unconditionally at the top of the /ws handler AND again inside the revival
+      // branch, causing workerd to throw "already accepted" errors.
+      //
+      // Sequence: Alice connects → joins → disconnects (grace starts) →
+      //           Alice reconnects with same username within grace window.
+      //
+      // The mock now throws on double-accept (matching workerd behaviour), so
+      // this test would throw/fail without the fix.
+      const world = await createWorld();
+
+      // 1. Initial connect + join
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=GraceTest', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      const firstServerWs = ctx.getWebSockets()[0] as any;
+      world.webSocketMessage(
+        firstServerWs,
+        JSON.stringify({ type: 'join', x: 5, y: 0, z: -10, room: 1 }),
+      );
+
+      // 2. Disconnect — starts grace timer
+      world.closeHandler(firstServerWs);
+      expect(world.sessions.get(firstServerWs)?.disconnectedAt).toBeGreaterThan(0);
+
+      // 3. Reconnect within grace — must not throw (double-accept) and must
+      //    return 101 with the session state carried over.
+      let reconnectResponse: Response;
+      expect(() => {
+        // Use a raw Promise so any synchronous throw propagates
+      }).not.toThrow();
+
+      reconnectResponse = await world.fetch(
+        new Request('http://metalyceum.test/ws?username=GraceTest', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+
+      expect(reconnectResponse.status).toBe(101);
+
+      // 4. acceptWebSocket called exactly twice total (once per connection, not 3×)
+      expect(ctx.acceptWebSocket).toHaveBeenCalledTimes(2);
+
+      // 5. Old socket's session removed; new socket's session present
+      const newServerWs = ctx.getWebSockets()[1] as any;
+      expect(world.sessions.has(firstServerWs)).toBe(false);
+      expect(world.sessions.has(newServerWs)).toBe(true);
+
+      // 6. Session state carried over — player position preserved, grace cleared
+      const revivedSession = world.sessions.get(newServerWs)!;
+      expect(revivedSession.disconnectedAt).toBeNull();
+      expect(revivedSession.player?.x).toBe(5);
+      expect(revivedSession.player?.z).toBe(-10);
+      expect(revivedSession.player?.room).toBe(1);
+
+      // 7. init was sent over the new socket (revival sends init when player exists)
+      const initMsg = newServerWs.sent.find((m: any) => m.type === 'init');
+      expect(initMsg).toBeDefined();
+      expect(initMsg.id).toBe(revivedSession.id);
     });
   });
 

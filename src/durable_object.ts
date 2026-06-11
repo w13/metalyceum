@@ -892,7 +892,10 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
       const pair = new WebSocketPair();
       const client = pair[0];
       const server = pair[1];
-      this.ctx.acceptWebSocket(server); // hibernation API — DO sleeps between messages
+      // NOTE: acceptWebSocket(server) is called exactly once per request — either
+      // inside the grace-revival branch or at the normal first-connect path below.
+      // Calling it here unconditionally and then again inside the revival branch
+      // caused "already accepted" errors on grace-period reconnects.
 
       const username =
         sanitizeText(url.searchParams.get('username'), MAX_USERNAME_LEN) ||
@@ -918,7 +921,7 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
 
             this.sessions.delete(oldWs);
             this.sessions.set(server, oldSession);
-            this.ctx.acceptWebSocket(server); // hibernation API
+            this.ctx.acceptWebSocket(server); // hibernation API — accept only the NEW socket, once
             this.serializeSession(server, oldSession);
 
             // Re-init with existing player data — no broadcast of "join"
@@ -950,6 +953,7 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
       }
 
       // Normal first-time connection — no prior session to revive
+      this.ctx.acceptWebSocket(server); // hibernation API — DO sleeps between messages
       const id = crypto.randomUUID();
       const session: Session = {
         id,
