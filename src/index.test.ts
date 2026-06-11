@@ -8,6 +8,9 @@ vi.mock('./durable_object', () => ({
 vi.mock('./admin/do', () => ({
   AdminDO: class {},
 }));
+vi.mock('./currency/do', () => ({
+  CurrencyDO: class {},
+}));
 
 let handleFetch: typeof import('./index').handleFetch;
 
@@ -20,6 +23,7 @@ function makeBindings(
     adminFetch?: (request: Request) => Promise<Response> | Response;
     worldFetch?: (request: Request) => Promise<Response> | Response;
     assetFetch?: (request: Request) => Promise<Response> | Response;
+    currencyFetch?: (request: Request) => Promise<Response> | Response;
   } = {},
 ): Bindings {
   const adminFetch =
@@ -30,6 +34,9 @@ function makeBindings(
     (() => new Response(JSON.stringify({ ok: true }), { status: 200 }));
   const assetFetch =
     options.assetFetch ?? (() => new Response('ok', { status: 200 }));
+  const currencyFetch =
+    options.currencyFetch ??
+    (() => new Response(JSON.stringify({ balance: 0 }), { status: 200 }));
 
   return {
     ADMIN_DO: {
@@ -44,6 +51,13 @@ function makeBindings(
       get: () =>
         ({
           fetch: worldFetch,
+        }) as any,
+    } as any,
+    CURRENCY_DO: {
+      idFromName: () => ({}) as any,
+      get: () =>
+        ({
+          fetch: currencyFetch,
         }) as any,
     } as any,
     ASSETS: {
