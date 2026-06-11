@@ -41,6 +41,15 @@ import {
 import { state } from './state.js';
 import { createGrassTexture } from './textures.js';
 
+// Yield to the event loop between build stages so the loading screen
+// animates and shaders can compile progressively instead of one long block.
+const nextFrame = () =>
+  new Promise((resolve) =>
+    'requestAnimationFrame' in globalThis
+      ? requestAnimationFrame(resolve)
+      : setTimeout(resolve, 0),
+  );
+
 // Named building extents — aliased from COVERED_BOUNDS in config.js
 const BLDG_X_MIN = COVERED_BOUNDS.minX;
 const BLDG_X_MAX = COVERED_BOUNDS.maxX;
@@ -145,6 +154,8 @@ export async function buildMap(onProgress) {
   state.scene.add(postInstances);
   state.scene.add(railInstances);
 
+  onProgress?.('Preparing the terrain…');
+  await nextFrame();
   initSceneryAssets();
 
   const TREE_COUNT = 50;
@@ -276,17 +287,20 @@ export async function buildMap(onProgress) {
   state.scene.add(grassInstances);
 
   onProgress?.('Building the plaza…');
-  await new Promise((r) => setTimeout(r, 0));
+  await nextFrame();
   buildExteriorPlaza();
 
   onProgress?.('Constructing the building…');
-  await new Promise((r) => setTimeout(r, 0));
+  await nextFrame();
   buildBuilding();
 
   onProgress?.('Populating the world…');
-  await new Promise((r) => setTimeout(r, 0));
+  await nextFrame();
   buildOutdoorVenues();
   initLazyVenueLoading(); // starts polling for far landmarks (airport, castle, cave)
+
+  onProgress?.('Adding world details…');
+  await nextFrame();
   buildWorldDetails();
 }
 

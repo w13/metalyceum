@@ -129,7 +129,9 @@ describe('Client Engine & WebGL Renderer', () => {
       geometries: info.memory.geometries,
     });
 
-    // Enforce budgets based on Metalyceum's procedural footprint (plus ~20% buffer)
+    // NOTE: this scene is near-empty in the vitest browser env (~32 calls vs
+    // ~700 live) — these are sanity floors only. The real budget gate is
+    // e2e/perf-budget.e2e.ts, which probes the live dev server.
     expect(info.render.calls).toBeLessThan(420);
     expect(info.render.triangles).toBeLessThan(850_000);
     expect(info.memory.textures).toBeLessThan(15);

@@ -184,6 +184,12 @@ export function animate() {
   const dt = Math.min((_now - state.lastTime) / 1000, 0.1);
   state.lastTime = _now;
   state.frameCount = (state.frameCount || 0) + 1;
+  // Frame profiling (debug panel open only). Buckets are deliberately
+  // non-exhaustive — camera, devtools, elevator sync, and minimap are
+  // unmeasured, so the four values don't sum to frame time. EMA (0.9/0.1)
+  // warms up from 0 over ~1s after the panel opens.
+  const _perf = state.framePerfEnabled ? (state.framePerf ??= {}) : null;
+  let _t0 = 0;
 
   const camInputX =
     (state.cameraKeys.ArrowRight ? 1 : 0) -
@@ -213,10 +219,13 @@ export function animate() {
   }
 
   updateTorches(_now);
+  if (_perf) _t0 = performance.now();
   updateLocalPlayer(dt, _now);
   detectRoomEntry();
+  if (_perf) _perf.movement = (_perf.movement ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
   // syncPosition is now driven by setInterval in multiplayer.js \u2014 removed from render loop
 
+  if (_perf) _t0 = performance.now();
   updateNpcs(dt);
   updateJetpack(dt, _now);
   state.remotePlayers.forEach((p) => {
@@ -224,6 +233,7 @@ export function animate() {
   });
 
   updateRoomIndicatorAnimations(_now);
+  if (_perf) _perf.characters = (_perf.characters ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
 
   const isInside = isLocalPlayerUnderRoof();
   if (state.cameraRig.wasUnderRoof && !isInside) {
@@ -242,6 +252,7 @@ export function animate() {
     const exitTargetLerp = 1 - CAMERA_TARGET_DECAY ** dt;
     state.controls.target.lerp(_desiredCameraTarget, exitTargetLerp);
   }
+  if (_perf) _t0 = performance.now();
   updateFadeZones(dt);
 
   // Safety net: ensure ground-floor ceiling and wall opacity follow
@@ -298,6 +309,7 @@ export function animate() {
         state.sceneSunLight.shadow.camera.top = d;
         state.sceneSunLight.shadow.camera.bottom = -d;
         state.sceneSunLight.shadow.camera.updateProjectionMatrix();
+        state.renderer.shadowMap.needsUpdate = true;
       }
     }
   }
@@ -325,6 +337,7 @@ export function animate() {
     state.sceneAmbientLight.intensity = THREE.MathUtils.lerp(0.15, 0.08, mix);
     state.sceneAmbientLight.color.lerpColors(_ambOutColor, _ambInColor, mix);
   }
+  if (_perf) _perf.fade = (_perf.fade ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
 
   state.controls.update();
   updateCameraFollow(dt, _now);
@@ -366,7 +379,36 @@ export function animate() {
       state.skyDome.position.x = state.camera.position.x;
       state.skyDome.position.z = state.camera.position.z;
     }
+
+    // Shadow map on demand (autoUpdate=false set in initEngine).
+    // Immediate refresh when scenery changes (lazy venue load, editor mutation,
+    // sun re-target already sets needsUpdate at the frustum-rebuild site above).
+    // Throttled ~15Hz refresh (every 4th frame at 60fps) while any character
+    // moves — walk shadows lag motion slightly, a deliberate tradeoff vs.
+    // re-adding the per-frame shadow pass this feature removes.
+    if (_perf) _t0 = performance.now();
+    if (state._shadowDirty) {
+      state.renderer.shadowMap.needsUpdate = true;
+      state._shadowDirty = false;
+    } else if (state.frameCount % 4 === 0) {
+      let moving =
+        (state.localPlayer?.isMoving) ||
+        (state.localPlayer?.flying);
+      if (!moving && state.remotePlayers) {
+        for (const p of state.remotePlayers.values()) {
+          if (p.isMoving) { moving = true; break; }
+        }
+      }
+      if (!moving && state.npcs) {
+        for (const npc of state.npcs) {
+          if (npc.isMoving) { moving = true; break; }
+        }
+      }
+      if (moving) state.renderer.shadowMap.needsUpdate = true;
+    }
+
     state.renderer.render(state.scene, state.camera);
+    if (_perf) _perf.render = (_perf.render ?? 0) * 0.9 + (performance.now() - _t0) * 0.1;
   } catch (err) {
     console.error('[Metalyceum] Render error:', err);
   }
@@ -480,7 +522,7 @@ export async function initEngine() {
   state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   state.renderer.shadowMap.enabled = true;
   state.renderer.shadowMap.type = THREE.PCFShadowMap;
-  state.renderer.shadowMap.autoUpdate = true;
+  state.renderer.shadowMap.autoUpdate = false; // on-demand; set needsUpdate when sun re-targets
   state.renderer.toneMapping = THREE.CineonToneMapping;
   state.renderer.toneMappingExposure = 1.0;
   state.renderer.sortObjects = false;
@@ -573,11 +615,16 @@ export async function initEngine() {
   state.scene.add(state.skyDome);
 
   const _loadingText = document.querySelector('#loading-screen p');
+  const _buildStart = performance.now();
   await buildMap((msg) => {
     if (_loadingText) _loadingText.textContent = msg;
   });
+  console.log(`[engine] buildMap took ${(performance.now() - _buildStart).toFixed(0)}ms`);
   // Pre-compile all shaders before the first render frame to avoid compile-stutter on scene entry.
   state.renderer.compile(state.scene, state.camera);
+  // With shadowMap.autoUpdate=false the first shadow render must be explicit —
+  // don't rely on the sun re-target sentinel (_shadowLastPx=-99999) firing.
+  state.renderer.shadowMap.needsUpdate = true;
   initCannon(); // async, non-blocking — fallback collision runs until CDN resolves
   refreshStaticSceneryVisibility();
 

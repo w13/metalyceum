@@ -75,9 +75,12 @@ function initHudPanels() {
       panel: 'debug-panel',
       onOpen: () => {
         state.DEBUG_STATE.enabled = true;
+        state.framePerfEnabled = true;
       },
       onClose: () => {
         state.DEBUG_STATE.enabled = false;
+        state.framePerfEnabled = false;
+        state.framePerf = null;
       },
     },
     {

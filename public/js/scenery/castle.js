@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createLandmarkFadeZone } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
+import { LANDMARK_REGISTRY } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
 import { state } from '../state.js';
 import { registerStaticScenery } from './visibility.js';
@@ -46,6 +47,11 @@ function addMesh(
   parent.add(mesh);
   return mesh;
 }
+
+// Stable module-level reference used by addMeshLocal inside buildCastle so that
+// the local `const addMesh = addMeshLocal` alias (which enables batching) doesn't
+// create a TDZ error or infinite recursion via the closure.
+const _addMeshBase = addMesh;
 
 function addBox(parent, material, w, h, d, x, y, z, options = {}) {
   return addMesh(
@@ -431,7 +437,9 @@ export function buildCastle() {
       mergedGeometriesByMaterial.get(material).push(geometry);
       return null;
     }
-    return addMesh(parent, geometry, material, x, y, z, options);
+    // Use module-level _addMeshBase to avoid infinite recursion through the
+    // local `const addMesh = addMeshLocal` alias defined later in this function.
+    return _addMeshBase(parent, geometry, material, x, y, z, options);
   }
 
   function addBoxLocal(parent, material, w, h, d, x, y, z, options = {}) {
@@ -2098,5 +2106,8 @@ export function buildCastle() {
 
   state.scene.add(group);
   state.landmarkGroups.set('castle', group);
-  registerStaticScenery(group, { kind: 'outdoor', distance: 200 });
+  const [cx, cz] = LANDMARK_REGISTRY.castle.approxCenter;
+  // Cull distance ≈ venue radius + approach margin; generic outdoor scenery
+  // culls at 88u, so venue pop at 110-170u stays consistent with the world.
+  registerStaticScenery(group, { kind: 'outdoor', distance: 140, center: { x: cx, z: cz } });
 }

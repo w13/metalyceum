@@ -102,7 +102,7 @@ function firstCursorRow<T>(cursor: { toArray(): unknown[] }): T | null {
   return (row as T | undefined) ?? null;
 }
 
-export class MetalyceumWorld extends DurableObject {
+export class MetalyceumWorld extends DurableObject<Bindings> {
   sessions: Map<WebSocket, Session> = new Map();
   rooms: RoomEvent[] = [];
   worldAssets: WorldAssetDefinition[] = [];
@@ -116,7 +116,13 @@ export class MetalyceumWorld extends DurableObject {
   >();
   /** Timestamp of the last stale-session scan; avoids O(N) scan on every message. */
   private lastPruneAt = 0;
+  /** True while a movement-flush alarm is pending — avoids re-arming per message. */
+  private moveFlushScheduled = false;
   private static readonly PRUNE_INTERVAL_MS = 15_000;
+  // Movement flush runs at ~12 Hz to match the default network profile.
+  // The alarm is only armed while dirty players exist, so idle worlds
+  // keep hibernating instead of waking 12×/sec.
+  private static readonly MOVE_FLUSH_INTERVAL_MS = 83;
 
   // --- WebSocket hibernation helpers ---
 
@@ -726,6 +732,14 @@ export class MetalyceumWorld extends DurableObject {
     this.dirtyPlayerIds.add(playerId);
   }
 
+  private scheduleMoveFlush(): void {
+    if (this.moveFlushScheduled) return;
+    this.moveFlushScheduled = true;
+    void this.ctx.storage.setAlarm(
+      Date.now() + MetalyceumWorld.MOVE_FLUSH_INTERVAL_MS,
+    );
+  }
+
   private flushMovementBatch(): void {
     for (const [ws, session] of this.sessions.entries()) {
       const recipient = session.player;
@@ -869,7 +883,9 @@ export class MetalyceumWorld extends DurableObject {
     const isWebSocket =
       request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
     if (url.pathname === '/ws' && isWebSocket) {
-      if (this.sessions.size >= MAX_PLAYERS) {
+      const envCap = Number(this.env.MAX_PLAYERS);
+      const maxPlayers = envCap > 0 ? envCap : MAX_PLAYERS;
+      if (this.sessions.size >= maxPlayers) {
         return new Response('Room full', { status: 429 });
       }
 
@@ -1086,8 +1102,12 @@ export class MetalyceumWorld extends DurableObject {
       );
       logEvent('player_joined', { id: session.id, username: session.username });
       this.serializeSession(ws, session); // persist so it survives hibernation
-      // Ensure the prune alarm is scheduled while sessions exist.
-      void this.ctx.storage.setAlarm(Date.now() + STALE_SESSION_MS);
+      // Ensure the prune alarm is scheduled while sessions exist — but never
+      // clobber a pending movement-flush alarm (a DO has only one alarm slot;
+      // alarm() re-arms the prune schedule itself after each flush).
+      if (!this.moveFlushScheduled) {
+        void this.ctx.storage.setAlarm(Date.now() + STALE_SESSION_MS);
+      }
     },
 
     move: (ws, msg, session) => {
@@ -1128,7 +1148,7 @@ export class MetalyceumWorld extends DurableObject {
       session.player.ry = ry;
       session.player.isMoving = isMoving;
       this.markPlayerDirty(session.id);
-      this.flushMovementBatch();
+      this.scheduleMoveFlush();
     },
 
     room_change: (ws, msg, session) => {
@@ -1141,7 +1161,7 @@ export class MetalyceumWorld extends DurableObject {
       );
       session.player.room = room;
       this.markPlayerDirty(session.id);
-      this.flushMovementBatch();
+      this.scheduleMoveFlush();
       this.serializeSession(ws, session); // room affects relevance — persist it
     },
 
@@ -1246,16 +1266,29 @@ export class MetalyceumWorld extends DurableObject {
   }
 
   /**
-   * Alarm handler: periodically prune stale sessions even when players are
-   * idle and no WebSocket messages are arriving.  Reschedules itself as long
-   * as at least one session is open.
+   * Single DO alarm serving two roles: flushes dirty movement batches
+   * (~12 Hz, armed on demand by scheduleMoveFlush) and prunes stale
+   * sessions on a 15 s cadence.  Re-arms only the slow prune alarm while
+   * sockets remain, so idle worlds hibernate instead of ticking at 12 Hz.
    */
   async alarm(): Promise<void> {
     this.rebuildSessionsIfNeeded(); // sessions may be empty after hibernation
     const now = Date.now();
-    this.lastPruneAt = 0; // bypass the debounce so the scan always runs
-    this.pruneStaleSessions(now);
-    // Reschedule while WebSocket connections remain open
+    this.moveFlushScheduled = false;
+
+    // dirtyPlayerIds is in-memory: a flush armed before hibernation wakes to an
+    // empty set and no-ops — the dropped frame self-heals on the next move tick.
+    if (this.dirtyPlayerIds.size > 0) this.flushMovementBatch();
+
+    if (now - this.lastPruneAt >= MetalyceumWorld.PRUNE_INTERVAL_MS) {
+      this.lastPruneAt = 0; // bypass the debounce so the scan always runs
+      this.pruneStaleSessions(now);
+      this.lastPruneAt = now;
+    }
+
+    // Reschedule while WebSocket connections remain open. Movement re-arms
+    // its own fast alarm via scheduleMoveFlush(); idle worlds get the slow
+    // prune alarm only, so the DO can hibernate between ticks.
     if (this.ctx.getWebSockets().length > 0) {
       await this.ctx.storage.setAlarm(now + STALE_SESSION_MS);
     }

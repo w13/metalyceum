@@ -1,5 +1,6 @@
 // Visibility and Culling Manager for Scenery
 
+import * as THREE from 'three';
 import {
   OUTDOOR_SCENERY_VISIBILITY_DISTANCE,
   ROOM_SCENERY_VISIBILITY_DISTANCE,
@@ -12,12 +13,18 @@ export function registerStaticScenery(object3d, options = {}) {
     (options.kind === 'room'
       ? ROOM_SCENERY_VISIBILITY_DISTANCE
       : OUTDOOR_SCENERY_VISIBILITY_DISTANCE);
+  // Venue root groups often sit at origin with placement baked into child
+  // vertices — pass options.center {x, z} so culling measures the real spot.
+  const center = options.center
+    ? new THREE.Vector3(options.center.x, 0, options.center.z)
+    : null;
   state.STATIC_SCENERY.push({
     object3d,
     kind: options.kind || 'outdoor',
     roomId: options.roomId ?? null,
     distance: dist,
     distanceSquared: dist * dist,
+    center,
   });
   return object3d;
 }
@@ -38,9 +45,8 @@ export function refreshStaticSceneryVisibility() {
     }
 
     if (!state.camera) return;
-    const distanceSq = state.camera.position.distanceToSquared(
-      entry.object3d.position,
-    );
+    const target = entry.center ?? entry.object3d.position;
+    const distanceSq = state.camera.position.distanceToSquared(target);
     entry.object3d.visible = distanceSq <= entry.distanceSquared;
   });
 }

@@ -1,4 +1,40 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Node's undici Response rejects status 101; the Workers runtime allows it
+// for WebSocket upgrades (durable_object.ts returns `new Response(null,
+// { status: 101, webSocket })`). Shim the constructor so upgrade paths are
+// testable outside the Workers runtime.
+const NativeResponse = globalThis.Response;
+
+class UpgradeResponse extends NativeResponse {
+  private readonly _upgradeStatus: number | null;
+  override readonly webSocket: WebSocket | null;
+
+  constructor(
+    body: BodyInit | null,
+    init?: ResponseInit & { webSocket?: WebSocket },
+  ) {
+    if (init && init.status === 101) {
+      super(body, { ...init, status: 200 });
+      this._upgradeStatus = 101;
+    } else {
+      super(body, init);
+      this._upgradeStatus = null;
+    }
+    this.webSocket = init?.webSocket ?? null;
+  }
+
+  override get status(): number {
+    return this._upgradeStatus ?? super.status;
+  }
+}
+
+beforeAll(() => {
+  globalThis.Response = UpgradeResponse as unknown as typeof Response;
+});
+afterAll(() => {
+  globalThis.Response = NativeResponse;
+});
 import {
   DEFAULT_ROOMS,
   ROOM_COUNT,
@@ -333,7 +369,6 @@ describe('MetalyceumWorld Durable Object', () => {
   describe('WebSocket Client Lifecycles', () => {
     it('handles first-time normal websocket upgrades', async () => {
       const world = await createWorld();
-      const ws = new MockWebSocket();
 
       const req = new Request(
         'http://metalyceum.test/ws?username=Alice&color=%23ff0000',
@@ -343,9 +378,14 @@ describe('MetalyceumWorld Durable Object', () => {
       );
       const response = await world.fetch(req);
 
+      // The server end of the WebSocketPair (pair[1]) is what the DO stores in
+      // this.sessions after calling ctx.acceptWebSocket(server).  Retrieve it
+      // through the mock ctx so we're asserting on the correct socket handle.
+      const serverWs = ctx.getWebSockets()[0];
+
       expect(response.status).toBe(101);
-      expect(world.sessions.has(ws as any)).toBe(true);
-      const session = world.sessions.get(ws as any);
+      expect(world.sessions.has(serverWs as any)).toBe(true);
+      const session = world.sessions.get(serverWs as any);
       expect(session?.username).toBe('Alice');
       expect(session?.color).toBe('#ff0000');
     });
@@ -363,6 +403,34 @@ describe('MetalyceumWorld Durable Object', () => {
       const response = await world.fetch(req);
       expect(response.status).toBe(429);
       await expect(response.text()).resolves.toBe('Room full');
+    });
+
+    it('respects MAX_PLAYERS env override — 3rd join rejected when MAX_PLAYERS=2', async () => {
+      // Build a world with a custom env that overrides the cap to 2.
+      const customEnv: any = {
+        ADMIN_DO: {} as any,
+        METALYCEUM_WORLD: {} as any,
+        ASSETS: {} as any,
+        MAX_PLAYERS: '2',
+      };
+      const world = new MetalyceumWorld(ctx as any, customEnv);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const wsReq = (name: string) =>
+        new Request(`http://metalyceum.test/ws?username=${name}`, {
+          headers: { Upgrade: 'websocket' },
+        });
+
+      // First two connections must succeed (101).
+      const r1 = await world.fetch(wsReq('bot1'));
+      expect(r1.status).toBe(101);
+      const r2 = await world.fetch(wsReq('bot2'));
+      expect(r2.status).toBe(101);
+
+      // Third must be rejected with 429 Room full.
+      const r3 = await world.fetch(wsReq('bot3'));
+      expect(r3.status).toBe(429);
+      await expect(r3.text()).resolves.toBe('Room full');
     });
 
     it('processes client join message and initializes data payload', async () => {
@@ -510,11 +578,131 @@ describe('MetalyceumWorld Durable Object', () => {
         }),
       );
 
+      // With tick-based flushing, the batch is not sent until the alarm fires
+      await world.alarm();
+
       // Bob should receive a state batch update with Alice's new coordinate
       const moveBatch = ws2.sent.find((m) => m.type === 'state_batch');
       expect(moveBatch).toBeDefined();
       expect(moveBatch.players[0].id).toBe('user-1');
       expect(moveBatch.players[0].x).toBe(1);
+    });
+
+    it('batches moves until the alarm tick flushes them', async () => {
+      // Both join lobby near origin
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'join', x: 0, y: 0, z: 0, room: -1 }),
+      );
+      world.webSocketMessage(
+        ws2 as any,
+        JSON.stringify({ type: 'join', x: 2, y: 0, z: 2, room: -1 }),
+      );
+
+      // Clear previous sends
+      ws2.sent.length = 0;
+
+      // Two rapid moves from Alice — must NOT flush per-message
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'move', x: 1, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'move', x: 2, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      expect(ws2.sent.filter((m) => m.type === 'state_batch')).toHaveLength(0);
+
+      // A near-term alarm must be scheduled (~83ms, far less than STALE_SESSION_MS)
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // Alarm tick flushes exactly one batch carrying the latest position
+      await world.alarm();
+      const batches = ws2.sent.filter((m) => m.type === 'state_batch');
+      expect(batches).toHaveLength(1);
+      expect(batches[0].players[0].x).toBe(2);
+    });
+
+    it('a join does not clobber a pending movement-flush alarm', async () => {
+      // Alice and Bob join the lobby near each other
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'join', x: 0, y: 0, z: 0, room: -1 }),
+      );
+      world.webSocketMessage(
+        ws2 as any,
+        JSON.stringify({ type: 'join', x: 2, y: 0, z: 2, room: -1 }),
+      );
+
+      // 1. Alice moves — fast flush alarm must be armed (< 1 s away)
+      world.webSocketMessage(
+        ws1 as any,
+        JSON.stringify({ type: 'move', x: 1, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // 2. Carol connects and sends a join message
+      //    fetch() calls ctx.acceptWebSocket(server), making the server end
+      //    available via ctx.getWebSockets()[0].
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=Carol', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      const carolWs = ctx.getWebSockets()[0] as any;
+      world.webSocketMessage(
+        carolWs,
+        JSON.stringify({ type: 'join', x: 1, y: 0, z: 1, room: -1 }),
+      );
+
+      // 3. The alarm must STILL be near-term — the join must NOT have pushed it
+      //    out to STALE_SESSION_MS (~45 s).
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // 4. Alarm fires — Bob receives Alice's move in a state_batch
+      ws2.sent.length = 0;
+      await world.alarm();
+      const batches = ws2.sent.filter((m) => m.type === 'state_batch');
+      expect(batches).toHaveLength(1);
+      expect(batches[0].players[0].x).toBe(1);
+    });
+
+    it('re-arms only the slow prune alarm when nothing is dirty after a flush', async () => {
+      // Setup: two connected players via fetch() so ctx.getWebSockets() is
+      // populated — required for the alarm-reschedule path to stay alive.
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=Alice', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      await world.fetch(
+        new Request('http://metalyceum.test/ws?username=Bob', {
+          headers: { Upgrade: 'websocket' },
+        }),
+      );
+      const [aliceWs, bobWs] = ctx.getWebSockets() as any[];
+      world.webSocketMessage(
+        aliceWs,
+        JSON.stringify({ type: 'join', x: 0, y: 0, z: 0, room: -1 }),
+      );
+      world.webSocketMessage(
+        bobWs,
+        JSON.stringify({ type: 'join', x: 2, y: 0, z: 2, room: -1 }),
+      );
+
+      // 1. Alice moves — fast flush alarm must be armed (< 1 s away)
+      world.webSocketMessage(
+        aliceWs,
+        JSON.stringify({ type: 'move', x: 1, y: 0, z: 0, ry: 0, isMoving: true }),
+      );
+      expect(ctx.getAlarmTimestamp()).toBeLessThan(Date.now() + 1000);
+
+      // 2. Alarm fires — dirty set is flushed, no further moves submitted
+      await world.alarm();
+
+      // 3. The rescheduled alarm must be the slow prune cadence, NOT another
+      //    83ms tick — idle worlds should hibernate rather than spin at 12 Hz.
+      expect(ctx.getAlarmTimestamp()).toBeGreaterThan(Date.now() + 1000);
     });
 
     it('isolates movement logs/batches between far-apart players', async () => {

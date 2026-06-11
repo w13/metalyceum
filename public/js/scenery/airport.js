@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createLandmarkFadeZone } from '../fade-system.js';
 import { FLAT, HALF_PI } from '../math.js';
+import { LANDMARK_REGISTRY } from '../config.js';
 import { getTerrainHeight } from '../physics.js';
 import { state } from '../state.js';
 import { createFloor } from './utils.js';
@@ -717,6 +718,6 @@ export function buildAirport() {
 
   state.scene.add(g);
   state.landmarkGroups.set('airport', g);
-  registerStaticScenery(runway, { kind: 'outdoor', distance: 180 });
-  registerStaticScenery(troof, { kind: 'outdoor', distance: 150 });
+  const [cx, cz] = LANDMARK_REGISTRY.airport.approxCenter;
+  registerStaticScenery(g, { kind: 'outdoor', distance: 170, center: { x: cx, z: cz } });
 }

@@ -26,6 +26,7 @@ async function loadZone(zone) {
     const builder = mod[zone.fn];
     if (typeof builder === 'function') {
       builder();
+      state._shadowDirty = true; // new geometry must get into the shadow map
     }
   } catch (err) {
     console.warn(`[LazyVenue] Failed to load ${zone.key}:`, err);
