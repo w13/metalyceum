@@ -537,14 +537,10 @@ describe('MetalyceumWorld Durable Object', () => {
       world.closeHandler(firstServerWs);
       expect(world.sessions.get(firstServerWs)?.disconnectedAt).toBeGreaterThan(0);
 
-      // 3. Reconnect within grace — must not throw (double-accept) and must
-      //    return 101 with the session state carried over.
-      let reconnectResponse: Response;
-      expect(() => {
-        // Use a raw Promise so any synchronous throw propagates
-      }).not.toThrow();
-
-      reconnectResponse = await world.fetch(
+      // 3. Reconnect within grace — must not throw (double-accept; the mock
+      //    acceptWebSocket throws like workerd) and must return 101 with the
+      //    session state carried over.
+      const reconnectResponse = await world.fetch(
         new Request('http://metalyceum.test/ws?username=GraceTest', {
           headers: { Upgrade: 'websocket' },
         }),

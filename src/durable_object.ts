@@ -919,6 +919,17 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
             oldSession.lastSeenAt = Date.now();
             oldSession.source = source;
 
+            // Precondition: oldWs already closed client-side (revival only
+            // runs for disconnectedAt sessions, set by closeHandler), so
+            // workerd has evicted it from getWebSockets() — the alarm and
+            // capacity logic count real sockets. close() is a defensive
+            // no-op on an already-closed socket; it protects this invariant
+            // if a future change reaches revival with a live oldWs.
+            try {
+              oldWs.close(1000, 'session revived on a new connection');
+            } catch {
+              // already closed — expected
+            }
             this.sessions.delete(oldWs);
             this.sessions.set(server, oldSession);
             this.ctx.acceptWebSocket(server); // hibernation API — accept only the NEW socket, once
