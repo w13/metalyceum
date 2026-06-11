@@ -1,5 +1,6 @@
 // Individual foliage models, flower beds, and landscaping
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLAT, HALF_PI } from '../math.js';
 import { getTerrainHeight } from '../physics.js';
 import { state } from '../state.js';
@@ -158,37 +159,73 @@ export function createOrnamentalTree(
   );
 }
 
+// Creates a single soil/edging/flower cluster. When a `batch` accumulator is
+// passed, the cluster's geometry is pushed into it for later merging/instancing
+// instead of being added as many loose meshes (draw-call reduction). When no
+// batch is given the cluster builds its own loose meshes (standalone use).
 export function createFlowerCluster(
   centerX,
   centerZ,
   { radius = 0.9, count = 10, soilYOffset = 0.014, edgeYOffset = 0.04 } = {},
+  batch = null,
 ) {
+  const soilMat =
+    batch?.soilMat ?? new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.95 });
+  const edgingMat =
+    batch?.edgingMat ?? new THREE.MeshStandardMaterial({ color: '#7c8a96', roughness: 0.76 });
+
   const soil = createGroundedPatch(
     new THREE.CircleGeometry(radius * 1.02, 14),
-    new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.95 }),
+    soilMat,
     centerX,
     centerZ,
     { yOffset: soilYOffset, receiveShadow: true },
   );
-  state.scene.add(soil);
 
   const edging = createGroundedRing(
     radius * 0.92,
     radius * 1.08,
     16,
-    new THREE.MeshStandardMaterial({ color: '#7c8a96', roughness: 0.76 }),
+    edgingMat,
     centerX,
     centerZ,
     { yOffset: edgeYOffset, receiveShadow: true },
   );
-  state.scene.add(edging);
 
+  if (batch) {
+    // Bake each ground patch's world transform into its geometry for merging.
+    soil.updateMatrix();
+    edging.updateMatrix();
+    batch.soilGeoms.push(soil.geometry.clone().applyMatrix4(soil.matrix));
+    batch.edgingGeoms.push(edging.geometry.clone().applyMatrix4(edging.matrix));
+    soil.geometry.dispose();
+    edging.geometry.dispose();
+  } else {
+    state.scene.add(soil);
+    state.scene.add(edging);
+  }
+
+  const tmp = new THREE.Object3D();
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count;
     const ring = i % 2 === 0 ? radius * 0.55 : radius * 0.82;
     const bloomX = centerX + Math.cos(angle) * ring;
     const bloomZ = centerZ + Math.sin(angle) * ring;
     const bloomGroundY = getTerrainHeight(bloomX, bloomZ);
+    const petalMatIdx = i % state.sharedScenery.flowerPetalMats.length;
+
+    if (batch) {
+      tmp.position.set(bloomX, bloomGroundY + 0.24, bloomZ);
+      tmp.rotation.set(0, 0, 0);
+      tmp.scale.set(1, 1, 1);
+      tmp.updateMatrix();
+      batch.stemMatrices.push(tmp.matrix.clone());
+
+      tmp.position.set(bloomX, bloomGroundY + 0.46, bloomZ);
+      tmp.updateMatrix();
+      batch.petalMatrices[petalMatIdx].push(tmp.matrix.clone());
+      continue;
+    }
 
     const stem = new THREE.Mesh(
       state.sharedScenery.flowerStemGeo,
@@ -201,9 +238,7 @@ export function createFlowerCluster(
 
     const petal = new THREE.Mesh(
       state.sharedScenery.flowerCenterGeo,
-      state.sharedScenery.flowerPetalMats[
-        i % state.sharedScenery.flowerPetalMats.length
-      ],
+      state.sharedScenery.flowerPetalMats[petalMatIdx],
     );
     petal.position.set(bloomX, bloomGroundY + 0.46, bloomZ);
     petal.castShadow = true;
@@ -222,6 +257,19 @@ export function buildFrontApproachLandscaping() {
     { x: 22.0, z: 63.0, bushScale: 0.82, id: 'front-garden-east' },
   ];
 
+  // Batch accumulator: all flower clusters share geometry/materials, so their
+  // soil/edging are merged into one mesh each and stems/petals become
+  // InstancedMeshes — collapsing ~190 loose meshes into ~7 draw calls.
+  initSceneryAssets();
+  const flowerBatch = {
+    soilMat: new THREE.MeshStandardMaterial({ color: '#3f2a1e', roughness: 0.95 }),
+    edgingMat: new THREE.MeshStandardMaterial({ color: '#7c8a96', roughness: 0.76 }),
+    soilGeoms: [],
+    edgingGeoms: [],
+    stemMatrices: [],
+    petalMatrices: state.sharedScenery.flowerPetalMats.map(() => []),
+  };
+
   gardenPods.forEach((pod, index) => {
     const side = Math.sign(pod.x);
     createTrimmedBush(pod.x, pod.z - 0.35, {
@@ -233,19 +281,31 @@ export function buildFrontApproachLandscaping() {
       assetId: `${pod.id}-outer`,
     });
 
-    createFlowerCluster(pod.x - side * 1.15, pod.z + 1.55, {
-      radius: index < 4 ? 0.78 : 0.62,
-      count: index < 4 ? 8 : 6,
-      soilYOffset: 0.09,
-      edgeYOffset: 0.115,
-    });
-    createFlowerCluster(pod.x + side * 1.55, pod.z - 1.2, {
-      radius: index < 2 ? 0.56 : 0.48,
-      count: 6,
-      soilYOffset: 0.09,
-      edgeYOffset: 0.115,
-    });
+    createFlowerCluster(
+      pod.x - side * 1.15,
+      pod.z + 1.55,
+      {
+        radius: index < 4 ? 0.78 : 0.62,
+        count: index < 4 ? 8 : 6,
+        soilYOffset: 0.09,
+        edgeYOffset: 0.115,
+      },
+      flowerBatch,
+    );
+    createFlowerCluster(
+      pod.x + side * 1.55,
+      pod.z - 1.2,
+      {
+        radius: index < 2 ? 0.56 : 0.48,
+        count: 6,
+        soilYOffset: 0.09,
+        edgeYOffset: 0.115,
+      },
+      flowerBatch,
+    );
   });
+
+  flushFlowerBatch(flowerBatch);
 
   [
     { x: -22.5, z: 45.2, scale: 0.78, id: 'plaza-tree-west-entry' },
@@ -257,5 +317,57 @@ export function buildFrontApproachLandscaping() {
       scale: tree.scale,
       assetId: tree.id,
     });
+  });
+}
+
+// Flush a flower batch built by createFlowerCluster(..., batch): merge the soil
+// patches and edging rings (one mesh each) and build shared InstancedMeshes for
+// the flower stems and per-color petals. World transforms are already baked into
+// the soil/edging geometry and into the instance matrices.
+function flushFlowerBatch(batch) {
+  if (batch.soilGeoms.length > 0) {
+    const soilMesh = new THREE.Mesh(
+      mergeGeometries(batch.soilGeoms),
+      batch.soilMat,
+    );
+    soilMesh.receiveShadow = true;
+    batch.soilGeoms.forEach((g) => g.dispose());
+    state.scene.add(soilMesh);
+  }
+  if (batch.edgingGeoms.length > 0) {
+    const edgingMesh = new THREE.Mesh(
+      mergeGeometries(batch.edgingGeoms),
+      batch.edgingMat,
+    );
+    edgingMesh.receiveShadow = true;
+    batch.edgingGeoms.forEach((g) => g.dispose());
+    state.scene.add(edgingMesh);
+  }
+
+  if (batch.stemMatrices.length > 0) {
+    const stemInst = new THREE.InstancedMesh(
+      state.sharedScenery.flowerStemGeo,
+      state.sharedScenery.flowerStemMat,
+      batch.stemMatrices.length,
+    );
+    stemInst.castShadow = true;
+    stemInst.receiveShadow = true;
+    batch.stemMatrices.forEach((m, i) => stemInst.setMatrixAt(i, m));
+    stemInst.instanceMatrix.needsUpdate = true;
+    state.scene.add(stemInst);
+  }
+
+  batch.petalMatrices.forEach((matrices, idx) => {
+    if (matrices.length === 0) return;
+    const petalInst = new THREE.InstancedMesh(
+      state.sharedScenery.flowerCenterGeo,
+      state.sharedScenery.flowerPetalMats[idx],
+      matrices.length,
+    );
+    petalInst.castShadow = true;
+    petalInst.receiveShadow = true;
+    matrices.forEach((m, i) => petalInst.setMatrixAt(i, m));
+    petalInst.instanceMatrix.needsUpdate = true;
+    state.scene.add(petalInst);
   });
 }
