@@ -23,7 +23,7 @@ import {
   updateRoomPanelDetails,
 } from './js/room-panel.js';
 import { state } from './js/state.js';
-import { initDebugPanel, initSoundtrackUi, initUiHandlers } from './js/ui.js';
+import { initDebugPanel, initSoundtrackUi, initUiHandlers, initWalletUI } from './js/ui.js';
 
 // Dev-tools: only active on localhost or when ?debug is in the URL
 const _isDev =
@@ -185,6 +185,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (_isDev) initDevTools();
   initDebugPanel();
   initSoundtrackUi();
+  initWalletUI();
   initUiHandlers();
   initPerformanceOptimization();
   renderEventBoard();
