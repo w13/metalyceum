@@ -275,7 +275,7 @@ Vertical movement (gravity, jumping, swimming, terrain-follow, elevator rides) i
 │   │   ├── physics.test.ts       # River distance, terrain height
 │   │   ├── dev-tools.test.ts     # World audit, terrain queries
 │   │   ├── cannon-integration.test.ts
-│   │   └── engine.browser.test.ts  # WebGL perf budget (420 draw calls, 850K triangles, 15 textures)
+│   │   └── engine.browser.test.ts  # Scene-graph sanity floors (real budget gate: e2e/perf-budget.e2e.ts)
 │   └── tsconfig.json
 │
 ├── docs/                         # Documentation
@@ -460,7 +460,7 @@ The `engine.browser.test.ts` test enforces these limits in CI:
 
 | Metric | Budget |
 |--------|--------|
-| **Draw calls** | < 420 |
+| **Draw calls** | < 420 (aspirational — enforced e2e budgets are measured+25%, see `e2e/perf-budget.e2e.ts`) |
 | **Triangles** | < 850,000 |
 | **Textures** | < 15 |
 | **Geometries** | < 460 |
@@ -555,7 +555,7 @@ The following roadmap was shaped by five architectural questions posed to the pr
 
 | # | Item | Detail | Exit criterion |
 |---|---|---|---|
-| **0.0a** | **Cull the lazy-loaded landmarks** | Register each lazy venue's root group with `registerStaticScenery()` at appropriate distance. Fix the baked-vertex/origin-position pattern where it blocks per-mesh culling in eager venues too. | Draw calls at plaza return to ~150 or less with all venues loaded; calls vary by location |
+| **0.0a** | **Cull the lazy-loaded landmarks** | Register each lazy venue's root group with `registerStaticScenery()` at appropriate distance. Fix the baked-vertex/origin-position pattern where it blocks per-mesh culling in eager venues too. | Draw calls at plaza return to ~150 or less with all venues loaded; calls vary by location. *(2026-06-10: venue culling fixed and calls now vary by location, but plaza sits at ~740 — the ~650 residual is base-world geometry outside venue groups, tracked as a follow-up.)* |
 | **0.0b** | **Make the CI perf budget real** | Replace the vitest budget assertion with a Playwright e2e step that joins the live dev server, teleports to hotspots, and asserts `renderer.info` there. | CI fails if live-app draw calls exceed budget at any probe point |
 | **0.1** | Frame-time instrumentation | Extend the debug panel with per-section timings via `performance.now()` deltas plus `renderer.info` live readout. Dev-gated, zero production cost. | Panel shows ms per subsystem |
 | **0.2** | Bot load harness | Headless Node script opening N WebSocket connections to `/ws`, each sending `move` at configurable Hz. Add `?bots=N` local spawn mode for client-side crowd tests. | Can simulate 200 synthetic players locally |

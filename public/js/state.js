@@ -29,6 +29,9 @@ export const state = {
   // panel is open. framePerf holds EMA ms per subsystem; see engine.animate().
   framePerfEnabled: false,
   framePerf: null,
+  // Shadow-on-demand: set true after scenery changes (lazy venue load, editor
+  // mutations) — engine.animate() consumes it as shadowMap.needsUpdate.
+  _shadowDirty: false,
 
   // --- Scenery & Assets Cache ---
   sharedScenery: {},
