@@ -4,9 +4,17 @@ test.describe('Metalyceum Behavioral Tests', () => {
   // Helper to ensure stable connection before interacting
   async function loginAndConnect(page, username = 'TestUser') {
     await page.goto('/');
+    // Boot must finish before submit — the login handler attaches after the
+    // (slow under software WebGL) engine build; an early submit would
+    // native-navigate the form. metalyceumDev appears in the same synchronous
+    // post-engine chain as the handler wiring.
+    await page.waitForFunction(
+      () => typeof (window as any).metalyceumDev !== 'undefined',
+      { timeout: 120_000 },
+    );
     await page.fill('#username-input', username);
     await page.fill('#color-input', '#3b82f6');
-    await page.click("button[type='submit']");
+    await page.click("#login-form button[type='submit']");
 
     // Wait for login screen to disappear
     await expect(page.locator('#login-overlay')).not.toBeVisible();
@@ -108,8 +116,12 @@ test.describe('Metalyceum Behavioral Tests', () => {
     const aliceContext = await browser.newContext();
     const alicePage = await aliceContext.newPage();
     await alicePage.goto('/');
+    await alicePage.waitForFunction(
+      () => typeof (window as any).metalyceumDev !== 'undefined',
+      { timeout: 120_000 },
+    );
     await alicePage.fill('#username-input', 'Alice');
-    await alicePage.click("button[type='submit']");
+    await alicePage.click("#login-form button[type='submit']");
     await expect(alicePage.locator('#login-overlay')).not.toBeVisible();
     await expect(alicePage.locator('#connection-status')).toHaveClass(
       /connected/,
@@ -119,8 +131,12 @@ test.describe('Metalyceum Behavioral Tests', () => {
     const bobContext = await browser.newContext();
     const bobPage = await bobContext.newPage();
     await bobPage.goto('/');
+    await bobPage.waitForFunction(
+      () => typeof (window as any).metalyceumDev !== 'undefined',
+      { timeout: 120_000 },
+    );
     await bobPage.fill('#username-input', 'Bob');
-    await bobPage.click("button[type='submit']");
+    await bobPage.click("#login-form button[type='submit']");
     await expect(bobPage.locator('#login-overlay')).not.toBeVisible();
     await expect(bobPage.locator('#connection-status')).toHaveClass(
       /connected/,

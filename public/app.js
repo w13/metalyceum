@@ -179,6 +179,14 @@ if (location.search.includes('debug') || location.search.includes('diag')) {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Guard the login form BEFORE the slow engine build: the real submit handler
+  // (ui/login.js initLoginForm) only attaches after initEngine() resolves, and
+  // a submit during that window would otherwise trigger a NATIVE form
+  // navigation (the form has no action), reloading back to the login screen.
+  document.getElementById('login-form')?.addEventListener('submit', (e) => {
+    if (!state.renderer) e.preventDefault(); // engine not ready — swallow early submits
+  });
+
   // Build the 3D world — async so yields allow loading-screen text to update without freezing the tab
   await initEngine();
   initMinimap();
