@@ -46,14 +46,16 @@ test('render stats stay within budget at every probe point', async ({ page }) =>
 
   // ---- Login ----
   await page.goto('/');
+  // Wait for the app boot to finish BEFORE submitting: the login handler only
+  // attaches after initEngine() (slow under software WebGL); metalyceumDev is
+  // created in the same synchronous post-engine chain, so it doubles as the
+  // "handlers attached" signal.
+  await page.waitForFunction(() => typeof (window as any).metalyceumDev !== 'undefined', { timeout: 120_000 });
   await page.fill('#username-input', 'PerfBot');
   await page.fill('#color-input', '#3b82f6');
-  await page.click("button[type='submit']");
+  await page.click("#login-form button[type='submit']");
   await expect(page.locator('#login-overlay')).not.toBeVisible({ timeout: 30_000 });
   await expect(page.locator('#connection-status')).toHaveClass(/connected/, { timeout: 30_000 });
-
-  // Wait for metalyceumDev to be available
-  await page.waitForFunction(() => typeof (window as any).metalyceumDev !== 'undefined', { timeout: 30_000 });
 
   // Wait for the world build to finish AND at least one frame to render.
   // state.renderer exists before buildMap (so perfStats()!==null fires too early),

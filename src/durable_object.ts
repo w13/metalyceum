@@ -28,6 +28,11 @@ import {
 import { parseJsonObjectBody, parseJsonObjectText } from './http/json';
 import { INTERNAL_ADMIN_PATHS } from './internal/admin_endpoints';
 import {
+  INTERNAL_CURRENCY_PATHS,
+  type InternalCurrencyPath,
+  internalCurrencyUrl,
+} from './internal/currency_endpoints';
+import {
   arePlayersRelevant,
   getVisibleChatHistory,
   normalizeChatScope,
@@ -102,6 +107,16 @@ function firstCursorRow<T>(cursor: { toArray(): unknown[] }): T | null {
   return (row as T | undefined) ?? null;
 }
 
+/** A trade currently being brokered by this world DO (see activeTrades). */
+type ActiveTrade = {
+  aWorldId: string;
+  aUsername: string;
+  aOffer: number;
+  bWorldId: string;
+  bUsername: string;
+  bOffer: number;
+};
+
 export class MetalyceumWorld extends DurableObject<Bindings> {
   sessions: Map<WebSocket, Session> = new Map();
   rooms: RoomEvent[] = [];
@@ -109,6 +124,23 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
   chatHistory: PersistedChatMessage[] = [];
   storageInitError: string | null = null;
   private readonly dirtyPlayerIds = new Set<string>();
+  /**
+   * In-memory registry of trades this DO is currently brokering.
+   *
+   * Identity mapping (see "Wallet identity" design note):
+   *  - CurrencyDO keys every wallet/trade by USERNAME (stable across reconnects;
+   *    `session.id` is per-connection and would orphan balances).
+   *  - The CLIENT only knows world player ids (`session.id`), so trade messages
+   *    sent to clients carry `playerId: <world session id>`.
+   * Each entry therefore stores BOTH ids per participant plus their last-known
+   * offer, so confirm/offer handlers can map id↔username and echo the partner's
+   * current offer without an extra CurrencyDO round-trip.
+   *
+   * In-memory is acceptable: trades are short, interactive, and a hibernation
+   * wipe is handled gracefully — a confirm/offer/cancel that misses the map
+   * cleanly cancels the trade for the caller (see currencyTradeMiss()).
+   */
+  private readonly activeTrades = new Map<string, ActiveTrade>();
   /** Tracks grace-period cleanup timers keyed by username. */
   private readonly disconnectedGraceTimers = new Map<
     string,
@@ -1201,7 +1233,485 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
 
       this.broadcastChatMessage(persistedMessage, session.player);
     },
+
+    // ── Wallet / trade (Sigs) ────────────────────────────────────────────
+    // Handlers are sync `(ws, msg, session) => void` like the rest of the
+    // registry, but the currency work is async (internal fetch to CurrencyDO).
+    // We dispatch to a private async method via `void` so the dispatch contract
+    // stays synchronous; webSocketMessage never awaits these.
+    wallet_balance_request: (ws, _msg, session) => {
+      void this.handleWalletBalanceRequest(ws, session);
+    },
+
+    trade_request: (ws, msg, session) => {
+      this.handleTradeRequest(ws, msg, session);
+    },
+
+    trade_accept: (ws, msg, session) => {
+      void this.handleTradeAccept(ws, msg, session);
+    },
+
+    trade_decline: (ws, msg, session) => {
+      this.handleTradeDecline(msg, session);
+    },
+
+    trade_offer: (ws, msg, session) => {
+      void this.handleTradeOffer(ws, msg, session);
+    },
+
+    trade_confirm: (ws, msg, session) => {
+      void this.handleTradeConfirm(ws, msg, session);
+    },
+
+    trade_cancel: (ws, msg, session) => {
+      void this.handleTradeCancel(ws, msg, session);
+    },
   };
+
+  // --- Currency / trade bridge ---
+
+  /**
+   * One-shot internal fetch to the CurrencyDO. The DO instance name 'currency'
+   * MUST match the public route in src/index.ts (`idFromName('currency')`).
+   * Returns the parsed JSON body plus the HTTP status so callers can branch on
+   * 200 / 402 / 4xx exactly as CurrencyDO documents.
+   */
+  private async currency(
+    path: InternalCurrencyPath,
+    body: Record<string, unknown>,
+  ): Promise<{ status: number; data: Record<string, unknown> }> {
+    const id = this.env.CURRENCY_DO.idFromName('currency');
+    const stub = this.env.CURRENCY_DO.get(id);
+    const res = await stub.fetch(internalCurrencyUrl(path), {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    let data: Record<string, unknown> = {};
+    try {
+      data = (await res.json()) as Record<string, unknown>;
+    } catch {
+      data = {};
+    }
+    return { status: res.status, data };
+  }
+
+  /** Find the live (non-disconnected) session whose world id is `id`. */
+  private sessionByWorldId(id: string): Session | null {
+    for (const session of this.sessions.values()) {
+      if (session.id === id && session.disconnectedAt === null) return session;
+    }
+    return null;
+  }
+
+  /** Find the WebSocket for a live session by its world id. */
+  private wsByWorldId(id: string): WebSocket | null {
+    for (const [ws, session] of this.sessions.entries()) {
+      if (session.id === id && session.disconnectedAt === null) return ws;
+    }
+    return null;
+  }
+
+  private sendToWorldId(id: string, msg: object): void {
+    const ws = this.wsByWorldId(id);
+    if (ws) this.send(ws, msg);
+  }
+
+  // ⚠️ ECONOMY LIMITATION (accepted 2026-06-11): usernames are free identities,
+  // so each fresh username mints a 100-Sig welcome grant that can be moved to a
+  // "main" via a one-sided trade — the economy is NOT sybil-resistant. Fix needs
+  // real accounts (AdminDO auth) gating the grant; until then Sigs are play-money.
+  /**
+   * Welcome grant. Idempotency keys are pruned after 24h, so credit-with-key
+   * is NOT safe to call forever (a re-credit could slip through after pruning).
+   * Instead: only grant when the wallet reads 0 AND has no audit history. A
+   * player who legitimately spent down to 0 has history, so they never re-grant;
+   * a brand-new username has balance 0 and empty history exactly once. The
+   * idempotency key is still passed as belt-and-suspenders against a double
+   * request inside the 24h window.
+   */
+  private async ensureWelcomeGrant(username: string): Promise<number> {
+    const bal = await this.currency(INTERNAL_CURRENCY_PATHS.balance, {
+      playerId: username,
+    });
+    const balance = Number(bal.data.balance ?? 0);
+    if (balance > 0) return balance;
+
+    const hist = await this.currency(INTERNAL_CURRENCY_PATHS.history, {
+      playerId: username,
+      limit: 1,
+    });
+    const entries = Array.isArray(hist.data.entries)
+      ? (hist.data.entries as unknown[])
+      : [];
+    if (entries.length > 0) return balance; // spent to 0 — no re-grant
+
+    const credited = await this.currency(INTERNAL_CURRENCY_PATHS.credit, {
+      playerId: username,
+      amount: 100,
+      reason: 'welcome grant',
+      idempotencyKey: `welcome:${username}`,
+    });
+    return Number(credited.data.balance ?? balance);
+  }
+
+  private async handleWalletBalanceRequest(
+    ws: WebSocket,
+    session: Session,
+  ): Promise<void> {
+    try {
+      const balance = await this.ensureWelcomeGrant(session.username);
+      this.send(ws, { type: 'wallet_balance', balance });
+    } catch (error) {
+      logEvent('wallet_balance_failed', {
+        id: session.id,
+        username: session.username,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private handleTradeRequest(
+    ws: WebSocket,
+    msg: Record<string, unknown>,
+    session: Session,
+  ): void {
+    if (!session.player) return;
+    const targetId = typeof msg.targetId === 'string' ? msg.targetId : null;
+    if (!targetId || targetId === session.id) return;
+
+    const target = this.sessionByWorldId(targetId);
+    // Target gone (or out of proximity) → decline back to the requester.
+    // trade_declined carries the target's id; the requester has no pending
+    // request from the target, so the client's filter is a no-op and the
+    // notification simply hides — which is the desired UX here.
+    if (
+      !target ||
+      !target.player ||
+      !arePlayersRelevant(session.player, target.player)
+    ) {
+      this.send(ws, { type: 'trade_declined', fromId: targetId });
+      return;
+    }
+
+    // Either party already in a trade → decline immediately, don't relay.
+    if (this.isTrading(session.id) || this.isTrading(targetId)) {
+      this.send(ws, { type: 'trade_declined', fromId: targetId });
+      return;
+    }
+
+    this.sendToWorldId(targetId, {
+      type: 'trade_request',
+      fromId: session.id,
+      fromName: session.username,
+    });
+  }
+
+  private async handleTradeAccept(
+    ws: WebSocket,
+    msg: Record<string, unknown>,
+    session: Session,
+  ): Promise<void> {
+    if (!session.player) return;
+    const fromId = typeof msg.fromId === 'string' ? msg.fromId : null;
+    if (!fromId || fromId === session.id) return;
+
+    const requester = this.sessionByWorldId(fromId);
+    if (!requester) {
+      // Requester left before we could open — tell the accepter it's off.
+      this.send(ws, { type: 'trade_declined', fromId });
+      return;
+    }
+
+    // Guard: either party already in a trade — cancel cleanly for both sides.
+    if (this.isTrading(session.id) || this.isTrading(requester.id)) {
+      // Tell the accepter the trade is off.
+      this.send(ws, { type: 'trade_declined', fromId });
+      // Also clear the requester's pending state so their UI doesn't hang.
+      this.sendToWorldId(requester.id, { type: 'trade_declined', fromId: session.id });
+      return;
+    }
+
+    try {
+      const res = await this.currency(INTERNAL_CURRENCY_PATHS.createTrade, {
+        aId: requester.username,
+        bId: session.username,
+        aAmount: 0,
+        bAmount: 0,
+      });
+      const tradeId = typeof res.data.tradeId === 'string' ? res.data.tradeId : null;
+      if (res.status !== 200 || !tradeId) {
+        this.send(ws, { type: 'trade_declined', fromId });
+        return;
+      }
+
+      this.activeTrades.set(tradeId, {
+        aWorldId: requester.id,
+        aUsername: requester.username,
+        aOffer: 0,
+        bWorldId: session.id,
+        bUsername: session.username,
+        bOffer: 0,
+      });
+
+      // Open the window on both sides; each sees the OTHER as partner.
+      this.sendToWorldId(requester.id, {
+        type: 'trade_opened',
+        tradeId,
+        partnerId: session.id,
+        partnerName: session.username,
+      });
+      this.sendToWorldId(session.id, {
+        type: 'trade_opened',
+        tradeId,
+        partnerId: requester.id,
+        partnerName: requester.username,
+      });
+    } catch (error) {
+      logEvent('trade_accept_failed', {
+        id: session.id,
+        username: session.username,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.send(ws, { type: 'trade_declined', fromId });
+    }
+  }
+
+  private handleTradeDecline(
+    msg: Record<string, unknown>,
+    session: Session,
+  ): void {
+    const fromId = typeof msg.fromId === 'string' ? msg.fromId : null;
+    if (!fromId) return;
+    // The decliner (this session) was the trade_request TARGET; `fromId` is the
+    // original requester's world id — exactly the entry the requester's client
+    // filters out of its pendingRequests via `r.from !== data.fromId`. We relay
+    // the DECLINER's id so the requester's UI clears the matching pending row.
+    this.sendToWorldId(fromId, {
+      type: 'trade_declined',
+      fromId: session.id,
+    });
+  }
+
+  /** True if this world-session id is a participant in any active trade. */
+  private isTrading(worldId: string): boolean {
+    for (const t of this.activeTrades.values()) {
+      if (t.aWorldId === worldId || t.bWorldId === worldId) return true;
+    }
+    return false;
+  }
+
+  /** Resolve a live trade entry and verify the session is a participant. */
+  private tradeParticipant(
+    tradeId: string | null,
+    session: Session,
+  ): { trade: ActiveTrade; isA: boolean } | null {
+    if (!tradeId) return null;
+    const trade = this.activeTrades.get(tradeId);
+    if (!trade) return null;
+    if (trade.aUsername === session.username) return { trade, isA: true };
+    if (trade.bUsername === session.username) return { trade, isA: false };
+    return null;
+  }
+
+  private async handleTradeOffer(
+    ws: WebSocket,
+    msg: Record<string, unknown>,
+    session: Session,
+  ): Promise<void> {
+    const tradeId = typeof msg.tradeId === 'string' ? msg.tradeId : null;
+    const found = this.tradeParticipant(tradeId, session);
+    // Non-participant or unknown trade → silently ignore (cannot touch a trade
+    // they are not part of).
+    if (!found || !tradeId) return;
+    const amount = typeof msg.amount === 'number' ? msg.amount : null;
+    if (amount === null || !Number.isSafeInteger(amount) || amount < 0) return;
+
+    const { trade, isA } = found;
+    try {
+      const res = await this.currency(INTERNAL_CURRENCY_PATHS.updateTrade, {
+        tradeId,
+        playerId: session.username,
+        amount,
+      });
+      if (res.status !== 200) return;
+
+      // Update our cached offers; confirms were reset server-side.
+      if (isA) trade.aOffer = amount;
+      else trade.bOffer = amount;
+
+      const senderWorldId = isA ? trade.aWorldId : trade.bWorldId;
+      const otherWorldId = isA ? trade.bWorldId : trade.aWorldId;
+      const otherOffer = isA ? trade.bOffer : trade.aOffer;
+
+      // Both messages go to BOTH clients so each UI reflects the new offer and
+      // the now-reset confirm flags honestly.
+      for (const recipient of [trade.aWorldId, trade.bWorldId]) {
+        this.sendToWorldId(recipient, {
+          type: 'trade_update',
+          tradeId,
+          playerId: senderWorldId,
+          amount,
+          confirmed: false,
+        });
+        this.sendToWorldId(recipient, {
+          type: 'trade_update',
+          tradeId,
+          playerId: otherWorldId,
+          amount: otherOffer,
+          confirmed: false,
+        });
+      }
+    } catch (error) {
+      logEvent('trade_offer_failed', {
+        id: session.id,
+        username: session.username,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleTradeConfirm(
+    ws: WebSocket,
+    msg: Record<string, unknown>,
+    session: Session,
+  ): Promise<void> {
+    const tradeId = typeof msg.tradeId === 'string' ? msg.tradeId : null;
+    const found = this.tradeParticipant(tradeId, session);
+    if (!found || !tradeId) {
+      // Map miss (e.g. hibernation) or non-participant: cancel cleanly so the
+      // caller's UI doesn't hang waiting on a trade we can no longer broker.
+      if (tradeId) this.send(ws, { type: 'trade_cancelled', tradeId });
+      return;
+    }
+
+    const { trade, isA } = found;
+    const confirmerWorldId = isA ? trade.aWorldId : trade.bWorldId;
+    const confirmerOffer = isA ? trade.aOffer : trade.bOffer;
+    try {
+      const res = await this.currency(INTERNAL_CURRENCY_PATHS.confirmTrade, {
+        tradeId,
+        playerId: session.username,
+      });
+
+      if (res.status === 200 && res.data.status === 'confirmed') {
+        for (const recipient of [trade.aWorldId, trade.bWorldId]) {
+          this.sendToWorldId(recipient, {
+            type: 'trade_update',
+            tradeId,
+            playerId: confirmerWorldId,
+            amount: confirmerOffer,
+            confirmed: true,
+          });
+        }
+        return;
+      }
+
+      if (res.status === 200 && res.data.status === 'completed') {
+        this.activeTrades.delete(tradeId);
+        for (const recipient of [trade.aWorldId, trade.bWorldId]) {
+          this.sendToWorldId(recipient, { type: 'trade_completed', tradeId });
+        }
+        // Push fresh balances to both participants (no welcome-grant path here;
+        // both wallets are guaranteed to exist from the trade).
+        await this.sendFreshBalance(trade.aWorldId, trade.aUsername);
+        await this.sendFreshBalance(trade.bWorldId, trade.bUsername);
+        return;
+      }
+
+      // 402 (settle-time insufficient funds): CurrencyDO reset BOTH confirms.
+      // Echo both clients' UNCHANGED offers with confirmed:false so their
+      // confirm checkboxes reset and they can re-confirm.
+      if (res.status === 402) {
+        for (const recipient of [trade.aWorldId, trade.bWorldId]) {
+          this.sendToWorldId(recipient, {
+            type: 'trade_update',
+            tradeId,
+            playerId: trade.aWorldId,
+            amount: trade.aOffer,
+            confirmed: false,
+          });
+          this.sendToWorldId(recipient, {
+            type: 'trade_update',
+            tradeId,
+            playerId: trade.bWorldId,
+            amount: trade.bOffer,
+            confirmed: false,
+          });
+        }
+        return;
+      }
+    } catch (error) {
+      logEvent('trade_confirm_failed', {
+        id: session.id,
+        username: session.username,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async sendFreshBalance(
+    worldId: string,
+    username: string,
+  ): Promise<void> {
+    try {
+      const bal = await this.currency(INTERNAL_CURRENCY_PATHS.balance, {
+        playerId: username,
+      });
+      this.sendToWorldId(worldId, {
+        type: 'wallet_balance',
+        balance: Number(bal.data.balance ?? 0),
+      });
+    } catch (error) {
+      logEvent('wallet_balance_failed', {
+        id: worldId,
+        username,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleTradeCancel(
+    ws: WebSocket,
+    msg: Record<string, unknown>,
+    session: Session,
+  ): Promise<void> {
+    const tradeId = typeof msg.tradeId === 'string' ? msg.tradeId : null;
+    const found = this.tradeParticipant(tradeId, session);
+    if (!found || !tradeId) {
+      if (tradeId) this.send(ws, { type: 'trade_cancelled', tradeId });
+      return;
+    }
+    await this.cancelTrade(tradeId);
+  }
+
+  /**
+   * Cancel a brokered trade: best-effort CurrencyDO cancel, drop the map entry,
+   * notify both participants. Used by the cancel handler and disconnect cleanup.
+   */
+  private async cancelTrade(tradeId: string): Promise<void> {
+    const trade = this.activeTrades.get(tradeId);
+    if (!trade) return;
+    this.activeTrades.delete(tradeId);
+    try {
+      await this.currency(INTERNAL_CURRENCY_PATHS.cancelTrade, { tradeId });
+    } catch (error) {
+      logEvent('trade_cancel_failed', {
+        tradeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    this.sendToWorldId(trade.aWorldId, { type: 'trade_cancelled', tradeId });
+    this.sendToWorldId(trade.bWorldId, { type: 'trade_cancelled', tradeId });
+  }
+
+  /** Cancel any active trade a departing world id participates in. */
+  private cancelTradesForWorldId(worldId: string): void {
+    for (const [tradeId, trade] of this.activeTrades.entries()) {
+      if (trade.aWorldId === worldId || trade.bWorldId === worldId) {
+        void this.cancelTrade(tradeId);
+      }
+    }
+  }
 
   handleMessage(ws: WebSocket, raw: unknown): void {
     this.pruneStaleSessions();
@@ -1232,6 +1742,12 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
 
     // Already in grace period — ignore duplicate close/error events
     if (session.disconnectedAt !== null) return;
+
+    // Cancel any in-flight trade this player is part of and notify the partner.
+    // Trades are interactive UI flows with no client-side resume on reconnect,
+    // so we tear them down immediately on disconnect rather than waiting out the
+    // movement grace period.
+    this.cancelTradesForWorldId(session.id);
 
     // Enter grace period: keep the session/player so other clients don't
     // see a leave/join cycle for brief disconnects.

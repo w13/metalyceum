@@ -315,3 +315,4 @@ export function initUiHandlers() {
 
 export { initDebugPanel, updateDebugPanel } from './ui/debug-panel.js';
 export { initSoundtrackUi } from './ui/soundtrack-panel.js';
+export { initWalletUI } from './ui/wallet.js';

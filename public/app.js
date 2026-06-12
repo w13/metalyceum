@@ -23,7 +23,7 @@ import {
   updateRoomPanelDetails,
 } from './js/room-panel.js';
 import { state } from './js/state.js';
-import { initDebugPanel, initSoundtrackUi, initUiHandlers } from './js/ui.js';
+import { initDebugPanel, initSoundtrackUi, initUiHandlers, initWalletUI } from './js/ui.js';
 
 // Dev-tools: only active on localhost or when ?debug is in the URL
 const _isDev =
@@ -179,12 +179,21 @@ if (location.search.includes('debug') || location.search.includes('diag')) {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Guard the login form BEFORE the slow engine build: the real submit handler
+  // (ui/login.js initLoginForm) only attaches after initEngine() resolves, and
+  // a submit during that window would otherwise trigger a NATIVE form
+  // navigation (the form has no action), reloading back to the login screen.
+  document.getElementById('login-form')?.addEventListener('submit', (e) => {
+    if (!state.renderer) e.preventDefault(); // engine not ready — swallow early submits
+  });
+
   // Build the 3D world — async so yields allow loading-screen text to update without freezing the tab
   await initEngine();
   initMinimap();
   if (_isDev) initDevTools();
   initDebugPanel();
   initSoundtrackUi();
+  initWalletUI();
   initUiHandlers();
   initPerformanceOptimization();
   renderEventBoard();

@@ -1,12 +1,13 @@
 // Metalyceum Server Router and Entry Point
 
 import { AdminDO } from './admin/do';
+import { CurrencyDO } from './currency/do';
 import type { Bindings } from './constants';
 import { logEvent, MetalyceumWorld } from './durable_object';
 import { errorEnvelope } from './http/errors';
 import { getOrCreateRequestId, withRequestId } from './http/request_id';
 
-export { AdminDO, MetalyceumWorld };
+export { AdminDO, CurrencyDO, MetalyceumWorld };
 
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Frame-Options': 'SAMEORIGIN',
@@ -75,6 +76,10 @@ export async function handleFetch(
         headers,
       });
     }
+
+    // NOTE: CurrencyDO is intentionally internal-only — all wallet traffic flows
+    // through the world DO's authenticated WebSocket session. Do NOT reintroduce
+    // a public /api/v2/currency/ route without adding authentication (AdminDO auth).
 
     if (pathname === '/ws' || pathname === '/debug') {
       const id = env.METALYCEUM_WORLD.idFromName('global-world');

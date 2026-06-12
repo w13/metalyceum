@@ -29,14 +29,16 @@
   "durable_objects": {
     "bindings": [
       { "name": "METALYCEUM_WORLD", "class_name": "MetalyceumWorld" },
-      { "name": "ADMIN_DO", "class_name": "AdminDO" }
+      { "name": "ADMIN_DO", "class_name": "AdminDO" },
+      { "name": "CURRENCY_DO", "class_name": "CurrencyDO" }
     ]
   },
 
   // Migrations: register SQLite-backed DO classes
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["MetalyceumWorld"] },
-    { "tag": "v2", "new_sqlite_classes": ["AdminDO"] }
+    { "tag": "v2", "new_sqlite_classes": ["AdminDO"] },
+    { "tag": "v3", "new_sqlite_classes": ["CurrencyDO"] }
   ],
 
   // Local dev vars — OVERRIDE BOTH with `wrangler secret put <NAME>` in production.
