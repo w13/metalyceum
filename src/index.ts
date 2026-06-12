@@ -77,64 +77,9 @@ export async function handleFetch(
       });
     }
 
-    // API v2 currency routes → CurrencyDO (read-only public surface)
-    // Mutations (credit/debit/transfer/trades) require the authenticated WebSocket
-    // session through the world DO; exposing them here would let anyone credit
-    // themselves without server-side auth. Only balance and history are safe to
-    // expose directly. Path is translated: /api/v2/currency/<op> → /internal/currency/<op>
-    // because CurrencyDO matches its own /internal/currency/* paths.
-    else if (pathname.startsWith('/api/v2/currency/')) {
-      // Handle CORS preflight
-      if (request.method === 'OPTIONS') {
-        return new Response(null, {
-          status: 204,
-          headers: { ...corsHeaders(origin), 'X-Request-Id': requestId },
-        });
-      }
-
-      // Only allow read-only operations via the public route
-      const op = pathname.slice('/api/v2/currency/'.length);
-      if (op !== 'balance' && op !== 'history') {
-        return new Response(
-          JSON.stringify(errorEnvelope(
-            'This operation is not available via the public API. Use the authenticated WebSocket session.',
-            { requestId },
-          )),
-          {
-            status: 403,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Request-Id': requestId,
-              ...corsHeaders(origin),
-              ...NO_STORE_HEADERS,
-            },
-          },
-        );
-      }
-
-      // Translate public path to internal DO path
-      const internalUrl = new URL(request.url);
-      internalUrl.pathname = `/internal/currency/${op}`;
-      const internalRequest = new Request(internalUrl.toString(), request);
-
-      const currencyId = env.CURRENCY_DO.idFromName('currency');
-      const currencyStub = env.CURRENCY_DO.get(currencyId);
-      const response = await currencyStub.fetch(withRequestId(internalRequest, requestId));
-
-      const headers = new Headers(response.headers);
-      headers.set('X-Request-Id', requestId);
-      for (const [key, value] of Object.entries(corsHeaders(origin))) {
-        headers.set(key, value);
-      }
-      for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
-        headers.set(key, value);
-      }
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    }
+    // NOTE: CurrencyDO is intentionally internal-only — all wallet traffic flows
+    // through the world DO's authenticated WebSocket session. Do NOT reintroduce
+    // a public /api/v2/currency/ route without adding authentication (AdminDO auth).
 
     if (pathname === '/ws' || pathname === '/debug') {
       const id = env.METALYCEUM_WORLD.idFromName('global-world');
@@ -175,13 +120,13 @@ export async function handleFetch(
       error: errorMessage,
     });
 
-    if (pathname.startsWith('/api/v1/') || pathname.startsWith('/api/v2/currency/') || pathname === '/debug') {
+    if (pathname.startsWith('/api/v1/') || pathname === '/debug') {
       const headers = new Headers({
         'Content-Type': 'application/json',
         'X-Metalyceum-Error-Id': requestId,
         'X-Request-Id': requestId,
       });
-      if (pathname.startsWith('/api/v1/') || pathname.startsWith('/api/v2/currency/')) {
+      if (pathname.startsWith('/api/v1/')) {
         for (const [key, value] of Object.entries(corsHeaders(origin))) {
           headers.set(key, value);
         }

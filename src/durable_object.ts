@@ -1316,6 +1316,10 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
     if (ws) this.send(ws, msg);
   }
 
+  // ⚠️ ECONOMY LIMITATION (accepted 2026-06-11): usernames are free identities,
+  // so each fresh username mints a 100-Sig welcome grant that can be moved to a
+  // "main" via a one-sided trade — the economy is NOT sybil-resistant. Fix needs
+  // real accounts (AdminDO auth) gating the grant; until then Sigs are play-money.
   /**
    * Welcome grant. Idempotency keys are pruned after 24h, so credit-with-key
    * is NOT safe to call forever (a re-credit could slip through after pruning).
@@ -1389,6 +1393,12 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
       return;
     }
 
+    // Either party already in a trade → decline immediately, don't relay.
+    if (this.isTrading(session.id) || this.isTrading(targetId)) {
+      this.send(ws, { type: 'trade_declined', fromId: targetId });
+      return;
+    }
+
     this.sendToWorldId(targetId, {
       type: 'trade_request',
       fromId: session.id,
@@ -1409,6 +1419,15 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
     if (!requester) {
       // Requester left before we could open — tell the accepter it's off.
       this.send(ws, { type: 'trade_declined', fromId });
+      return;
+    }
+
+    // Guard: either party already in a trade — cancel cleanly for both sides.
+    if (this.isTrading(session.id) || this.isTrading(requester.id)) {
+      // Tell the accepter the trade is off.
+      this.send(ws, { type: 'trade_declined', fromId });
+      // Also clear the requester's pending state so their UI doesn't hang.
+      this.sendToWorldId(requester.id, { type: 'trade_declined', fromId: session.id });
       return;
     }
 
@@ -1471,6 +1490,14 @@ export class MetalyceumWorld extends DurableObject<Bindings> {
       type: 'trade_declined',
       fromId: session.id,
     });
+  }
+
+  /** True if this world-session id is a participant in any active trade. */
+  private isTrading(worldId: string): boolean {
+    for (const t of this.activeTrades.values()) {
+      if (t.aWorldId === worldId || t.bWorldId === worldId) return true;
+    }
+    return false;
   }
 
   /** Resolve a live trade entry and verify the session is a participant. */

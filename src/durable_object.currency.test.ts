@@ -397,4 +397,38 @@ describe('MetalyceumWorld ↔ CurrencyDO trade/wallet bridge', () => {
     expect(bob.ws.sent.length).toBe(0);
     expect(eve.ws.sent.length).toBe(0);
   });
+
+  it('one-trade-per-participant: Carol requests trade with Alice while Alice is mid-trade with Bob', async () => {
+    const alice = await connect(world, worldCtx, 'Alice');
+    const bob = await connect(world, worldCtx, 'Bob');
+    const carol = await connect(world, worldCtx, 'Carol');
+
+    // Grant wallets so welcome-grant path doesn't interfere.
+    world.webSocketMessage(alice.ws as any, JSON.stringify({ type: 'wallet_balance_request' }));
+    world.webSocketMessage(bob.ws as any, JSON.stringify({ type: 'wallet_balance_request' }));
+    world.webSocketMessage(carol.ws as any, JSON.stringify({ type: 'wallet_balance_request' }));
+    await flush();
+    alice.ws.sent.length = 0; bob.ws.sent.length = 0; carol.ws.sent.length = 0;
+
+    // Alice and Bob enter a trade.
+    world.webSocketMessage(alice.ws as any, JSON.stringify({ type: 'trade_request', targetId: bob.id }));
+    world.webSocketMessage(bob.ws as any, JSON.stringify({ type: 'trade_accept', fromId: alice.id }));
+    await flush();
+    // Both should have trade_opened.
+    expect(lastOfType(alice.ws, 'trade_opened')).toBeDefined();
+    expect(lastOfType(bob.ws, 'trade_opened')).toBeDefined();
+    alice.ws.sent.length = 0; bob.ws.sent.length = 0; carol.ws.sent.length = 0;
+
+    // Carol sends a trade_request to Alice (who is already trading).
+    world.webSocketMessage(carol.ws as any, JSON.stringify({ type: 'trade_request', targetId: alice.id }));
+    await flush();
+
+    // Carol must receive trade_declined — no trade_opened, no relay to Alice.
+    expect(lastOfType(carol.ws, 'trade_declined')).toBeDefined();
+    expect(lastOfType(carol.ws, 'trade_opened')).toBeUndefined();
+    // Alice's UI must not be disturbed.
+    expect(lastOfType(alice.ws, 'trade_request')).toBeUndefined();
+    // Exactly one active trade remains.
+    expect((world as any).activeTrades.size).toBe(1);
+  });
 });

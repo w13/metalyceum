@@ -1,6 +1,5 @@
 // Internal endpoint constants for CurrencyDO — shared between CurrencyDO, AdminDO, and world DO.
 export const INTERNAL_CURRENCY_PATHS = {
-  rate: '/internal/currency/rate',            // GET current exchange/rate info
   balance: '/internal/currency/balance',      // GET { playerId } → { balance }
   credit: '/internal/currency/credit',        // POST { playerId, amount, reason } → { balance }
   debit: '/internal/currency/debit',          // POST { playerId, amount, reason } → { balance }
