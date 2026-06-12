@@ -116,6 +116,7 @@ export function initWalletUI() {
   registerWalletUICallbacks({
     updateWalletUI,
     showTradeNotification,
+    hideTradeNotification,
     showTradeWindow,
     updateTradeWindow,
     hideTradeWindow,
@@ -154,6 +155,7 @@ function toggleWalletPanel(forceState) {
 }
 
 let _currentRequestId = null;
+let _toastHideTimer = null;
 
 function showTradeNotification(data) {
   if (!notificationToast) return;
@@ -167,9 +169,11 @@ function showTradeNotification(data) {
     declineTrade(_currentRequestId);
     notificationToast.style.display = 'none';
   };
-  notificationToast.style.display = 'block';
+  // Clear any pending auto-hide from a previous notification before showing
+  if (_toastHideTimer !== null) { clearTimeout(_toastHideTimer); _toastHideTimer = null; }
+  notificationToast.style.display = 'flex';
   // Auto-hide after 15 seconds
-  setTimeout(() => { if (notificationToast) notificationToast.style.display = 'none'; }, 15000);
+  _toastHideTimer = setTimeout(() => { _toastHideTimer = null; if (notificationToast) notificationToast.style.display = 'none'; }, 15000);
 }
 
 function hideTradeNotification() {

@@ -70,6 +70,7 @@ export const CURRENCY_HANDLERS = {
 // ── UI functions (implemented in wallet.js) ──────────────────────────────
 let updateWalletUI = () => {};
 let showTradeNotification = (data) => { console.log(`[Currency] Trade request from ${data.fromName}`); };
+let hideTradeNotification = () => {};
 let showTradeWindow = () => {};
 let updateTradeWindow = () => {};
 let hideTradeWindow = () => {};
@@ -78,6 +79,7 @@ let sendWalletRequest = () => {};
 export function registerWalletUICallbacks(callbacks) {
   if (callbacks.updateWalletUI) updateWalletUI = callbacks.updateWalletUI;
   if (callbacks.showTradeNotification) showTradeNotification = callbacks.showTradeNotification;
+  if (callbacks.hideTradeNotification) hideTradeNotification = callbacks.hideTradeNotification;
   if (callbacks.showTradeWindow) showTradeWindow = callbacks.showTradeWindow;
   if (callbacks.updateTradeWindow) updateTradeWindow = callbacks.updateTradeWindow;
   if (callbacks.hideTradeWindow) hideTradeWindow = callbacks.hideTradeWindow;

@@ -12,7 +12,7 @@ import {
   updateEditorStatus,
 } from './editor.js';
 import { closeModal } from './modals.js';
-import { CURRENCY_HANDLERS } from './currency.js';
+import { CURRENCY_HANDLERS, requestBalance } from './currency.js';
 import {
   scheduleEventBoardRender,
   scheduleRoomPlayersListRefresh,
@@ -240,6 +240,7 @@ function handleInitMessage(data) {
   refreshRoomsUi();
   applyPublishedWorldAssets(data.worldAssets || []);
   reconcileRemotePlayers(data.players || []);
+  requestBalance();
 }
 
 function applyRemoteState(snapshot) {

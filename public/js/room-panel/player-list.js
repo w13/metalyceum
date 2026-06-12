@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { updateRoomAudioState } from '../audio.js';
 import { ROOM_LAYOUTS, WORLD_CONFIG } from '../config.js';
+import { requestTrade } from '../currency.js';
 import { createPanelLabelSprite } from '../scenery/assets.js';
 import { disposeSprite } from '../scenery/visibility.js';
 import { state } from '../state.js';
@@ -21,7 +22,7 @@ function createElement(
   return el;
 }
 
-function makePlayerItem(color, label, strong) {
+function makePlayerItem(color, label, strong, remotePlayer = null) {
   const li = createElement('li', { className: 'room-player-item' });
   const badge = createElement('span', { className: 'room-player-badge' });
   badge.style.backgroundColor = sanitizeColor(color);
@@ -30,6 +31,27 @@ function makePlayerItem(color, label, strong) {
   });
   li.appendChild(badge);
   li.appendChild(name);
+
+  // Trade button — only for other players, not self.
+  // KNOWN LIMITATION: the player list is room-scoped, so trades can only be
+  // initiated with players currently in the same room.
+  if (remotePlayer) {
+    const tradeBtn = createElement('button', { className: 'btn-secondary btn-sm' });
+    tradeBtn.type = 'button';
+    tradeBtn.textContent = 'Trade';
+    tradeBtn.style.marginLeft = 'auto';
+    tradeBtn.addEventListener('click', () => {
+      requestTrade(remotePlayer.id, remotePlayer.username);
+      tradeBtn.textContent = 'Sent…';
+      tradeBtn.disabled = true;
+      setTimeout(() => {
+        tradeBtn.textContent = 'Trade';
+        tradeBtn.disabled = false;
+      }, 5000);
+    });
+    li.appendChild(tradeBtn);
+  }
+
   return li;
 }
 
@@ -53,7 +75,7 @@ export function refreshRoomPlayersList() {
 
   state.remotePlayers.forEach((p) => {
     if (p.room === state.localPlayer.currentRoom) {
-      fragment.appendChild(makePlayerItem(p.color, p.username, false));
+      fragment.appendChild(makePlayerItem(p.color, p.username, false, p));
     }
   });
 
